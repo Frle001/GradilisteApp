@@ -28,13 +28,14 @@ func LoginHandler(c *gin.Context) {
 	db := GetDB()
 
 	var (
-		userID       string
-		companyID    string
-		employeeID   *string
-		email        string
-		passwordHash string
-		role         string
-		active       bool
+		userID             string
+		companyID          string
+		employeeID         *string
+		email              string
+		passwordHash       string
+		role               string
+		active             bool
+		mustChangePassword bool
 	)
 
 	err := db.QueryRow(ctx, `
@@ -45,10 +46,11 @@ func LoginHandler(c *gin.Context) {
 			email,
 			password_hash,
 			role,
-			active
+			active,
+			must_change_password
 		FROM users
 		WHERE email = $1
-	`, req.Email).Scan(&userID, &companyID, &employeeID, &email, &passwordHash, &role, &active)
+	`, req.Email).Scan(&userID, &companyID, &employeeID, &email, &passwordHash, &role, &active, &mustChangePassword)
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
@@ -107,6 +109,71 @@ func LoginHandler(c *gin.Context) {
 			"email":       email,
 			"role":        role,
 		},
+		"mustChangePassword": mustChangePassword,
+	})
+}
+
+// ── Change Password ───────────────────────────────────────────────────────────
+
+type changePasswordRequest struct {
+	CurrentPassword string `json:"currentPassword" binding:"required"`
+	NewPassword     string `json:"newPassword" binding:"required"`
+}
+
+func ChangePasswordHandler(c *gin.Context) {
+	u := GetAuthUser(c)
+
+	var req changePasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request"})
+		return
+	}
+
+	if len(req.NewPassword) < 8 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "New password must be at least 8 characters"})
+		return
+	}
+
+	ctx := c.Request.Context()
+	db := GetDB()
+
+	var passwordHash string
+	err := db.QueryRow(ctx, `
+		SELECT password_hash FROM users WHERE id = $1::uuid AND active = true
+	`, u.UserID).Scan(&passwordHash)
+	if errors.Is(err, pgx.ErrNoRows) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found"})
+		return
+	}
+	if err != nil {
+		log.Printf("change-password: db error for user %s: %v", u.UserID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		return
+	}
+
+	if !CheckPassword(req.CurrentPassword, passwordHash) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Current password is incorrect"})
+		return
+	}
+
+	newHash, err := HashPassword(req.NewPassword)
+	if err != nil {
+		log.Printf("change-password: hash failed for user %s: %v", u.UserID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		return
+	}
+
+	if _, err := db.Exec(ctx, `
+		UPDATE users SET password_hash = $1, must_change_password = false WHERE id = $2::uuid
+	`, newHash, u.UserID); err != nil {
+		log.Printf("change-password: update failed for user %s: %v", u.UserID, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message":            "Password changed successfully",
+		"mustChangePassword": false,
 	})
 }
 

@@ -8,6 +8,7 @@ export interface AuthUser {
 
 const TOKEN_KEY = 'gradiliste_token'
 const USER_KEY = 'gradiliste_user'
+const MUST_CHANGE_KEY = 'gradiliste_must_change_password'
 
 export function getToken(): string | null {
   if (typeof window === 'undefined') return null
@@ -41,6 +42,19 @@ export function clearUser(): void {
   localStorage.removeItem(USER_KEY)
 }
 
+export function getMustChangePassword(): boolean {
+  if (typeof window === 'undefined') return false
+  return localStorage.getItem(MUST_CHANGE_KEY) === 'true'
+}
+
+export function setMustChangePassword(value: boolean): void {
+  localStorage.setItem(MUST_CHANGE_KEY, value ? 'true' : 'false')
+}
+
+export function clearMustChangePassword(): void {
+  localStorage.removeItem(MUST_CHANGE_KEY)
+}
+
 export function isAuthenticated(): boolean {
   return !!getToken()
 }
@@ -48,4 +62,5 @@ export function isAuthenticated(): boolean {
 export function clearAuth(): void {
   clearToken()
   clearUser()
+  clearMustChangePassword()
 }

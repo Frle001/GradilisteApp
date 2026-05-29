@@ -9,6 +9,11 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+
+	"github.com/gradiliste/api/handlers"
+	"github.com/gradiliste/api/repositories"
+	"github.com/gradiliste/api/routes"
+	"github.com/gradiliste/api/services"
 )
 
 func main() {
@@ -24,6 +29,15 @@ func main() {
 	}
 	defer db.Close()
 
+	// ── Dependency injection ──────────────────────────────────────────────────
+	auditRepo := repositories.NewAuditRepository(db)
+	userRepo := repositories.NewUserRepository(db)
+	empRepo := repositories.NewEmployeeRepository(db)
+	assetRepo := repositories.NewEmployeeAssetRepository(db)
+	empSvc := services.NewEmployeeService(db, empRepo, assetRepo, auditRepo, userRepo, HashPassword)
+	empHandler := handlers.NewEmployeeHandler(empSvc)
+
+	// ── Router ────────────────────────────────────────────────────────────────
 	router := gin.New()
 	router.Use(gin.Logger())
 	router.Use(gin.Recovery())
@@ -31,7 +45,7 @@ func main() {
 
 	api := router.Group("/api")
 
-	// ── Public ──────────────────────────────────────────────────────────────
+	// ── Public ────────────────────────────────────────────────────────────────
 	api.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"status":  "ok",
@@ -49,18 +63,17 @@ func main() {
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "message": "Database connection is working"})
 	})
 
-	// ── Auth ─────────────────────────────────────────────────────────────────
+	// ── Auth ──────────────────────────────────────────────────────────────────
 	auth := api.Group("/auth")
 	{
 		auth.POST("/login", LoginHandler)
-		auth.POST("/register", RegisterHandler)        // always 403 — public registration disabled
+		auth.POST("/register", RegisterHandler)            // always 403 — public registration disabled
 		auth.GET("/me", AuthRequired(), MeHandler)
 		auth.POST("/logout", AuthRequired(), LogoutHandler)
+		auth.PATCH("/change-password", AuthRequired(), ChangePasswordHandler)
 	}
 
-	// ── Protected test routes ─────────────────────────────────────────────────
-	// These exist to verify that auth and role middleware work correctly.
-	// Can be removed once real business modules are in place.
+	// ── Protected test routes (verify middleware wiring) ──────────────────────
 	protected := api.Group("/protected", AuthRequired())
 	{
 		protected.GET("/me", ProtectedMeHandler)
@@ -77,6 +90,9 @@ func main() {
 			ProtectedPoslovodaHandler,
 		)
 	}
+
+	// ── Business modules ──────────────────────────────────────────────────────
+	routes.RegisterEmployeeRoutes(api, empHandler, AuthRequired(), RequireRoles)
 
 	// ── Debug (development only) ──────────────────────────────────────────────
 	if os.Getenv("ENV") == "development" {

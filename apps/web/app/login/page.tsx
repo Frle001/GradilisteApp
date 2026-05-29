@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useForm } from 'react-hook-form'
 import apiClient from '@/lib/api-client'
-import { setToken, setUser, isAuthenticated, type AuthUser } from '@/lib/auth'
+import { setToken, setUser, setMustChangePassword, isAuthenticated, type AuthUser } from '@/lib/auth'
 
 interface LoginFormData {
   email: string
@@ -36,10 +36,15 @@ export default function LoginPage() {
         email: data.email,
         password: data.password,
       })
-      const { access_token, user } = res.data
+      const { access_token, user, mustChangePassword } = res.data
       setToken(access_token)
       setUser(user as AuthUser)
-      router.push('/dashboard')
+      setMustChangePassword(!!mustChangePassword)
+      if (mustChangePassword) {
+        router.push('/change-password')
+      } else {
+        router.push('/dashboard')
+      }
     } catch (err: unknown) {
       const error = err as { response?: { status?: number; data?: { error?: string } } }
       const status = error?.response?.status

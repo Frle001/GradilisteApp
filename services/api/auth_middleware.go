@@ -5,19 +5,8 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/gradiliste/api/appctx"
 )
-
-const authUserKey = "auth_user"
-
-// AuthContext holds the authenticated user's identity extracted from the JWT.
-// Set by AuthRequired(); read by GetAuthUser() and CompanyID().
-type AuthContext struct {
-	UserID     string
-	CompanyID  string
-	EmployeeID string // empty when user has no linked employee record
-	Role       string
-	Email      string
-}
 
 // AuthRequired validates the Bearer token and injects AuthContext into the Gin context.
 // Returns 401 for missing, invalid, or expired tokens.
@@ -40,7 +29,7 @@ func AuthRequired() gin.HandlerFunc {
 			return
 		}
 
-		c.Set(authUserKey, &AuthContext{
+		c.Set(appctx.AuthUserKey, &appctx.AuthContext{
 			UserID:     claims.UserID,
 			CompanyID:  claims.CompanyID,
 			EmployeeID: claims.EmployeeID,
@@ -71,16 +60,8 @@ func RequireRoles(roles ...string) gin.HandlerFunc {
 }
 
 // GetAuthUser returns the AuthContext set by AuthRequired(), or nil.
-func GetAuthUser(c *gin.Context) *AuthContext {
-	val, exists := c.Get(authUserKey)
-	if !exists {
-		return nil
-	}
-	u, ok := val.(*AuthContext)
-	if !ok {
-		return nil
-	}
-	return u
+func GetAuthUser(c *gin.Context) *appctx.AuthContext {
+	return appctx.GetAuthUser(c)
 }
 
 // CompanyID returns the company_id from the authenticated user's JWT claims.
@@ -89,8 +70,5 @@ func GetAuthUser(c *gin.Context) *AuthContext {
 // Never accept company_id from request body or query params — always derive it from the token.
 // This is the primary multi-tenant isolation mechanism.
 func CompanyID(c *gin.Context) string {
-	if u := GetAuthUser(c); u != nil {
-		return u.CompanyID
-	}
-	return ""
+	return appctx.CompanyID(c)
 }

@@ -1,98 +1,45 @@
 'use client'
 
-import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
-import apiClient from '@/lib/api-client'
-import { clearAuth, getToken } from '@/lib/auth'
-
-interface MeUser {
-  id: string
-  company_id: string
-  employee_id: string | null
-  email: string
-  role: string
-  active: boolean
-}
-
-interface MeEmployee {
-  id: string
-  first_name: string
-  last_name: string
-  role: string
-}
+import Link from 'next/link'
+import { useAuth } from '@/hooks/useAuth'
+import { ROLE_LABELS } from '@/lib/types/employees'
 
 interface DashboardCard {
   title: string
   description: string
   icon: string
+  href?: string // set when the module is implemented
 }
 
-// Role-based navigation sections (placeholders only — no modules implemented yet)
 const roleCards: Record<string, DashboardCard[]> = {
   direktor: [
+    { title: 'Zaposlenici', description: 'Upravljanje osobljem', icon: '👥', href: '/dashboard/employees' },
     { title: 'Dnevni izvještaji', description: 'Pregled svih dnevnih izvještaja', icon: '📋' },
     { title: 'Građevinski dnevnik', description: 'Evidencija radova na gradilištu', icon: '📓' },
     { title: 'Građevinska knjiga', description: 'Knjiga gradnje i dokumentacija', icon: '📚' },
-    { title: 'Lista zaposlenika', description: 'Upravljanje osobljem', icon: '👥' },
     { title: 'Novi projekt', description: 'Pokretanje novog gradilišta', icon: '🏗️' },
   ],
   inzenjer: [
+    { title: 'Zaposlenici', description: 'Pregled osoblja', icon: '👥', href: '/dashboard/employees' },
     { title: 'Dnevni izvještaji', description: 'Pregled svih dnevnih izvještaja', icon: '📋' },
     { title: 'Građevinski dnevnik', description: 'Evidencija radova na gradilištu', icon: '📓' },
     { title: 'Građevinska knjiga', description: 'Knjiga gradnje i dokumentacija', icon: '📚' },
-    { title: 'Lista zaposlenika', description: 'Pregled osoblja', icon: '👥' },
     { title: 'Novi projekt', description: 'Pokretanje novog gradilišta', icon: '🏗️' },
   ],
   administracija: [
-    { title: 'Lista zaposlenika', description: 'Upravljanje zaposlenicima', icon: '👥' },
+    { title: 'Zaposlenici', description: 'Upravljanje zaposlenicima', icon: '👥', href: '/dashboard/employees' },
     { title: 'Oprema / alati / vozila', description: 'Evidencija i dodjela imovine', icon: '🔧' },
   ],
   poslovoda: [
+    { title: 'Moj tim', description: 'Pregled vaših zaposlenika', icon: '👥', href: '/dashboard/employees' },
     { title: 'Dnevni izvještaj', description: 'Unos dnevnog izvještaja', icon: '📋' },
     { title: 'Upis materijala', description: 'Evidencija nabave materijala', icon: '📦' },
     { title: 'Osobno stanje robe', description: 'Pregled osobne zadužnice', icon: '🗂️' },
   ],
 }
 
-const roleLabels: Record<string, string> = {
-  direktor: 'Direktor',
-  inzenjer: 'Inženjer',
-  administracija: 'Administracija',
-  poslovoda: 'Poslovođa',
-}
-
 export default function DashboardPage() {
-  const router = useRouter()
-  const [user, setUser] = useState<MeUser | null>(null)
-  const [employee, setEmployee] = useState<MeEmployee | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-
-  useEffect(() => {
-    if (!getToken()) {
-      router.replace('/login')
-      return
-    }
-
-    apiClient
-      .get('/auth/me')
-      .then((res) => {
-        setUser(res.data.user)
-        setEmployee(res.data.employee ?? null)
-      })
-      .catch(() => {
-        // Token invalid or expired
-        clearAuth()
-        router.replace('/login')
-      })
-      .finally(() => setIsLoading(false))
-  }, [router])
-
-  function handleLogout() {
-    apiClient.post('/auth/logout').finally(() => {
-      clearAuth()
-      router.push('/login')
-    })
-  }
+  const { user, employee, isLoading, logout } = useAuth()
 
   if (isLoading) {
     return (
@@ -121,10 +68,10 @@ export default function DashboardPage() {
           <div className="flex items-center gap-4">
             <div className="text-right hidden sm:block">
               <p className="text-sm font-medium text-white">{displayName}</p>
-              <p className="text-xs text-slate-400">{roleLabels[user.role] ?? user.role}</p>
+              <p className="text-xs text-slate-400">{ROLE_LABELS[user.role] ?? user.role}</p>
             </div>
             <button
-              onClick={handleLogout}
+              onClick={logout}
               className="text-sm text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 px-3 py-1.5 rounded-lg transition"
             >
               Odjava
@@ -141,7 +88,7 @@ export default function DashboardPage() {
             Dobrodošli, {displayName}
           </h1>
           <p className="text-slate-400 text-sm mt-1">
-            {roleLabels[user.role] ?? user.role} &middot; {user.email}
+            {ROLE_LABELS[user.role] ?? user.role} &middot; {user.email}
           </p>
         </div>
 
@@ -152,19 +99,34 @@ export default function DashboardPage() {
               Dostupni moduli
             </h2>
             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {cards.map((card) => (
-                <div
-                  key={card.title}
-                  className="bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col gap-3 hover:border-slate-600 transition cursor-default"
-                >
-                  <span className="text-2xl">{card.icon}</span>
-                  <div>
-                    <h3 className="font-semibold text-white text-sm">{card.title}</h3>
-                    <p className="text-slate-400 text-xs mt-0.5">{card.description}</p>
+              {cards.map((card) =>
+                card.href ? (
+                  <Link
+                    key={card.title}
+                    href={card.href}
+                    className="bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col gap-3 hover:border-slate-600 hover:bg-slate-800/50 transition cursor-pointer"
+                  >
+                    <span className="text-2xl">{card.icon}</span>
+                    <div>
+                      <h3 className="font-semibold text-white text-sm">{card.title}</h3>
+                      <p className="text-slate-400 text-xs mt-0.5">{card.description}</p>
+                    </div>
+                    <span className="text-xs text-slate-500 font-medium">Otvori →</span>
+                  </Link>
+                ) : (
+                  <div
+                    key={card.title}
+                    className="bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col gap-3 opacity-60"
+                  >
+                    <span className="text-2xl">{card.icon}</span>
+                    <div>
+                      <h3 className="font-semibold text-white text-sm">{card.title}</h3>
+                      <p className="text-slate-400 text-xs mt-0.5">{card.description}</p>
+                    </div>
+                    <span className="text-xs text-slate-600 font-medium">Uskoro dostupno</span>
                   </div>
-                  <span className="text-xs text-slate-600 font-medium">Uskoro dostupno</span>
-                </div>
-              ))}
+                )
+              )}
             </div>
           </>
         ) : (
