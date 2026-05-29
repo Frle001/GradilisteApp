@@ -1,9 +1,10 @@
 package main
 
 import (
-	"log"
-	"os"
 	"context"
+	"log"
+	"net/http"
+	"os"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -11,75 +12,76 @@ import (
 )
 
 func main() {
-	// Load environment variables
 	if err := godotenv.Load(); err != nil {
 		log.Println("No .env file found, using system environment")
 	}
 
-	// Initialize database
+	LoadConfig()
+
 	db, err := InitDB()
 	if err != nil {
 		log.Fatalf("Failed to initialize database: %v", err)
 	}
 	defer db.Close()
 
-	// Initialize router
 	router := gin.New()
-
-	// Middleware
 	router.Use(gin.Logger())
 	router.Use(gin.Recovery())
 	router.Use(CORSMiddleware())
 
-	// API v1 routes (future)
 	api := router.Group("/api")
+
+	// ── Public ──────────────────────────────────────────────────────────────
+	api.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"status":  "ok",
+			"message": "Gradiliste API is running",
+		})
+	})
+
+	api.GET("/db-health", func(c *gin.Context) {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := GetDB().Ping(ctx); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"status": "error", "error": err.Error()})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "ok", "message": "Database connection is working"})
+	})
+
+	// ── Auth ─────────────────────────────────────────────────────────────────
+	auth := api.Group("/auth")
 	{
-		api.GET("/health", func(c *gin.Context) {
-			c.JSON(200, gin.H{
-				"status":  "ok",
-				"message": "Gradiliste API is running",
-			})
-		})
+		auth.POST("/login", LoginHandler)
+		auth.POST("/register", RegisterHandler)        // always 403 — public registration disabled
+		auth.GET("/me", AuthRequired(), MeHandler)
+		auth.POST("/logout", AuthRequired(), LogoutHandler)
+	}
 
-		api.GET("/db-health", func(c *gin.Context) {
-			ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer cancel()
+	// ── Protected test routes ─────────────────────────────────────────────────
+	// These exist to verify that auth and role middleware work correctly.
+	// Can be removed once real business modules are in place.
+	protected := api.Group("/protected", AuthRequired())
+	{
+		protected.GET("/me", ProtectedMeHandler)
+		protected.GET("/director-engineer",
+			RequireRoles("direktor", "inzenjer"),
+			ProtectedDirectorEngineerHandler,
+		)
+		protected.GET("/admin",
+			RequireRoles("direktor", "inzenjer", "administracija"),
+			ProtectedAdminHandler,
+		)
+		protected.GET("/poslovoda",
+			RequireRoles("direktor", "inzenjer", "poslovoda"),
+			ProtectedPoslovodaHandler,
+		)
+	}
 
-			database := GetDB()
-			if database == nil {
-				c.JSON(500, gin.H{
-					"status": "error",
-					"error":  "database pool is not initialized",
-				})
-				return
-			}
-
-			if err := database.Ping(ctx); err != nil {
-				c.JSON(500, gin.H{
-					"status": "error",
-					"error":  err.Error(),
-				})
-				return
-			}
-
-			c.JSON(200, gin.H{
-				"status":  "ok",
-				"message": "Database connection is working",
-			})
-		})
-		// Auth endpoints (future)
-		// auth := api.Group("/auth")
-		// {
-		// 	auth.POST("/login", handlers.Login)
-		// 	auth.POST("/register", handlers.Register)
-		// }
-
-		// Employee endpoints (future)
-		// employees := api.Group("/employees")
-		// {
-		// 	employees.GET("", handlers.ListEmployees)
-		// 	employees.POST("", handlers.CreateEmployee)
-		// }
+	// ── Debug (development only) ──────────────────────────────────────────────
+	if os.Getenv("ENV") == "development" {
+		debug := api.Group("/debug")
+		debug.GET("/db-summary", GetDBSummary)
 	}
 
 	port := os.Getenv("PORT")
@@ -87,7 +89,7 @@ func main() {
 		port = "8080"
 	}
 
-	log.Printf("Starting Gradilište API on port %s\n", port)
+	log.Printf("Starting Gradilište API on port %s (env: %s)\n", port, Config.Env)
 	if err := router.Run(":" + port); err != nil {
 		log.Fatalf("Failed to start server: %v", err)
 	}

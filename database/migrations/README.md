@@ -2,14 +2,25 @@
 
 SQL migration files for PostgreSQL schema.
 
-## File Naming Convention
+## Current Migrations
 
-`NNN_description.sql`
+### Phase 2 (Complete Schema)
 
-- `NNN` — Sequential number (001, 002, 003...)
-- `description` — Short description of changes
+1. **001_extensions.sql** — PostgreSQL extensions and trigger functions
+2. **002_base_tables.sql** — Companies, users, employees
+3. **003_projects.sql** — Projects, assignments, materials
+4. **004_daily_reports.sql** — Daily reports and work tracking
+5. **005_materials_and_assets.sql** — Material tracking, assets, transfers
+6. **006_import_and_audit.sql** — Import jobs and audit logs
 
-Example: `001_initial_schema.sql`, `002_add_auth_tables.sql`
+**Total tables: 17**
+**Features:**
+- Multi-company/multi-tenant support
+- Complete audit trail
+- Employee vs User separation
+- Material accountability tracking
+- Asset transfer history
+- Excel import workflow tracking
 
 ## Applying Migrations
 

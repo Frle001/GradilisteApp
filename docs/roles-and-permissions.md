@@ -146,28 +146,26 @@
 
 ## Implementation Notes
 
-### Authentication & Authorization
+### Authentication & Authorization (Phase 3 — Implemented)
 
-Currently **NOT IMPLEMENTED** — Phase 2 task.
+1. Users log in at `POST /api/auth/login` with email + password
+2. Server returns a signed JWT with role, company_id, user_id embedded
+3. Every protected request includes `Authorization: Bearer <token>`
+4. `AuthRequired()` middleware validates the token and injects `AuthContext`
+5. `RequireRoles(...)` middleware checks role before the handler runs
 
-When implemented:
-1. Users login with email + password
-2. System issues JWT token with role embedded
-3. Each request includes token in `Authorization` header
-4. Middleware validates token and extracts role
-5. Handlers check role before processing request
+See [docs/auth.md](auth.md) for full details.
 
 ### Database Schema
 
-Roles are stored as strings (not enum ID references):
+Roles are stored as `TEXT` with `CHECK` constraints (Phase 2 schema):
 
 ```sql
-CREATE TABLE users (
-    id SERIAL PRIMARY KEY,
-    role VARCHAR(50) NOT NULL CHECK (
-        role IN ('direktor', 'inzenjer', 'administracija', 'poslovoda', 'radnik')
-    )
-);
+-- users table (login-capable roles only)
+CHECK (role IN ('direktor', 'inzenjer', 'administracija', 'poslovoda'))
+
+-- employees table (all roles including radnik)
+CHECK (role IN ('direktor', 'inzenjer', 'administracija', 'poslovoda', 'radnik'))
 ```
 
 Constants defined in `models/models.go`:
@@ -177,29 +175,26 @@ const (
     RoleInzenjer       = "inzenjer"
     RoleAdministracija = "administracija"
     RolePoslovoda      = "poslovoda"
-    RoleRadnik         = "radnik"
+    RoleRadnik         = "radnik"  // employee-only, no login
 )
 ```
 
-### Future: Permission Middleware
+### Role Middleware Usage
 
 ```go
-// Example (not yet implemented)
-func RequireRole(allowedRoles ...string) gin.HandlerFunc {
-    return func(c *gin.Context) {
-        userRole := c.GetString("user_role")
-        for _, role := range allowedRoles {
-            if userRole == role {
-                c.Next()
-                return
-            }
-        }
-        c.JSON(403, gin.H{"error": "Forbidden"})
-    }
-}
+// In main.go route registration:
+protected := api.Group("/protected", AuthRequired())
+protected.GET("/reports",
+    RequireRoles("direktor", "inzenjer", "poslovoda"),
+    handlers.ListReports,
+)
 
-// Usage
-router.POST("/projects", RequireRole("direktor", "inzenjer"), handlers.CreateProject)
+// In any handler, read auth context:
+u := GetAuthUser(c)
+// u.Role, u.UserID, u.CompanyID, u.EmployeeID
+
+// For DB queries — always scope by company:
+companyID := CompanyID(c)
 ```
 
 ## Business Rules
@@ -238,20 +233,24 @@ All role-based actions should be logged:
 - When (timestamp)
 - What data changed (audit log)
 
-**Note:** Not yet implemented in Phase 1.
+**Implemented in Phase 3:** Login events are written automatically. Use `CreateAuditLog()` in any handler that requires auditing.
 
 ## Security Considerations
 
-**Phase 1:** No security checks (foundation only)
+**Phase 3 (implemented):**
+- ✅ Password hashing — bcrypt (cost 12)
+- ✅ JWT token validation — HS256, signed with JWT_SECRET
+- ✅ Role-based access control — `AuthRequired()` + `RequireRoles()`
+- ✅ Audit logging — login events written to audit_logs
+- ✅ Company isolation — all DB queries must use `CompanyID(c)`
+- ✅ No password hash in responses — `json:"-"` tag on PasswordHash field
+- ✅ SQL injection prevention — pgx parameterized queries throughout
 
-**Phase 2 priorities:**
-1. Password hashing (bcrypt)
-2. JWT token validation
-3. Role-based access control
-4. Audit logging
-5. Rate limiting
-6. SQL injection prevention (already using pgx prepared statements)
-7. XSS prevention (frontend validation)
+**Phase 4+ (future):**
+- Rate limiting on login endpoint
+- Token blacklist / refresh tokens
+- XSS prevention hardening (Content-Security-Policy)
+- Account lockout on repeated failures
 
 ## Changing Roles
 

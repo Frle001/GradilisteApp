@@ -11,7 +11,7 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o api main.go database.go middleware.go
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o api .
 
 # Runtime stage
 FROM alpine:latest

@@ -1,4 +1,5 @@
-import axios, { AxiosInstance } from 'axios'
+import axios, { type AxiosInstance } from 'axios'
+import { clearAuth, getToken } from './auth'
 
 const apiClient: AxiosInstance = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api',
@@ -8,17 +9,23 @@ const apiClient: AxiosInstance = axios.create({
   },
 })
 
-// Add interceptor to include auth token in future
+// Attach Bearer token on every request if one is stored
 apiClient.interceptors.request.use((config) => {
-  // TODO: Add token from localStorage or cookie
+  const token = getToken()
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`
+  }
   return config
 })
 
-// Handle errors globally
+// On 401, clear local auth state so the next navigation lands on /login
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    // TODO: Handle auth errors, token refresh, etc.
+    if (error.response?.status === 401) {
+      clearAuth()
+      // Let the calling page handle the redirect
+    }
     return Promise.reject(error)
   }
 )

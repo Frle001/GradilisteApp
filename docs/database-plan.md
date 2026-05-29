@@ -32,259 +32,316 @@ postgres://gradiliste:gradiliste_dev_password@localhost:5432/gradiliste?sslmode=
 
 ## Schema Overview
 
-### Current Tables (001_initial_schema.sql)
+### Phase 2 Tables (Implemented)
 
-#### users
+All tables use **UUID primary keys** with `gen_random_uuid()` for generation.
+All include **timestamptz** for proper timezone handling and audit trails.
+All include **company_id** on every business table for multi-tenant data isolation.
 
-System users for authentication.
+#### companies
 
-```sql
-CREATE TABLE users (
-    id SERIAL PRIMARY KEY,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    first_name VARCHAR(255),
-    last_name VARCHAR(255),
-    password_hash VARCHAR(255),
-    role VARCHAR(50) NOT NULL,
-    active BOOLEAN DEFAULT true,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)
-```
+Root table for multi-tenancy. Every other business table references `companies.id`.
 
-**Indexes:**
-- `idx_users_email` — Fast lookups by email
-- `idx_users_role` — Filter users by role
-- `idx_users_active` — Find active users
-
-**Constraints:**
-- `role` must be one of: 'direktor', 'inzenjer', 'administracija', 'poslovoda', 'radnik'
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID PK | `gen_random_uuid()` |
+| name | TEXT NOT NULL | |
+| oib | TEXT | Croatian business ID |
+| address | TEXT | |
+| created_at / updated_at | TIMESTAMPTZ | Auto-managed by trigger |
 
 ---
 
 #### employees
 
-Employee records (may or may not have User accounts).
+All staff records, including radnik (workers who have no login account).
 
-```sql
-CREATE TABLE employees (
-    id SERIAL PRIMARY KEY,
-    first_name VARCHAR(255) NOT NULL,
-    last_name VARCHAR(255) NOT NULL,
-    role VARCHAR(50) NOT NULL,
-    active BOOLEAN DEFAULT true,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)
-```
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID PK | |
+| company_id | UUID FK → companies | |
+| first_name / last_name | TEXT NOT NULL | |
+| role | TEXT NOT NULL | `CHECK (role IN ('direktor','inzenjer','administracija','poslovoda','radnik'))` |
+| supervisor_id | UUID FK → employees | Self-reference; poslovoda supervises radnik |
+| email / phone | TEXT | |
+| active | BOOLEAN DEFAULT true | Soft delete |
 
-**Indexes:**
-- `idx_employees_role` — Filter employees by role
-- `idx_employees_active` — Find active employees
+**Indexes:** company_id, role, active, supervisor_id, unique(company_id, email)
 
-**Notes:**
-- Independent of `users` table (employee ≠ user)
-- Can represent contractors or workers without login
-- Administracija manages this table
+---
+
+#### users
+
+Login accounts only. Radnik does not get a user record.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID PK | |
+| company_id | UUID FK → companies | |
+| employee_id | UUID FK → employees | Optional link |
+| email | TEXT UNIQUE NOT NULL | |
+| password_hash | TEXT NOT NULL | bcrypt; placeholder in seeds |
+| role | TEXT NOT NULL | `CHECK (role IN ('direktor','inzenjer','administracija','poslovoda'))` |
+| active | BOOLEAN DEFAULT true | |
+| email_verified | BOOLEAN DEFAULT false | |
+| last_login_at | TIMESTAMPTZ | |
 
 ---
 
 #### projects
 
-Construction projects (gradilišta).
+Construction sites (gradilišta). Status lifecycle: `active → closed → archived`.
 
-```sql
-CREATE TABLE projects (
-    id SERIAL PRIMARY KEY,
-    name VARCHAR(255) NOT NULL,
-    description TEXT,
-    active BOOLEAN DEFAULT true,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-)
-```
-
-**Indexes:**
-- `idx_projects_active` — Find active projects
-
-**Notes:**
-- Basic project info
-- Extended details added in future phases (budget, timeline, location, etc.)
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID PK | |
+| company_id | UUID FK | |
+| name / address / description | TEXT | |
+| status | TEXT | `CHECK (status IN ('active','closed','archived'))` |
+| start_date / end_date | DATE | |
+| closed_at | TIMESTAMPTZ | |
+| closed_by / created_by | UUID FK → users | Audit trail |
 
 ---
 
 #### project_assignments
 
-Junction table linking employees to projects.
+Who works on which project and in what capacity.
 
-```sql
-CREATE TABLE project_assignments (
-    id SERIAL PRIMARY KEY,
-    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
-    employee_id INTEGER NOT NULL REFERENCES employees(id) ON DELETE CASCADE,
-    role VARCHAR(50) NOT NULL DEFAULT 'poslovoda',
-    assigned_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(project_id, employee_id)
-)
-```
-
-**Indexes:**
-- `idx_project_assignments_project` — Find assignments for a project
-- `idx_project_assignments_employee` — Find projects for an employee
-
-**Constraints:**
-- Foreign keys ensure referential integrity
-- Unique constraint prevents duplicate assignments
-- Cascade delete removes assignments if project/employee deleted
-
-**Notes:**
-- Represents Poslovođa or team members assigned to projects
-- Currently only stores assignment (future: add end_date, status, etc.)
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID PK | |
+| company_id / project_id / employee_id | UUID FKs | |
+| role_on_project | TEXT | `CHECK (role_on_project IN ('poslovoda','worker','engineer'))` |
+| active | BOOLEAN | Soft remove from project |
+| assigned_by | UUID FK → users | |
+| UNIQUE | (project_id, employee_id, company_id) | One assignment per person per project |
 
 ---
 
-## Future Phases
+#### project_materials
 
-### Phase 2 (Auth Enhancement)
+Project-specific material inventory list, typically imported from Excel.
 
-```sql
-ALTER TABLE users ADD COLUMN last_login TIMESTAMP;
-ALTER TABLE users ADD COLUMN failed_login_attempts INT DEFAULT 0;
-ALTER TABLE users ADD COLUMN locked_until TIMESTAMP;
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID PK | |
+| company_id / project_id | UUID FKs | |
+| material_name / material_code | TEXT | |
+| planned_quantity / used_quantity / available_quantity | NUMERIC(12,2) | |
+| unit | TEXT NOT NULL | |
+| source / source_excel_row | TEXT / INT | Excel import traceability |
+| UNIQUE | (project_id, company_id, LOWER(material_name), unit) | |
 
--- Add foreign key linking user to employee (optional)
-ALTER TABLE users ADD COLUMN employee_id INT REFERENCES employees(id);
+---
+
+#### daily_reports
+
+Daily work reports submitted by poslovođa.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID PK | |
+| company_id / project_id | UUID FKs | |
+| poslovoda_id | UUID FK → employees | |
+| report_date | DATE NOT NULL | |
+| status | TEXT | `CHECK (status IN ('draft','submitted','approved','rejected'))` |
+| submitted_by | UUID FK → users | |
+| UNIQUE | (project_id, poslovoda_id, report_date, company_id) | |
+
+---
+
+#### daily_report_worker_hours
+
+Hours each worker put in on a specific daily report.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| daily_report_id | UUID FK ON DELETE CASCADE | |
+| worker_id | UUID FK → employees | |
+| hours_worked | NUMERIC(5,2) | `CHECK (hours_worked >= 0 AND hours_worked <= 24)` |
+| UNIQUE | (daily_report_id, worker_id, company_id) | |
+
+---
+
+#### daily_report_activities
+
+Materials used or work done within a daily report. Supports both project material list and VTK (custom manual) entries.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| daily_report_id | UUID FK ON DELETE CASCADE | |
+| project_material_id | UUID FK NULLABLE | NULL when is_vtk=true |
+| custom_material_name | TEXT NULLABLE | NULL when is_vtk=false |
+| is_vtk | BOOLEAN | VTK = custom entry not from project list |
+| activity_type | TEXT | `CHECK (activity_type IN ('montaza','demontaza','other'))` |
+| CHECK | `(is_vtk=false AND project_material_id IS NOT NULL) OR (is_vtk=true AND custom_material_name IS NOT NULL)` | |
+
+---
+
+#### employee_assets
+
+Physical assets (cars, tools, equipment) assigned to individuals.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| employee_id | UUID FK → employees | |
+| asset_type | TEXT | `CHECK (asset_type IN ('car','tool','equipment','other'))` |
+| name / quantity / unit / serial_number | various | |
+| assigned_by | UUID FK → users | |
+| active | BOOLEAN | Soft delete |
+
+---
+
+#### material_purchase_sessions
+
+Groups a shopping trip: buyer, project, optional receipt file.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| project_id / buyer_id | UUID FKs | |
+| receipt_file_url / receipt_file_key | TEXT | S3/storage for future upload |
+| receipt_original_filename | TEXT | |
+| purchased_at | TIMESTAMPTZ | |
+
+---
+
+#### material_purchase_items
+
+Individual line items within a purchase session.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| purchase_session_id | UUID FK ON DELETE CASCADE | |
+| project_material_id | UUID FK → project_materials | |
+| quantity / unit | NUMERIC / TEXT | |
+
+---
+
+#### employee_material_responsibility
+
+Tracks which employee is responsible for which batch of project material.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| employee_id / project_id / project_material_id | UUID FKs | |
+| quantity / unit | NUMERIC / TEXT | |
+| source_purchase_session_id | UUID FK NULLABLE | Where it came from |
+| active | BOOLEAN | False when transferred away |
+
+**Indexes:** employee_id, project_id, project_material_id, company_id
+
+---
+
+#### asset_transfers
+
+Immutable audit trail of asset/material transfers between employees.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| from_employee_id / to_employee_id | UUID FKs → employees | |
+| asset_type | TEXT | `CHECK (asset_type IN ('car','tool','equipment','material','other'))` |
+| employee_asset_id | UUID FK NULLABLE | Required when asset_type != 'material' |
+| employee_material_responsibility_id | UUID FK NULLABLE | Required when asset_type = 'material' |
+| CHECK | `(asset_type='material' AND emr_id IS NOT NULL) OR (asset_type IN (...) AND asset_id IS NOT NULL)` | |
+
+---
+
+#### import_jobs
+
+Tracks Excel file uploads and their processing status.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| project_id | UUID FK NULLABLE | |
+| import_type | TEXT | `CHECK (import_type IN ('project_materials','employees','other'))` |
+| status | TEXT | `CHECK (status IN ('uploaded','parsed','confirmed','failed'))` |
+| total_rows / valid_rows / invalid_rows | INTEGER | |
+
+---
+
+#### import_job_rows
+
+Individual rows from an import, with validation details.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| import_job_id | UUID FK ON DELETE CASCADE | |
+| row_number | INTEGER | |
+| raw_data | JSONB | Original data |
+| normalized_data | JSONB | Cleaned/transformed |
+| status | TEXT | `CHECK (status IN ('valid','invalid','imported'))` |
+
+---
+
+#### audit_logs
+
+Comprehensive audit trail. Append-only — no `updated_at`.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| user_id / employee_id | UUID FKs NULLABLE | Who acted |
+| action | TEXT | create, update, delete, approve, reject, etc. |
+| entity_type / entity_id | TEXT / UUID | What was affected |
+| old_data / new_data | JSONB | Before/after state |
+| ip_address / user_agent | TEXT | |
+
+**Indexes:** company_id, user_id, (entity_type, entity_id), created_at, action
+
+---
+
+## Key Design Decisions
+
+1. **UUID Primary Keys** — Better for distributed systems and privacy
+2. **Multi-tenancy** — `company_id` on all business tables; never leak data across companies
+3. **Timestamps** — All using `timestamptz` with automatic `updated_at` triggers
+4. **Soft Deletes** — `active` boolean flags preserve history; nothing is hard-deleted
+5. **Audit Trail** — Complete `audit_logs` table with `old_data`/`new_data` JSON
+6. **Check Constraints** — Enum values enforced at the database level
+7. **Indexing** — Strategic indexes on FK columns, common filters (active, status, date)
+8. **Referential Integrity** — Foreign keys with `ON DELETE CASCADE` for child records, `ON DELETE SET NULL` for optional audit references
+9. **VTK constraint** — Database-level CHECK ensures VTK activities have custom names and non-VTK activities reference project materials
+10. **Employee ≠ User** — Radnik exists as an employee record but has no login credentials
+
+## Migration Files
+
+```
+database/migrations/
+  001_extensions.sql              — uuid-ossp, pgcrypto, update_updated_at trigger
+  002_base_tables.sql             — companies, employees, users
+  003_projects.sql                — projects, project_assignments, project_materials
+  004_daily_reports.sql           — daily_reports, worker_hours, activities
+  005_materials_and_assets.sql    — employee_assets, purchase_sessions, purchase_items,
+                                    employee_material_responsibility, asset_transfers
+  006_import_and_audit.sql        — import_jobs, import_job_rows, audit_logs
+  archive/
+    001_initial_schema.sql        — Phase 1 (superseded, kept for reference)
 ```
 
-### Phase 3 (Daily Reports)
+Total: **17 tables**
 
-```sql
-CREATE TABLE daily_reports (
-    id SERIAL PRIMARY KEY,
-    project_id INT NOT NULL REFERENCES projects(id),
-    created_by INT NOT NULL REFERENCES employees(id),
-    date DATE NOT NULL,
-    description TEXT,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
+## Applying Migrations
 
-CREATE TABLE daily_report_workers (
-    id SERIAL PRIMARY KEY,
-    report_id INT NOT NULL REFERENCES daily_reports(id) ON DELETE CASCADE,
-    employee_id INT NOT NULL REFERENCES employees(id),
-    hours DECIMAL(5,2) NOT NULL,
-    PRIMARY KEY (report_id, employee_id)
-);
-```
-
-### Phase 3 (Material Tracking)
-
-```sql
-CREATE TABLE materials (
-    id SERIAL PRIMARY KEY,
-    project_id INT NOT NULL REFERENCES projects(id),
-    name VARCHAR(255) NOT NULL,
-    description TEXT,
-    quantity DECIMAL(10,2),
-    unit VARCHAR(50),
-    cost DECIMAL(10,2),
-    date DATE NOT NULL,
-    created_by INT REFERENCES employees(id),
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE material_receipts (
-    id SERIAL PRIMARY KEY,
-    material_id INT NOT NULL REFERENCES materials(id) ON DELETE CASCADE,
-    file_url VARCHAR(500),
-    uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-```
-
-### Phase 4 (Inventory)
-
-```sql
-CREATE TABLE inventory_items (
-    id SERIAL PRIMARY KEY,
-    employee_id INT NOT NULL REFERENCES employees(id),
-    name VARCHAR(255) NOT NULL,
-    quantity INT,
-    created_at TIMESTAMP,
-    updated_at TIMESTAMP
-);
-
-CREATE TABLE inventory_transfers (
-    id SERIAL PRIMARY KEY,
-    item_id INT NOT NULL REFERENCES inventory_items(id),
-    from_employee_id INT REFERENCES employees(id),
-    to_employee_id INT REFERENCES employees(id),
-    quantity INT NOT NULL,
-    date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    notes TEXT
-);
-```
-
-### Phase 4 (Documents)
-
-```sql
-CREATE TABLE documents (
-    id SERIAL PRIMARY KEY,
-    project_id INT REFERENCES projects(id),
-    document_type VARCHAR(50),
-    file_url VARCHAR(500),
-    uploaded_by INT REFERENCES employees(id),
-    uploaded_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-);
-```
-
-## Migrations
-
-Stored in `database/migrations/`
-
-### File Structure
-
-- **001_initial_schema.sql** — Core tables (users, employees, projects, assignments)
-- **002_add_daily_reports.sql** — Daily report tables
-- **003_add_materials.sql** — Material tracking
-- **004_add_inventory.sql** — Inventory management
-- **005_add_documents.sql** — Document storage
-
-### Migration Rules
-
-1. **Idempotent** — Use `IF NOT EXISTS` / `IF EXISTS` clauses
-2. **Reversible** — Can be rolled back if needed
-3. **Tested** — Apply in dev environment first
-4. **Minimal** — One logical change per migration
-5. **Transactional** — Wrap in `BEGIN ... COMMIT` where appropriate
-
-### Applying Migrations
-
-#### With Docker Compose
-
-Files in `database/migrations/` are automatically applied on startup via `docker-entrypoint-initdb.d`:
+### Docker Compose (automatic)
 
 ```bash
 docker-compose up
-# Postgres initializes with all migrations
+# PostgreSQL runs all .sql files in database/migrations/ on first startup
 ```
 
-#### Manually
-
-```bash
-psql -h localhost -U gradiliste -d gradiliste -f migrations/001_initial_schema.sql
-```
-
-Or:
+### Manually
 
 ```bash
 cd database
-for f in migrations/*.sql; do
+for f in migrations/00*.sql; do
   psql -h localhost -U gradiliste -d gradiliste -f "$f"
 done
+
+# Apply seed data (dev only)
+psql -h localhost -U gradiliste -d gradiliste -f seeds/seed_phase2.sql
 ```
 
-#### Connect to Running Container
+### Connect to running container
 
 ```bash
 docker-compose exec postgres psql -U gradiliste -d gradiliste
@@ -292,79 +349,49 @@ docker-compose exec postgres psql -U gradiliste -d gradiliste
 
 ## Seeds
 
-Stored in `database/seeds/`
+### seed_phase2.sql
 
-### seed_initial.sql
-
-Populates initial test data:
-- 4 test users (Direktor, Inženjer, Admin, Poslovođa)
-- 7 test employees
-- 3 test projects
-- Project assignments (Poslovođa → Projects)
+Populates test data for local development:
+- 1 company (Test Construction Company)
+- 4 users (direktor, inzenjer, administracija, poslovoda) — passwords are placeholder hashes
+- 7 employees (direktor, inzenjer, administracija, poslovoda, 3× radnik)
+- Radnik employees have `supervisor_id` pointing to the poslovoda
+- 3 projects (all active)
+- 3 project assignments (poslovoda on all projects)
+- 3 worker project assignments (all 3 radniks on project 1)
+- 3 project materials (cement, steel rebar, formwork)
+- 3 employee assets (van, tools, safety harness)
 
 **Safe to re-run** — Uses `INSERT ... ON CONFLICT DO NOTHING`
 
-### Applying Seeds
+⚠️ **Seed passwords are placeholders** — Replace in production with real bcrypt hashes.
 
-```bash
-psql -h localhost -U gradiliste -d gradiliste -f seeds/seed_initial.sql
+## Debug Endpoint
+
+```
+GET /api/debug/db-summary
 ```
 
-Or with Docker:
+Returns row counts for all main tables. Only registered when `ENV=development`.
+Set via `.env` or docker-compose environment variables.
 
-```bash
-docker-compose exec postgres psql -U gradiliste -d gradiliste -f /docker-entrypoint-initdb.d/seed_initial.sql
+```json
+{
+  "status": "ok",
+  "data": {
+    "companies": 1,
+    "users": 4,
+    "employees": 7,
+    "projects": 3,
+    "project_assignments": 6,
+    "project_materials": 3,
+    "daily_reports": 0,
+    "employee_assets": 3,
+    "material_purchase_sessions": 0,
+    "audit_logs": 1
+  }
+}
 ```
-
-## Data Types
-
-### IDs
-
-- `SERIAL PRIMARY KEY` — Auto-incrementing integers
-- Future: Consider `BIGSERIAL` for very large tables or `UUID` for distributed systems
-
-### Dates & Times
-
-- `DATE` — For specific dates (daily reports, material dates)
-- `TIMESTAMP` — With timezone info (created_at, updated_at)
-- `TIMESTAMP DEFAULT CURRENT_TIMESTAMP` — Auto-set on insert
-
-### Enums
-
-Currently stored as VARCHAR with CHECK constraints:
-
-```sql
-role VARCHAR(50) NOT NULL CHECK (role IN ('direktor', 'inzenjer', ...))
-```
-
-**Future:** Could migrate to PostgreSQL ENUM type for better type safety:
-
-```sql
-CREATE TYPE role_type AS ENUM ('direktor', 'inzenjer', ...);
-ALTER TABLE users ADD COLUMN role role_type;
-```
-
-### Soft Deletes (Future)
-
-Currently using `active BOOLEAN` flag for soft deletes.
-
-Future: Consider `deleted_at TIMESTAMP` for audit trails:
-
-```sql
-ALTER TABLE users ADD COLUMN deleted_at TIMESTAMP;
-```
-
-## Indexes
-
-Strategic indexes on frequently queried columns:
-
-- **Primary keys** — Automatic
-- **Foreign keys** — On `*_id` columns (faster joins)
-- **Active status** — Users/employees/projects filtered by active
-- **Roles** — Filter by role
-- **Dates** — Daily reports filtered by date range
-
-**Rule:** Index before profiling shows need, but don't over-index (write penalty).
 
 ## Performance Considerations
 
@@ -375,57 +402,39 @@ config.MaxConns = 25  // Max concurrent connections
 config.MinConns = 5   // Min idle connections
 ```
 
-Adjust based on load testing.
-
 ### Prepared Statements
 
-Always use parameterized queries (pgx does this):
+Always use parameterized queries (pgx does this by default):
 
 ```go
 // Good
-var id int
-err := db.QueryRow("SELECT id FROM users WHERE email = $1", email).Scan(&id)
+err := db.QueryRow(ctx, "SELECT id FROM users WHERE email = $1", email).Scan(&id)
 
-// Bad (vulnerable to SQL injection)
-err := db.QueryRow(fmt.Sprintf("SELECT id FROM users WHERE email = '%s'", email)).Scan(&id)
+// Bad — SQL injection risk
+err := db.QueryRow(ctx, fmt.Sprintf("SELECT id FROM users WHERE email = '%s'", email)).Scan(&id)
 ```
 
-### Query Optimization (Phase 3+)
+## Future: sqlc
 
-- Use `EXPLAIN` to analyze slow queries
-- Add indexes for frequently filtered/joined columns
-- Consider denormalization for complex reports
+Ready for integration with **sqlc** (SQL Compiler for Go):
 
-### Monitoring (Phase 3+)
-
-- Log slow queries (> 500ms)
-- Monitor connection pool usage
-- Track lock contention
+1. Create `sqlc.yaml` in project root
+2. Create `queries/` folder with named SQL queries
+3. Run `sqlc generate` to produce type-safe Go code
+4. Use generated types in repositories
 
 ## Backups
 
 ### Development
 
-Not critical (easily recreate from migrations + seeds).
+Not critical — recreate from migrations + seeds.
 
-### Production
+### Production (Future Phase)
 
-**Not yet implemented** — Phase 3+ task
-
-- Automated daily backups
+- Automated daily backups via `pg_dump`
 - Point-in-time recovery (PITR)
-- Regular restore testing
 - Off-site backup storage
-
-Example:
-
-```bash
-# Manual backup
-pg_dump -h localhost -U gradiliste gradiliste > backup.sql
-
-# Restore
-psql -h localhost -U gradiliste gradiliste < backup.sql
-```
+- Regular restore testing
 
 ## Access Control
 
@@ -433,9 +442,7 @@ psql -h localhost -U gradiliste gradiliste < backup.sql
 
 Single user (`gradiliste`) with full access.
 
-### Production
-
-**Future:** Create separate roles:
+### Production (Future Phase)
 
 ```sql
 CREATE ROLE app_user LOGIN PASSWORD '...';
@@ -444,95 +451,24 @@ GRANT USAGE ON SCHEMA public TO app_user;
 GRANT SELECT, INSERT, UPDATE, DELETE ON ALL TABLES IN SCHEMA public TO app_user;
 ```
 
-## Disaster Recovery
-
-### Phase 3+
-
-- Automated backups
-- Standby replicas
-- Failover procedures
-- RTO/RPO targets
-
-## Schema Versioning
-
-Tracked via migrations folder. Each migration is numbered sequentially.
-
-Version = highest migration number applied.
-
-Example:
-- Applied: 001, 002, 003
-- Version: 003
-- Next: 004
-
 ## Tools & Commands
 
-### Connection
-
 ```bash
+# Connect
 psql -h localhost -U gradiliste -d gradiliste
-```
 
-### List Tables
-
-```sql
+# List tables
 \dt
-```
 
-### Show Table Schema
+# Show table schema
+\d employees
 
-```sql
-\d users
-```
+# Count rows
+SELECT COUNT(*) FROM employees;
 
-### Show Indexes
-
-```sql
-\di
-```
-
-### Run Query
-
-```bash
-psql -h localhost -U gradiliste -d gradiliste -c "SELECT * FROM users;"
-```
-
-### Export Data
-
-```bash
+# Manual backup
 pg_dump -h localhost -U gradiliste gradiliste > backup.sql
-```
 
-### Import Data
-
-```bash
+# Restore
 psql -h localhost -U gradiliste gradiliste < backup.sql
-```
-
-## Future: sqlc
-
-Prepared for integration with **sqlc** (SQL Compiler for Go):
-
-1. Create `sqlc.yaml` in project root
-2. Create `queries/` folder with named queries
-3. Run `sqlc generate` to create Go code
-4. Use generated types and functions in repositories
-
-This eliminates manual SQL-to-Go type mapping.
-
-Example workflow:
-
-```sql
--- queries/users.sql
--- name: GetUserByEmail :one
-SELECT * FROM users WHERE email = $1;
-
--- name: ListUsers :many
-SELECT * FROM users WHERE active = true ORDER BY created_at DESC;
-```
-
-Then in Go:
-
-```go
-user, err := q.GetUserByEmail(ctx, email)
-users, err := q.ListUsers(ctx)
 ```

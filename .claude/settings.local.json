@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(mkdir -p \"c:/Projects/ProjektGradiliste/database/migrations/archive\")",
+      "Bash(mv \"c:/Projects/ProjektGradiliste/database/migrations/001_initial_schema.sql\" \"c:/Projects/ProjektGradiliste/database/migrations/archive/001_initial_schema.sql\")",
+      "Bash(go get *)",
+      "Bash(go build *)",
+      "Bash(go vet *)"
+    ]
+  }
+}

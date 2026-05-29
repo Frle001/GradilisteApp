@@ -2,7 +2,7 @@
 -- This file is safe to re-run (uses INSERT ... ON CONFLICT)
 
 -- Disable foreign key constraints temporarily for seed insertion
-SET session_replication_role = 'replica';
+
 
 -- Seed Users
 INSERT INTO users (email, first_name, last_name, password_hash, role, active)
@@ -42,4 +42,3 @@ VALUES
 ON CONFLICT (project_id, employee_id) DO NOTHING;
 
 -- Re-enable foreign key constraints
-SET session_replication_role = 'default';

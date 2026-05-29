@@ -36,8 +36,17 @@ npm run dev
 
 **Database migrations:**
 ```bash
+# Phase 1 (initial setup - now replaced by Phase 2)
+# psql -h localhost -U gradiliste -d gradiliste -f migrations/001_initial_schema.sql
+
+# Phase 2 (complete schema with migrations)
 cd database
-psql -h localhost -U gradiliste -d gradiliste -f migrations/001_initial_schema.sql
+for f in migrations/*.sql; do
+  psql -h localhost -U gradiliste -d gradiliste -f "$f"
+done
+
+# Apply seed data (optional - for test data)
+psql -h localhost -U gradiliste -d gradiliste -f seeds/seed_phase2.sql
 ```
 
 ## Project Structure
@@ -70,6 +79,18 @@ docker-compose.yml     # Local development stack
 2. Changes auto-reload with hot reload (frontend) or go run watch
 3. Database schema changes go in `database/migrations/`
 4. New migrations need docker-compose restart or psql apply
+
+### Testing Database Connection
+
+```bash
+# Check if API can reach database
+curl http://localhost:8080/api/db-health
+
+# Get database summary (development only)
+curl http://localhost:8080/api/debug/db-summary
+```
+
+⚠️ **Note:** Debug endpoints are for local development only. Disable them in production.
 
 ## Team Roles
 

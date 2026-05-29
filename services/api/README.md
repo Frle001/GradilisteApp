@@ -94,6 +94,25 @@ Uses pgx connection pool with:
 - 5 min connections
 - Connection pooling and reuse
 
+### Applying Migrations
+
+```bash
+# Phase 2: Complete schema (preferred)
+cd database
+for f in migrations/*.sql; do
+  psql -h localhost -U gradiliste -d gradiliste -f "$f"
+done
+
+# Apply test data
+psql -h localhost -U gradiliste -d gradiliste -f seeds/seed_phase2.sql
+```
+
+With Docker Compose (auto-applied):
+```bash
+docker-compose up postgres
+# All migrations run automatically during initialization
+```
+
 ## API Endpoints
 
 ### Health Check
@@ -106,6 +125,34 @@ Returns:
 {
   "status": "ok",
   "message": "Gradilište API is running"
+}
+```
+
+### Database Health
+```
+GET /api/db-health
+```
+
+Checks if database connection is alive.
+
+### Database Summary (Debug Only)
+```
+GET /api/debug/db-summary
+```
+
+Returns row counts for all main tables. **Development only — disable in production.**
+
+```json
+{
+  "status": "ok",
+  "data": {
+    "companies": 1,
+    "users": 4,
+    "employees": 7,
+    "projects": 3,
+    "project_materials": 15,
+    ...
+  }
 }
 ```
 
@@ -136,9 +183,12 @@ See `.env.example` for all available options.
 
 Migrations are in `database/migrations/`
 
-Apply manually:
+Apply manually (run all Phase 2 migrations in order):
 ```bash
-psql -h localhost -U gradiliste -d gradiliste -f migrations/001_initial_schema.sql
+cd database
+for f in migrations/00*.sql; do
+  psql -h localhost -U gradiliste -d gradiliste -f "$f"
+done
 ```
 
 Or with docker-compose (auto-applied on startup)
