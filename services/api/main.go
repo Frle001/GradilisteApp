@@ -37,6 +37,32 @@ func main() {
 	empSvc := services.NewEmployeeService(db, empRepo, assetRepo, auditRepo, userRepo, HashPassword)
 	empHandler := handlers.NewEmployeeHandler(empSvc)
 
+	projRepo := repositories.NewProjectRepository(db)
+	projSvc := services.NewProjectService(db, projRepo, auditRepo)
+	projHandler := handlers.NewProjectHandler(projSvc)
+
+	matRepo := repositories.NewProjectMaterialRepository(db)
+	importRepo := repositories.NewImportJobRepository(db)
+	matSvc := services.NewProjectMaterialService(db, matRepo, importRepo, auditRepo, projRepo)
+	matHandler := handlers.NewProjectMaterialHandler(matSvc)
+
+	drRepo := repositories.NewDailyReportRepository(db)
+	drSvc := services.NewDailyReportService(db, drRepo, auditRepo)
+	drHandler := handlers.NewDailyReportHandler(drSvc)
+
+	reportsRepo := repositories.NewReportsRepository(db)
+	reportsSvc := services.NewReportsService(reportsRepo)
+	reportsHandler := handlers.NewReportsHandler(reportsSvc)
+
+	storageSvc := services.NewLocalStorageService(Config.UploadsDir)
+	mpRepo := repositories.NewMaterialPurchasesRepository(db)
+	mpSvc := services.NewMaterialPurchasesService(mpRepo, auditRepo, storageSvc)
+	mpHandler := handlers.NewMaterialPurchasesHandler(mpSvc)
+
+	invRepo := repositories.NewInventoryRepository(db)
+	invSvc := services.NewInventoryService(db, invRepo)
+	invHandler := handlers.NewInventoryHandler(invSvc)
+
 	// ── Router ────────────────────────────────────────────────────────────────
 	router := gin.New()
 	router.Use(gin.Logger())
@@ -93,11 +119,18 @@ func main() {
 
 	// ── Business modules ──────────────────────────────────────────────────────
 	routes.RegisterEmployeeRoutes(api, empHandler, AuthRequired(), RequireRoles)
+	projectsGroup := routes.RegisterProjectRoutes(api, projHandler, AuthRequired(), RequireRoles)
+	routes.RegisterProjectMaterialRoutes(projectsGroup, matHandler, RequireRoles)
+	routes.RegisterDailyReportRoutes(api, drHandler, AuthRequired(), RequireRoles)
+	routes.RegisterReportsRoutes(api, reportsHandler, AuthRequired(), RequireRoles)
+	routes.RegisterMaterialPurchasesRoutes(api, mpHandler, AuthRequired(), RequireRoles)
+	routes.RegisterInventoryRoutes(api, invHandler, AuthRequired(), RequireRoles)
 
 	// ── Debug (development only) ──────────────────────────────────────────────
 	if os.Getenv("ENV") == "development" {
 		debug := api.Group("/debug")
 		debug.GET("/db-summary", GetDBSummary)
+		debug.GET("/reports", ReportsDebug)
 	}
 
 	port := os.Getenv("PORT")

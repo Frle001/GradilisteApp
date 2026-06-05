@@ -8,6 +8,7 @@ import DashboardShell from '@/components/layout/DashboardShell'
 import { RoleBadge, StatusBadge } from '@/components/employees/EmployeeBadge'
 import EmployeeAssetsList from '@/components/employees/EmployeeAssetsList'
 import { type EmployeeDetail, type Asset, canManageEmployees, fullName } from '@/lib/types/employees'
+import { canViewOtherInventory } from '@/lib/types/inventory'
 import apiClient from '@/lib/api-client'
 
 export default function EmployeeDetailPage() {
@@ -81,6 +82,7 @@ export default function EmployeeDetailPage() {
   if (!emp) return null
 
   const canManage = canManageEmployees(user.role)
+  const canViewInv = canViewOtherInventory(user.role)
   const name = fullName(emp)
 
   return (
@@ -92,12 +94,22 @@ export default function EmployeeDetailPage() {
       onLogout={logout}
       action={
         canManage ? (
-          <Link
-            href={`/dashboard/employees/${id}/edit`}
-            className="text-sm text-white border border-slate-700 hover:border-slate-500 px-3 py-1.5 rounded-lg transition"
-          >
-            Uredi
-          </Link>
+          <div className="flex items-center gap-2">
+            {canViewInv && (
+              <Link
+                href={`/dashboard/inventory/employees/${id}`}
+                className="text-sm text-slate-300 border border-slate-700 hover:border-slate-500 px-3 py-1.5 rounded-lg transition"
+              >
+                Stanje robe
+              </Link>
+            )}
+            <Link
+              href={`/dashboard/employees/${id}/edit`}
+              className="text-sm text-white border border-slate-700 hover:border-slate-500 px-3 py-1.5 rounded-lg transition"
+            >
+              Uredi
+            </Link>
+          </div>
         ) : undefined
       }
     >

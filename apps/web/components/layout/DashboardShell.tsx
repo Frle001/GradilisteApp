@@ -12,6 +12,7 @@ interface DashboardShellProps {
   action?: React.ReactNode
   children: React.ReactNode
   onLogout: () => void
+  wide?: boolean
 }
 
 export default function DashboardShell({
@@ -22,6 +23,7 @@ export default function DashboardShell({
   action,
   children,
   onLogout,
+  wide = false,
 }: DashboardShellProps) {
   const displayName = employee
     ? `${employee.first_name} ${employee.last_name}`
@@ -70,7 +72,7 @@ export default function DashboardShell({
       </header>
 
       {/* Content */}
-      <main className="max-w-5xl mx-auto px-6 py-10">{children}</main>
+      <main className={`${wide ? 'max-w-screen-xl' : 'max-w-5xl'} mx-auto px-6 py-10`}>{children}</main>
     </div>
   )
 }

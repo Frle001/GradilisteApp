@@ -13,6 +13,7 @@ type AppConfig struct {
 	JWTSecret    string
 	JWTExpiresIn string
 	BcryptCost   int
+	UploadsDir   string
 }
 
 var Config *AppConfig
@@ -43,10 +44,16 @@ func LoadConfig() {
 		bcryptCost = 12
 	}
 
+	uploadsDir := os.Getenv("UPLOADS_DIR")
+	if uploadsDir == "" {
+		uploadsDir = "./uploads"
+	}
+
 	Config = &AppConfig{
 		Env:          env,
 		JWTSecret:    jwtSecret,
 		JWTExpiresIn: jwtExpiresIn,
 		BcryptCost:   bcryptCost,
+		UploadsDir:   uploadsDir,
 	}
 }

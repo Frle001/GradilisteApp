@@ -146,6 +146,23 @@
 
 ## Implementation Notes
 
+### Employee Management (Phase 4 — Implemented)
+
+- Direktor, Inženjer, and Administracija can create/edit/deactivate employees and manage assets
+- Poslovoda sees only themselves and their directly supervised Radnici
+- Radnik has no login account — employee record only
+- New login-capable employees receive password `Temp1234!` with `must_change_password = true`; frontend redirects to `/change-password` before the dashboard
+
+### Project Management (Phase 5 — Implemented)
+
+See [docs/projects.md](projects.md) for full details.
+
+- Projects (gradilišta) belong to one company and are soft-deleted via status transitions
+- Direktor/Inženjer: full project CRUD + status control + poslovoda assignment
+- Administracija: read-only view of all projects
+- Poslovoda: sees only active projects they are assigned to; 403 on anything else
+- All project queries are scoped by `company_id` from the JWT
+
 ### Authentication & Authorization (Phase 3 — Implemented)
 
 1. Users log in at `POST /api/auth/login` with email + password
