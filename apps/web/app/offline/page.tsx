@@ -1,3 +1,5 @@
+import ReloadButton from './ReloadButton'
+
 export default function OfflinePage() {
   return (
     <div className="min-h-screen bg-slate-950 flex items-center justify-center px-6">
@@ -11,12 +13,7 @@ export default function OfflinePage() {
         <p className="text-slate-400 text-sm leading-relaxed mb-6">
           Provjerite internetsku vezu i pokušajte ponovo.
         </p>
-        <button
-          onClick={() => window.location.reload()}
-          className="w-full py-3 px-6 bg-white text-slate-900 font-semibold rounded-lg text-sm hover:bg-slate-100 active:bg-slate-200 transition"
-        >
-          Pokušaj ponovo
-        </button>
+        <ReloadButton />
       </div>
     </div>
   )

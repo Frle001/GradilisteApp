@@ -1,3 +1,5 @@
+'use client'
+
 import type { InventoryMaterialItem } from '@/lib/types/inventory'
 
 interface Props {

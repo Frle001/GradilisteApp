@@ -1,3 +1,5 @@
+'use client'
+
 import { type PurchaseItemDraft } from '@/lib/types/material-purchases'
 
 interface Props {

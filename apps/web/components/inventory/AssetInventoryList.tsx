@@ -1,3 +1,5 @@
+'use client'
+
 import AssetTypeBadge from './AssetTypeBadge'
 import type { InventoryAssetItem } from '@/lib/types/inventory'
 
