@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/hooks/useAuth'
+import LoadingScreen from '@/components/ui/LoadingScreen'
+import LoadingOverlay from '@/components/ui/LoadingOverlay'
 import DashboardShell from '@/components/layout/DashboardShell'
 import EmployeeTable from '@/components/employees/EmployeeTable'
 import { type Employee, canManageEmployees, ROLE_LABELS, VALID_ROLES } from '@/lib/types/employees'
@@ -59,13 +61,7 @@ export default function EmployeesPage() {
     }
   }
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <p className="text-slate-400 text-sm">Učitavanje...</p>
-      </div>
-    )
-  }
+  if (isLoading) return <LoadingScreen />
   if (!user) return null
 
   const canManage = canManageEmployees(user.role)
@@ -151,9 +147,7 @@ export default function EmployeesPage() {
 
       {/* Table */}
       {dataLoading ? (
-        <div className="text-center py-10">
-          <p className="text-slate-400 text-sm">Učitavanje...</p>
-        </div>
+        <LoadingOverlay />
       ) : (
         <EmployeeTable
           employees={employees}

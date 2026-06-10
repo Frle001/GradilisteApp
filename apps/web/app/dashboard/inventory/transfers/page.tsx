@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '@/hooks/useAuth'
+import LoadingScreen from '@/components/ui/LoadingScreen'
 import DashboardShell from '@/components/layout/DashboardShell'
 import TransferHistoryTable from '@/components/inventory/TransferHistoryTable'
 import ReportPaginationBar from '@/components/reports/ReportPaginationBar'
@@ -31,13 +32,7 @@ export default function TransfersPage() {
 
   useEffect(() => { fetchData(page) }, [page, fetchData])
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <p className="text-slate-400 text-sm">Učitavanje...</p>
-      </div>
-    )
-  }
+  if (isLoading) return <LoadingScreen />
   if (!user) return null
 
   return (

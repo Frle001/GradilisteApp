@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/hooks/useAuth'
+import LoadingScreen from '@/components/ui/LoadingScreen'
+import LoadingOverlay from '@/components/ui/LoadingOverlay'
 import DashboardShell from '@/components/layout/DashboardShell'
 import ProjectStatusBadge from '@/components/projects/ProjectStatusBadge'
 import { type ArchiveListItem, type ArchiveListResponse, canManageProjects } from '@/lib/types/projects'
@@ -80,13 +82,7 @@ export default function ProjectArchivePage() {
     }
   }
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <p className="text-slate-400 text-sm">Učitavanje...</p>
-      </div>
-    )
-  }
+  if (isLoading) return <LoadingScreen />
   if (!user) return null
 
   return (
@@ -152,7 +148,7 @@ export default function ProjectArchivePage() {
         {/* Table */}
         <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
           {loading ? (
-            <div className="text-center py-12 text-slate-500 text-sm">Učitavanje...</div>
+            <LoadingOverlay />
           ) : items.length === 0 ? (
             <div className="text-center py-12 text-slate-500 text-sm">
               Nema arhiviranih ili zatvorenih projekata.

@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/hooks/useAuth'
+import LoadingScreen from '@/components/ui/LoadingScreen'
+import LoadingOverlay from '@/components/ui/LoadingOverlay'
 import DashboardShell from '@/components/layout/DashboardShell'
 import DailyReportStatusBadge from '@/components/daily-reports/DailyReportStatusBadge'
 import {
@@ -60,13 +62,7 @@ export default function DailyReportsPage() {
 
   useEffect(() => { fetchReports() }, [fetchReports])
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <p className="text-slate-400 text-sm">Učitavanje...</p>
-      </div>
-    )
-  }
+  if (isLoading) return <LoadingScreen />
   if (!user) return null
 
   const filtered = search.trim()
@@ -138,7 +134,7 @@ export default function DailyReportsPage() {
         )}
 
         {isLoadingReports ? (
-          <div className="text-center py-12 text-slate-500 text-sm">Učitavanje izvještaja...</div>
+          <LoadingOverlay />
         ) : filtered.length === 0 ? (
           <div className="bg-slate-900 border border-slate-800 rounded-xl p-10 text-center">
             <p className="text-slate-400 text-sm">Nema izvještaja koji odgovaraju odabranim filterima.</p>
@@ -153,7 +149,8 @@ export default function DailyReportsPage() {
           </div>
         ) : (
           <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto overscroll-x-contain touch-pan-x table-scroll-touch">
+            <table className="min-w-[760px] w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-800">
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wide">Datum</th>
@@ -190,6 +187,7 @@ export default function DailyReportsPage() {
                 ))}
               </tbody>
             </table>
+            </div>
           </div>
         )}
       </div>

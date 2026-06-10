@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
+import LoadingScreen from '@/components/ui/LoadingScreen'
 import DashboardShell from '@/components/layout/DashboardShell'
 import PurchaseItemsPreview from '@/components/material-purchases/PurchaseItemsPreview'
 import ReceiptUploadInput from '@/components/material-purchases/ReceiptUploadInput'
@@ -160,14 +161,7 @@ export default function MaterialPurchasesNewPage() {
     }
   }
 
-  // ── Loading / auth guard ────────────────────────────────────────────────────
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <p className="text-slate-400 text-sm">Učitavanje...</p>
-      </div>
-    )
-  }
+  if (isLoading) return <LoadingScreen />
   if (!user) return null
 
   const selectedMaterial = materials.find(m => m.id === selectedMaterialID)

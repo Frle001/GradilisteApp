@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/hooks/useAuth'
+import LoadingScreen from '@/components/ui/LoadingScreen'
 import DashboardShell from '@/components/layout/DashboardShell'
 import DailyReportStatusBadge from '@/components/daily-reports/DailyReportStatusBadge'
 import ActivityTypeBadge from '@/components/daily-reports/ActivityTypeBadge'
@@ -79,13 +80,7 @@ export default function DailyReportDetailPage() {
     } finally { setActing(false) }
   }
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <p className="text-slate-400 text-sm">Učitavanje...</p>
-      </div>
-    )
-  }
+  if (isLoading) return <LoadingScreen />
   if (!user) { router.replace('/login'); return null }
 
   return (

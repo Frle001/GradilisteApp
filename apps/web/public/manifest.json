@@ -1,0 +1,25 @@
+{
+  "name": "Gradilište",
+  "short_name": "Gradilište",
+  "description": "Upravljanje projektima, zaposlenicima i materijalima za građevinska poduzeća.",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#020617",
+  "theme_color": "#0f172a",
+  "lang": "hr",
+  "icons": [
+    {
+      "src": "/icon",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/apple-icon",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ],
+  "categories": ["business", "productivity"]
+}

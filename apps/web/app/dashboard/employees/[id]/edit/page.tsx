@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
+import LoadingScreen from '@/components/ui/LoadingScreen'
 import DashboardShell from '@/components/layout/DashboardShell'
 import EmployeeForm from '@/components/employees/EmployeeForm'
 import { type EmployeeDetail, type CreateEmployeePayload, canManageEmployees, fullName } from '@/lib/types/employees'
@@ -55,13 +56,7 @@ export default function EditEmployeePage() {
     }
   }
 
-  if (isLoading || dataLoading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <p className="text-slate-400 text-sm">Učitavanje...</p>
-      </div>
-    )
-  }
+  if (isLoading || dataLoading) return <LoadingScreen />
   if (!user || !emp) return null
 
   const name = fullName(emp)

@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
+import LoadingScreen from '@/components/ui/LoadingScreen'
+import LoadingOverlay from '@/components/ui/LoadingOverlay'
 import DashboardShell from '@/components/layout/DashboardShell'
 import ProjectStatusBadge from '@/components/projects/ProjectStatusBadge'
 import { type ProjectDetail, canManageProjects } from '@/lib/types/projects'
@@ -52,13 +54,7 @@ export default function ProjectDetailPage() {
     }
   }
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <p className="text-slate-400 text-sm">Učitavanje...</p>
-      </div>
-    )
-  }
+  if (isLoading) return <LoadingScreen />
   if (!user) return null
 
   const isActive = project?.status === 'active'
@@ -82,7 +78,7 @@ export default function ProjectDetailPage() {
       }
     >
       {isLoadingProject ? (
-        <div className="text-center py-12 text-slate-500 text-sm">Učitavanje...</div>
+        <LoadingOverlay />
       ) : error ? (
         <div className="bg-red-950 border border-red-800 rounded-lg px-4 py-3">
           <p className="text-red-300 text-sm">{error}</p>

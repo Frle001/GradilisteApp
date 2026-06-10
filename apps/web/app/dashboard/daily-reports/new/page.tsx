@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
+import LoadingScreen from '@/components/ui/LoadingScreen'
 import DashboardShell from '@/components/layout/DashboardShell'
 import DailyReportForm from '@/components/daily-reports/DailyReportForm'
 import { type DailyReportFormData, type CreateDailyReportPayload } from '@/lib/types/daily-reports'
@@ -28,13 +29,7 @@ export default function NewDailyReportPage() {
     return { id: res.data.id }
   }
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <p className="text-slate-400 text-sm">Učitavanje...</p>
-      </div>
-    )
-  }
+  if (isLoading) return <LoadingScreen />
   if (!user) { router.replace('/login'); return null }
 
   return (

@@ -21,7 +21,7 @@ bin/
 dist/
 *.test
 *.out
-go.sum
+# go.sum is intentionally tracked — required for reproducible builds
 
 # Environment variables
 .env

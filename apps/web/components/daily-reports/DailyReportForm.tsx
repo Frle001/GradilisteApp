@@ -14,6 +14,7 @@ import WorkerHoursEditor from './WorkerHoursEditor'
 import ActivityEntryForm from './ActivityEntryForm'
 import ActivityListPreview from './ActivityListPreview'
 import apiClient from '@/lib/api-client'
+import { useFormDraft } from '@/hooks/useFormDraft'
 
 interface Props {
   formData: DailyReportFormData
@@ -25,10 +26,30 @@ interface Props {
 
 export default function DailyReportForm({ formData, existing, onSubmit, submitLabel = 'Spremi izvještaj' }: Props) {
   const router = useRouter()
+  const isEditMode = !!existing
 
-  const [projectId, setProjectId] = useState(existing?.project.id ?? '')
-  const [reportDate, setReportDate] = useState(existing?.report_date ?? '')
-  const [notes, setNotes] = useState(existing?.notes ?? '')
+  // Draft preservation for create mode only
+  const [draftFields, setDraftFields, clearDraft] = useFormDraft(
+    'daily-report-new',
+    { projectId: '', reportDate: '', notes: '' }
+  )
+
+  const [projectId, setProjectId] = useState(
+    isEditMode ? existing!.project.id : draftFields.projectId
+  )
+  const [reportDate, setReportDate] = useState(
+    isEditMode ? existing!.report_date : draftFields.reportDate
+  )
+  const [notes, setNotes] = useState(
+    isEditMode ? (existing!.notes ?? '') : draftFields.notes
+  )
+
+  // Sync to draft whenever fields change (create mode only)
+  useEffect(() => {
+    if (!isEditMode) {
+      setDraftFields({ projectId, reportDate, notes })
+    }
+  }, [projectId, reportDate, notes, isEditMode, setDraftFields])
 
   const [workerEntries, setWorkerEntries] = useState<WorkerHoursEntry[]>(() => {
     if (!existing) return []
@@ -136,6 +157,7 @@ export default function DailyReportForm({ formData, existing, onSubmit, submitLa
     setSubmitting(true)
     try {
       const result = await onSubmit(payload)
+      clearDraft()
       if (result && 'id' in result) {
         router.push(`/dashboard/daily-reports/${result.id}`)
       } else {
@@ -244,19 +266,19 @@ export default function DailyReportForm({ formData, existing, onSubmit, submitLa
         </div>
       )}
 
-      <div className="flex items-center justify-end gap-3">
+      <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3">
         <button
           type="button"
           onClick={() => router.back()}
           disabled={submitting}
-          className="px-4 py-2 text-sm text-slate-400 hover:text-slate-200 disabled:opacity-50 transition-colors"
+          className="w-full sm:w-auto px-4 py-3 sm:py-2 text-sm text-slate-400 hover:text-slate-200 disabled:opacity-50 transition-colors text-center border border-slate-800 rounded-lg sm:border-0 sm:rounded-none"
         >
           Odustani
         </button>
         <button
           type="submit"
           disabled={submitting}
-          className="px-5 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
+          className="w-full sm:w-auto px-5 py-3 sm:py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
         >
           {submitting ? 'Spremanje…' : submitLabel}
         </button>

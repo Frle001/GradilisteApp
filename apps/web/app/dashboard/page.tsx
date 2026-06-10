@@ -3,6 +3,8 @@
 import Link from 'next/link'
 import { useAuth } from '@/hooks/useAuth'
 import { ROLE_LABELS } from '@/lib/types/employees'
+import LoadingScreen from '@/components/ui/LoadingScreen'
+import MobileBottomNav from '@/components/layout/MobileBottomNav'
 
 interface DashboardCard {
   title: string
@@ -56,13 +58,7 @@ const roleCards: Record<string, DashboardCard[]> = {
 export default function DashboardPage() {
   const { user, employee, isLoading, logout } = useAuth()
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <p className="text-slate-400 text-sm">Učitavanje...</p>
-      </div>
-    )
-  }
+  if (isLoading) return <LoadingScreen />
 
   if (!user) return null
 
@@ -75,19 +71,19 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       {/* Header */}
-      <header className="border-b border-slate-800 bg-slate-900">
-        <div className="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+      <header className="border-b border-slate-800 bg-slate-900 pwa-header">
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
           <div>
-            <span className="font-bold text-white text-lg">Gradilište App</span>
+            <span className="font-bold text-white text-base sm:text-lg">Gradilište</span>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3 sm:gap-4">
             <div className="text-right hidden sm:block">
               <p className="text-sm font-medium text-white">{displayName}</p>
               <p className="text-xs text-slate-400">{ROLE_LABELS[user.role] ?? user.role}</p>
             </div>
             <button
               onClick={logout}
-              className="text-sm text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 px-3 py-1.5 rounded-lg transition"
+              className="text-sm text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 px-3 py-2 sm:py-1.5 rounded-lg transition"
             >
               Odjava
             </button>
@@ -96,7 +92,7 @@ export default function DashboardPage() {
       </header>
 
       {/* Main */}
-      <main className="max-w-5xl mx-auto px-6 py-10">
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-nav sm:pb-10">
         {/* Welcome */}
         <div className="mb-8">
           <h1 className="text-2xl font-bold text-white">
@@ -160,6 +156,8 @@ export default function DashboardPage() {
           </div>
         )}
       </main>
+
+      <MobileBottomNav role={user.role} />
     </div>
   )
 }

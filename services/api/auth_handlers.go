@@ -3,14 +3,20 @@ package main
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
 )
 
-// ── Login ────────────────────────────────────────────────────────────────────
+const (
+	refreshCookieName = "refresh_token"
+	refreshTokenTTL   = 30 * 24 * time.Hour // 30 days
+)
+
+// ── Login ─────────────────────────────────────────────────────────────────────
 
 type loginRequest struct {
 	Email    string `json:"email" binding:"required,email"`
@@ -20,7 +26,7 @@ type loginRequest struct {
 func LoginHandler(c *gin.Context) {
 	var req loginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request", "details": err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
 		return
 	}
 
@@ -57,7 +63,7 @@ func LoginHandler(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		log.Printf("login: db error for email %s: %v", req.Email, err)
+		slog.Error("login: db error", "email", req.Email, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
 		return
 	}
@@ -72,9 +78,9 @@ func LoginHandler(c *gin.Context) {
 		return
 	}
 
-	// Update last_login_at (best-effort, don't fail on error)
+	// Update last_login_at (best-effort)
 	if _, err := db.Exec(ctx, `UPDATE users SET last_login_at = NOW() WHERE id = $1::uuid`, userID); err != nil {
-		log.Printf("login: failed to update last_login_at for user %s: %v", userID, err)
+		slog.Warn("login: failed to update last_login_at", "user_id", userID, "error", err)
 	}
 
 	empID := ""
@@ -82,14 +88,31 @@ func LoginHandler(c *gin.Context) {
 		empID = *employeeID
 	}
 
-	token, err := GenerateAccessToken(userID, companyID, empID, role, email)
+	accessToken, err := GenerateAccessToken(userID, companyID, empID, role, email)
 	if err != nil {
-		log.Printf("login: token generation failed for user %s: %v", userID, err)
+		slog.Error("login: access token generation failed", "user_id", userID, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return
 	}
 
-	// Async audit log — does not block the response
+	// Issue refresh token and store its hash in the DB.
+	rawRefresh, refreshHash, err := GenerateRefreshToken()
+	if err != nil {
+		slog.Error("login: refresh token generation failed", "user_id", userID, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
+		return
+	}
+	expiresAt := time.Now().Add(refreshTokenTTL)
+	if _, dbErr := db.Exec(ctx, `
+		INSERT INTO refresh_tokens (company_id, user_id, token_hash, expires_at, user_agent, ip_address)
+		VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6)
+	`, companyID, userID, refreshHash, expiresAt, c.GetHeader("User-Agent"), c.ClientIP()); dbErr != nil {
+		// Non-fatal: access token still works. Log and continue.
+		slog.Error("login: failed to persist refresh token", "user_id", userID, "error", dbErr)
+	} else {
+		setRefreshCookie(c, rawRefresh)
+	}
+
 	go CreateAuditLog(context.Background(), db, AuditLogParams{
 		CompanyID:  companyID,
 		UserID:     &userID,
@@ -101,7 +124,7 @@ func LoginHandler(c *gin.Context) {
 	})
 
 	c.JSON(http.StatusOK, gin.H{
-		"access_token": token,
+		"access_token": accessToken,
 		"user": gin.H{
 			"id":          userID,
 			"company_id":  companyID,
@@ -110,6 +133,166 @@ func LoginHandler(c *gin.Context) {
 			"role":        role,
 		},
 		"mustChangePassword": mustChangePassword,
+	})
+}
+
+// ── Refresh ───────────────────────────────────────────────────────────────────
+
+// RefreshHandler validates the HTTP-only refresh cookie, rotates the token,
+// and issues a new short-lived access token.
+func RefreshHandler(c *gin.Context) {
+	rawToken, err := c.Cookie(refreshCookieName)
+	if err != nil || rawToken == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "No refresh token"})
+		return
+	}
+
+	tokenHash := HashRefreshToken(rawToken)
+	ctx := c.Request.Context()
+	db := GetDB()
+
+	var (
+		tokenID   string
+		companyID string
+		userID    string
+		expiresAt time.Time
+		revokedAt *time.Time
+	)
+	err = db.QueryRow(ctx, `
+		SELECT id::text, company_id::text, user_id::text, expires_at, revoked_at
+		FROM refresh_tokens
+		WHERE token_hash = $1
+	`, tokenHash).Scan(&tokenID, &companyID, &userID, &expiresAt, &revokedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid refresh token"})
+		return
+	}
+	if err != nil {
+		slog.Error("refresh: db lookup failed", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		return
+	}
+	if revokedAt != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Refresh token has been revoked"})
+		return
+	}
+	if time.Now().After(expiresAt) {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Refresh token has expired"})
+		return
+	}
+
+	// Load current user
+	var (
+		employeeID         *string
+		email              string
+		role               string
+		active             bool
+		mustChangePassword bool
+	)
+	err = db.QueryRow(ctx, `
+		SELECT employee_id::text, email, role, active, must_change_password
+		FROM users
+		WHERE id = $1::uuid AND company_id = $2::uuid
+	`, userID, companyID).Scan(&employeeID, &email, &role, &active, &mustChangePassword)
+	if errors.Is(err, pgx.ErrNoRows) || !active {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found or inactive"})
+		return
+	}
+	if err != nil {
+		slog.Error("refresh: user lookup failed", "user_id", userID, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		return
+	}
+
+	empID := ""
+	if employeeID != nil {
+		empID = *employeeID
+	}
+
+	// Rotate: revoke old token, issue new one.
+	if _, dbErr := db.Exec(ctx,
+		`UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1::uuid`, tokenID,
+	); dbErr != nil {
+		slog.Error("refresh: failed to revoke old token", "token_id", tokenID, "error", dbErr)
+	}
+
+	newRaw, newHash, err := GenerateRefreshToken()
+	if err != nil {
+		slog.Error("refresh: new token generation failed", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		return
+	}
+	newExpiry := time.Now().Add(refreshTokenTTL)
+	if _, dbErr := db.Exec(ctx, `
+		INSERT INTO refresh_tokens (company_id, user_id, token_hash, expires_at, user_agent, ip_address)
+		VALUES ($1::uuid, $2::uuid, $3, $4, $5, $6)
+	`, companyID, userID, newHash, newExpiry, c.GetHeader("User-Agent"), c.ClientIP()); dbErr != nil {
+		slog.Error("refresh: failed to persist new token", "error", dbErr)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		return
+	}
+
+	accessToken, err := GenerateAccessToken(userID, companyID, empID, role, email)
+	if err != nil {
+		slog.Error("refresh: access token generation failed", "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		return
+	}
+
+	setRefreshCookie(c, newRaw)
+	c.JSON(http.StatusOK, gin.H{
+		"access_token":       accessToken,
+		"mustChangePassword": mustChangePassword,
+	})
+}
+
+// ── Logout ────────────────────────────────────────────────────────────────────
+
+// LogoutHandler revokes the refresh token from the DB and clears the cookie.
+// The access token expires naturally (it is short-lived by design).
+func LogoutHandler(c *gin.Context) {
+	rawToken, err := c.Cookie(refreshCookieName)
+	if err == nil && rawToken != "" {
+		tokenHash := HashRefreshToken(rawToken)
+		db := GetDB()
+		if _, dbErr := db.Exec(c.Request.Context(),
+			`UPDATE refresh_tokens SET revoked_at = NOW() WHERE token_hash = $1 AND revoked_at IS NULL`,
+			tokenHash,
+		); dbErr != nil {
+			slog.Error("logout: failed to revoke refresh token", "error", dbErr)
+		}
+	}
+	clearRefreshCookie(c)
+	c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
+}
+
+// ── Cookie helpers ────────────────────────────────────────────────────────────
+
+// setRefreshCookie writes the refresh token cookie using net/http directly so
+// that SameSite can be set. Gin's c.SetCookie does not expose SameSite, which
+// causes cross-origin cookies (e.g. Cloudflare Tunnel) to be silently dropped
+// by the browser when the default SameSite=Lax policy applies.
+func setRefreshCookie(c *gin.Context, rawToken string) {
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     refreshCookieName,
+		Value:    rawToken,
+		MaxAge:   int(refreshTokenTTL.Seconds()),
+		Path:     "/api/auth",
+		Secure:   Config.CookieSecure,
+		HttpOnly: true,
+		SameSite: Config.CookieSameSite,
+	})
+}
+
+func clearRefreshCookie(c *gin.Context) {
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     refreshCookieName,
+		Value:    "",
+		MaxAge:   -1,
+		Path:     "/api/auth",
+		Secure:   Config.CookieSecure,
+		HttpOnly: true,
+		SameSite: Config.CookieSameSite,
 	})
 }
 
@@ -146,7 +329,7 @@ func ChangePasswordHandler(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		log.Printf("change-password: db error for user %s: %v", u.UserID, err)
+		slog.Error("change-password: db error", "user_id", u.UserID, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
 		return
 	}
@@ -158,7 +341,7 @@ func ChangePasswordHandler(c *gin.Context) {
 
 	newHash, err := HashPassword(req.NewPassword)
 	if err != nil {
-		log.Printf("change-password: hash failed for user %s: %v", u.UserID, err)
+		slog.Error("change-password: hash failed", "user_id", u.UserID, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
 		return
 	}
@@ -166,7 +349,7 @@ func ChangePasswordHandler(c *gin.Context) {
 	if _, err := db.Exec(ctx, `
 		UPDATE users SET password_hash = $1, must_change_password = false WHERE id = $2::uuid
 	`, newHash, u.UserID); err != nil {
-		log.Printf("change-password: update failed for user %s: %v", u.UserID, err)
+		slog.Error("change-password: update failed", "user_id", u.UserID, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
 		return
 	}
@@ -177,7 +360,7 @@ func ChangePasswordHandler(c *gin.Context) {
 	})
 }
 
-// ── Me ───────────────────────────────────────────────────────────────────────
+// ── Me ────────────────────────────────────────────────────────────────────────
 
 func MeHandler(c *gin.Context) {
 	authUser := GetAuthUser(c)
@@ -212,7 +395,7 @@ func MeHandler(c *gin.Context) {
 		return
 	}
 	if err != nil {
-		log.Printf("me: db error for user %s: %v", authUser.UserID, err)
+		slog.Error("me: db error", "user_id", authUser.UserID, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
 		return
 	}
@@ -227,21 +410,14 @@ func MeHandler(c *gin.Context) {
 		"email_verified": emailVerified,
 	}
 
-	// Fetch linked employee if present
 	var employeeResp interface{}
 	if employeeID != nil && *employeeID != "" {
-		var (
-			empID        string
-			empFirstName string
-			empLastName  string
-			empRole      string
-		)
+		var empID, empFirstName, empLastName, empRole string
 		empErr := db.QueryRow(ctx, `
 			SELECT id::text, first_name, last_name, role
 			FROM employees
 			WHERE id = $1::uuid AND company_id = $2::uuid AND active = true
 		`, *employeeID, companyID).Scan(&empID, &empFirstName, &empLastName, &empRole)
-
 		if empErr == nil {
 			employeeResp = gin.H{
 				"id":         empID,
@@ -258,20 +434,8 @@ func MeHandler(c *gin.Context) {
 	})
 }
 
-// ── Logout ───────────────────────────────────────────────────────────────────
+// ── Register (disabled) ───────────────────────────────────────────────────────
 
-// LogoutHandler is stateless — JWT tokens are not invalidated server-side in Phase 3.
-// The client is responsible for discarding the token.
-func LogoutHandler(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Logged out successfully",
-	})
-}
-
-// ── Register (disabled) ──────────────────────────────────────────────────────
-
-// RegisterHandler is intentionally disabled.
-// This is a company-private app; accounts are created by administrators, not self-registered.
 func RegisterHandler(c *gin.Context) {
 	c.JSON(http.StatusForbidden, gin.H{
 		"error":   "Public registration is disabled",
@@ -279,40 +443,27 @@ func RegisterHandler(c *gin.Context) {
 	})
 }
 
-// ── Protected test routes ────────────────────────────────────────────────────
-// These exist only to verify that auth and role middleware work correctly.
+// ── Protected test routes ─────────────────────────────────────────────────────
 
 func ProtectedMeHandler(c *gin.Context) {
 	u := GetAuthUser(c)
 	c.JSON(http.StatusOK, gin.H{
-		"user_id":     u.UserID,
-		"company_id":  u.CompanyID,
-		"employee_id": u.EmployeeID,
-		"role":        u.Role,
-		"email":       u.Email,
+		"user_id": u.UserID, "company_id": u.CompanyID,
+		"employee_id": u.EmployeeID, "role": u.Role, "email": u.Email,
 	})
 }
 
 func ProtectedDirectorEngineerHandler(c *gin.Context) {
 	u := GetAuthUser(c)
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Access granted for direktor/inzenjer",
-		"role":    u.Role,
-	})
+	c.JSON(http.StatusOK, gin.H{"message": "Access granted for direktor/inzenjer", "role": u.Role})
 }
 
 func ProtectedAdminHandler(c *gin.Context) {
 	u := GetAuthUser(c)
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Access granted for direktor/inzenjer/administracija",
-		"role":    u.Role,
-	})
+	c.JSON(http.StatusOK, gin.H{"message": "Access granted for direktor/inzenjer/administracija", "role": u.Role})
 }
 
 func ProtectedPoslovodaHandler(c *gin.Context) {
 	u := GetAuthUser(c)
-	c.JSON(http.StatusOK, gin.H{
-		"message": "Access granted for direktor/inzenjer/poslovoda",
-		"role":    u.Role,
-	})
+	c.JSON(http.StatusOK, gin.H{"message": "Access granted for direktor/inzenjer/poslovoda", "role": u.Role})
 }

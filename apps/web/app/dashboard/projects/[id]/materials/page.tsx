@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
+import LoadingScreen from '@/components/ui/LoadingScreen'
+import LoadingOverlay from '@/components/ui/LoadingOverlay'
 import DashboardShell from '@/components/layout/DashboardShell'
 import ProjectMaterialTable from '@/components/project-materials/ProjectMaterialTable'
 import ProjectMaterialForm from '@/components/project-materials/ProjectMaterialForm'
@@ -110,13 +112,7 @@ export default function ProjectMaterialsPage() {
     setFormError(null)
   }
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <p className="text-slate-400 text-sm">Učitavanje...</p>
-      </div>
-    )
-  }
+  if (isLoading) return <LoadingScreen />
   if (!user) return null
 
   return (
@@ -204,7 +200,7 @@ export default function ProjectMaterialsPage() {
         {/* Materials list */}
         <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
           {isLoadingMaterials ? (
-            <div className="text-center py-10 text-slate-500 text-sm">Učitavanje...</div>
+            <LoadingOverlay />
           ) : (
             <ProjectMaterialTable
               materials={materials}

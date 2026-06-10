@@ -3,6 +3,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/hooks/useAuth'
+import LoadingScreen from '@/components/ui/LoadingScreen'
+import LoadingOverlay from '@/components/ui/LoadingOverlay'
 import DashboardShell from '@/components/layout/DashboardShell'
 import ProjectTable from '@/components/projects/ProjectTable'
 import { type ProjectListItem, canManageProjects } from '@/lib/types/projects'
@@ -74,13 +76,7 @@ export default function ProjectsPage() {
     }
   }
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <p className="text-slate-400 text-sm">Učitavanje...</p>
-      </div>
-    )
-  }
+  if (isLoading) return <LoadingScreen />
   if (!user) return null
 
   const title = isPoslovoda ? 'Moja gradilišta' : 'Projekti / Gradilišta'
@@ -140,7 +136,7 @@ export default function ProjectsPage() {
 
         {/* Table */}
         {isLoadingProjects ? (
-          <div className="text-center py-12 text-slate-500 text-sm">Učitavanje projekata...</div>
+          <LoadingOverlay />
         ) : (
           <ProjectTable
             projects={projects}

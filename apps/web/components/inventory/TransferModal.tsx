@@ -212,6 +212,7 @@ export default function TransferModal({ subject, onClose, onSuccess }: Props) {
               </label>
               <input
                 type="number"
+                inputMode="decimal"
                 min="0.01"
                 max={maxQty}
                 step="0.01"

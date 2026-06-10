@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '@/hooks/useAuth'
+import LoadingScreen from '@/components/ui/LoadingScreen'
 import apiClient from '@/lib/api-client'
 import {
   type GradevinskaKnjigaResponse,
@@ -66,13 +67,7 @@ export default function GradevinskaKnjigaPage() {
     setFilter(prev => ({ ...prev, page }))
   }
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <p className="text-slate-400 text-sm">Učitavanje...</p>
-      </div>
-    )
-  }
+  if (isLoading) return <LoadingScreen />
   if (!user) return null
 
   return (

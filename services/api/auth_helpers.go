@@ -1,6 +1,9 @@
 package main
 
 import (
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -34,7 +37,7 @@ func CheckPassword(password, hash string) bool {
 func GenerateAccessToken(userID, companyID, employeeID, role, email string) (string, error) {
 	expiry, err := time.ParseDuration(Config.JWTExpiresIn)
 	if err != nil {
-		expiry = 24 * time.Hour
+		expiry = 15 * time.Minute
 	}
 
 	claims := JWTClaims{
@@ -69,4 +72,24 @@ func ValidateAccessToken(tokenStr string) (*JWTClaims, error) {
 		return nil, fmt.Errorf("invalid token claims")
 	}
 	return claims, nil
+}
+
+// GenerateRefreshToken returns a random 32-byte hex token and its SHA-256 hash.
+// Store the hash in the DB; send the raw token to the client via HTTP-only cookie.
+func GenerateRefreshToken() (rawToken, tokenHash string, err error) {
+	buf := make([]byte, 32)
+	if _, err = rand.Read(buf); err != nil {
+		return "", "", err
+	}
+	rawToken = hex.EncodeToString(buf)
+	tokenHash = HashRefreshToken(rawToken)
+	return rawToken, tokenHash, nil
+}
+
+// HashRefreshToken returns the hex-encoded SHA-256 of a raw refresh token.
+// SHA-256 is used instead of bcrypt because refresh token lookup requires an
+// exact match, not password comparison.
+func HashRefreshToken(raw string) string {
+	sum := sha256.Sum256([]byte(raw))
+	return hex.EncodeToString(sum[:])
 }

@@ -1,5 +1,12 @@
 version: '3.8'
 
+# Default local development compose.
+# For an explicit dev file use: docker compose -f docker-compose.dev.yml up
+# For production template see: docker-compose.prod.example.yml
+#
+# Secrets come from services/api/.env (git-ignored).
+# Copy services/api/.env.example → services/api/.env before first run.
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -12,7 +19,7 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./database/migrations:/docker-entrypoint-initdb.d   
+      - ./database/migrations:/docker-entrypoint-initdb.d
       - ./database/seeds/seed_phase2.sql:/docker-entrypoint-initdb.d/seed_phase2.sql:ro
       - ./database/seeds/seed_phase4.sql:/docker-entrypoint-initdb.d/seed_phase4.sql:ro
     healthcheck:
@@ -26,33 +33,16 @@ services:
       context: ./services/api
       dockerfile: Dockerfile
     container_name: gradiliste_api
-    environment:
-      PORT: 8080
-      DB_HOST: postgres
-      DB_PORT: 5432
-      DB_USER: gradiliste
-      DB_PASSWORD: gradiliste_dev_password
-      DB_NAME: gradiliste
-      ENV: development
+    env_file:
+      - ./services/api/.env
     ports:
       - "8080:8080"
+    volumes:
+      - uploads_data:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
 
-
-  # Optional: frontend service (comment out if developing locally)
-  # web:
-  #   build:
-  #     context: ./apps/web
-  #     dockerfile: Dockerfile
-  #   container_name: gradiliste_web
-  #   ports:
-  #     - "3000:3000"
-  #   environment:
-  #     NEXT_PUBLIC_API_URL: http://localhost:8080/api
-  #   depends_on:
-  #     - api
-
 volumes:
   postgres_data:
+  uploads_data:

@@ -1,0 +1,65 @@
+version: '3.8'
+
+# Local development compose.
+# Usage: docker compose -f docker-compose.dev.yml up --build
+#
+# Before first run:
+#   cp services/api/.env.example services/api/.env
+#   (edit .env with your local values — it is already git-ignored)
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: gradiliste_db
+    environment:
+      POSTGRES_USER: gradiliste
+      POSTGRES_PASSWORD: gradiliste_dev_password
+      POSTGRES_DB: gradiliste
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Migrations run alphabetically on first DB init (001_ → 009_).
+      # Seeds sort after migrations (filenames starting with 's' > '0').
+      # Remove the seed mounts when pointing at a real database.
+      - ./database/migrations:/docker-entrypoint-initdb.d
+      - ./database/seeds/seed_phase2.sql:/docker-entrypoint-initdb.d/seed_phase2.sql:ro
+      - ./database/seeds/seed_phase4.sql:/docker-entrypoint-initdb.d/seed_phase4.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gradiliste"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    container_name: gradiliste_api
+    env_file:
+      - ./services/api/.env
+    ports:
+      - "8080:8080"
+    volumes:
+      - uploads_data:/app/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # Uncomment to run the Next.js frontend inside Docker during development.
+  # For most workflows, running the frontend with `npm run dev` locally is faster.
+  # web:
+  #   build:
+  #     context: ./apps/web
+  #     dockerfile: Dockerfile
+  #     args:
+  #       NEXT_PUBLIC_API_URL: http://localhost:8080/api
+  #   container_name: gradiliste_web
+  #   ports:
+  #     - "3000:3000"
+  #   depends_on:
+  #     - api
+
+volumes:
+  postgres_data:
+  uploads_data:

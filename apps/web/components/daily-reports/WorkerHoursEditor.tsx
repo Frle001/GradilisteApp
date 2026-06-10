@@ -9,6 +9,8 @@ interface Props {
   disabled?: boolean
 }
 
+const QUICK_HOURS = [0, 4, 8]
+
 export default function WorkerHoursEditor({ workers, entries, onChange, disabled = false }: Props) {
   function getEntry(workerId: string): WorkerHoursEntry {
     return (
@@ -40,12 +42,14 @@ export default function WorkerHoursEditor({ workers, entries, onChange, disabled
   }
 
   return (
-    <div className="space-y-1">
-      <div className="grid grid-cols-[1fr_100px_1fr] gap-x-3 px-2 pb-1 text-xs font-medium text-slate-500 uppercase tracking-wide">
+    <div className="space-y-3">
+      {/* Desktop column headers — hidden on mobile */}
+      <div className="hidden sm:grid sm:grid-cols-[1fr_140px_1fr] gap-x-3 px-2 pb-1 text-xs font-medium text-slate-500 uppercase tracking-wide">
         <span>Radnik</span>
         <span>Sati</span>
         <span>Napomena</span>
       </div>
+
       {workers.map(w => {
         const entry = getEntry(w.id)
         const hoursNum = parseFloat(entry.hours)
@@ -57,34 +61,63 @@ export default function WorkerHoursEditor({ workers, entries, onChange, disabled
         return (
           <div
             key={w.id}
-            className="grid grid-cols-[1fr_100px_1fr] gap-x-3 items-center px-2 py-1.5 rounded hover:bg-slate-800/40"
+            className="rounded-lg bg-slate-800/40 hover:bg-slate-800/60 px-3 py-3 sm:px-2 sm:py-1.5 transition-colors
+              sm:grid sm:grid-cols-[1fr_140px_1fr] sm:gap-x-3 sm:items-center sm:rounded-none sm:bg-transparent sm:hover:bg-slate-800/40"
           >
-            <span className="text-sm text-slate-200 truncate">{w.full_name}</span>
+            {/* Worker name */}
+            <span className="block text-sm font-medium text-slate-200 mb-2 sm:mb-0 truncate">
+              {w.full_name}
+            </span>
 
-            <div>
-              <input
-                type="number"
-                min={0}
-                max={24}
-                step={0.5}
-                placeholder="—"
-                value={entry.hours}
-                disabled={disabled}
-                onChange={e => updateEntry(w.id, w.full_name, { hours: e.target.value })}
-                className={`w-full bg-slate-800 border rounded px-2 py-1 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500 ${
-                  hoursError ? 'border-red-500' : 'border-slate-700'
-                } disabled:opacity-50`}
-              />
-              {hoursError && <p className="text-xs text-red-400 mt-0.5">{hoursError}</p>}
+            {/* Hours — quick buttons + input */}
+            <div className="flex items-center gap-2 mb-2 sm:mb-0">
+              {/* Quick-fill buttons */}
+              <div className="flex gap-1 shrink-0">
+                {QUICK_HOURS.map(h => (
+                  <button
+                    key={h}
+                    type="button"
+                    disabled={disabled}
+                    onClick={() => updateEntry(w.id, w.full_name, { hours: String(h) })}
+                    className={`px-2 py-1 text-xs rounded border transition-colors disabled:opacity-40 ${
+                      entry.hours === String(h)
+                        ? 'bg-blue-600 border-blue-500 text-white'
+                        : 'border-slate-700 text-slate-400 hover:border-slate-500 hover:text-slate-200'
+                    }`}
+                    aria-label={`${h} sati`}
+                  >
+                    {h}h
+                  </button>
+                ))}
+              </div>
+              {/* Manual input */}
+              <div className="flex-1 min-w-0">
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min={0}
+                  max={24}
+                  step={0.5}
+                  placeholder="—"
+                  value={entry.hours}
+                  disabled={disabled}
+                  onChange={e => updateEntry(w.id, w.full_name, { hours: e.target.value })}
+                  className={`w-full bg-slate-800 border rounded px-2 py-1.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500 ${
+                    hoursError ? 'border-red-500' : 'border-slate-700'
+                  } disabled:opacity-50`}
+                />
+                {hoursError && <p className="text-xs text-red-400 mt-0.5">{hoursError}</p>}
+              </div>
             </div>
 
+            {/* Notes */}
             <input
               type="text"
-              placeholder="Opcionalna napomena…"
+              placeholder="Napomena…"
               value={entry.notes}
               disabled={disabled}
               onChange={e => updateEntry(w.id, w.full_name, { notes: e.target.value })}
-              className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+              className="w-full bg-slate-800 border border-slate-700 rounded px-2 py-1.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
             />
           </div>
         )

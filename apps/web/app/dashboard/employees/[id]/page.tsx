@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
+import LoadingScreen from '@/components/ui/LoadingScreen'
 import DashboardShell from '@/components/layout/DashboardShell'
 import { RoleBadge, StatusBadge } from '@/components/employees/EmployeeBadge'
 import EmployeeAssetsList from '@/components/employees/EmployeeAssetsList'
@@ -64,13 +65,7 @@ export default function EmployeeDetailPage() {
     }
   }
 
-  if (isLoading || dataLoading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <p className="text-slate-400 text-sm">Učitavanje...</p>
-      </div>
-    )
-  }
+  if (isLoading || dataLoading) return <LoadingScreen />
   if (!user) return null
   if (error) {
     return (

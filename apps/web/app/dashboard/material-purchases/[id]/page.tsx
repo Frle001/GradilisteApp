@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { useParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
+import LoadingScreen from '@/components/ui/LoadingScreen'
+import LoadingOverlay from '@/components/ui/LoadingOverlay'
 import DashboardShell from '@/components/layout/DashboardShell'
 import ReceiptPreview from '@/components/material-purchases/ReceiptPreview'
 import apiClient from '@/lib/api-client'
@@ -35,13 +37,7 @@ export default function MaterialPurchaseDetailPage() {
       .finally(() => setLoading(false))
   }, [id])
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <p className="text-slate-400 text-sm">Učitavanje...</p>
-      </div>
-    )
-  }
+  if (isLoading) return <LoadingScreen />
   if (!user) return null
 
   return (
@@ -52,11 +48,7 @@ export default function MaterialPurchaseDetailPage() {
       backHref="/dashboard/material-purchases"
       onLogout={logout}
     >
-      {loading && (
-        <div className="flex justify-center py-16">
-          <p className="text-slate-500 text-sm">Učitavanje…</p>
-        </div>
-      )}
+      {loading && <LoadingOverlay />}
 
       {error && (
         <div className="rounded-xl bg-red-950 border border-red-800 text-red-300 text-sm px-4 py-3">

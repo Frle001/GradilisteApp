@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
+import LoadingScreen from '@/components/ui/LoadingScreen'
+import LoadingOverlay from '@/components/ui/LoadingOverlay'
 import DashboardShell from '@/components/layout/DashboardShell'
 import ProjectForm from '@/components/projects/ProjectForm'
 import { type CreateProjectPayload, type ProjectDetail, canManageProjects } from '@/lib/types/projects'
@@ -55,13 +57,7 @@ export default function EditProjectPage() {
     }
   }
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <p className="text-slate-400 text-sm">Učitavanje...</p>
-      </div>
-    )
-  }
+  if (isLoading) return <LoadingScreen />
   if (!user) return null
 
   if (!canManageProjects(user.role)) {
@@ -84,7 +80,7 @@ export default function EditProjectPage() {
         </div>
 
         {isLoadingProject ? (
-          <div className="text-center py-12 text-slate-500 text-sm">Učitavanje...</div>
+          <LoadingOverlay />
         ) : !project ? (
           <div className="bg-red-950 border border-red-800 rounded-lg px-4 py-3">
             <p className="text-red-300 text-sm">Projekt nije pronađen.</p>

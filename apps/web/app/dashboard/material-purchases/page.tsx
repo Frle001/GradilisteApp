@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/hooks/useAuth'
+import LoadingScreen from '@/components/ui/LoadingScreen'
 import DashboardShell from '@/components/layout/DashboardShell'
 import MaterialPurchaseTable from '@/components/material-purchases/MaterialPurchaseTable'
 import ReportPaginationBar from '@/components/reports/ReportPaginationBar'
@@ -71,13 +72,7 @@ export default function MaterialPurchasesPage() {
     setFilter(prev => ({ ...prev, ...patch, page: 1 }))
   }
 
-  if (isLoading) {
-    return (
-      <div className="min-h-screen bg-slate-950 flex items-center justify-center">
-        <p className="text-slate-400 text-sm">Učitavanje...</p>
-      </div>
-    )
-  }
+  if (isLoading) return <LoadingScreen />
   if (!user) return null
 
   const canCreate = ['direktor', 'inzenjer', 'poslovoda'].includes(user.role)

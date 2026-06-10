@@ -54,3 +54,38 @@
 body {
   @apply bg-background text-foreground;
 }
+
+/* ── Mobile / PWA ──────────────────────────────────────────────────────────── */
+
+/* Prevent white flash before paint; app always uses dark bg */
+html, body {
+  background-color: #020617;
+}
+
+/* Prevent tap highlight on interactive elements (iOS/Android) */
+html {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* Safe-area utility classes for iPhone notch / home indicator */
+.pt-safe { padding-top: env(safe-area-inset-top, 0px); }
+.pb-safe { padding-bottom: env(safe-area-inset-bottom, 0px); }
+.pl-safe { padding-left: env(safe-area-inset-left, 0px); }
+.pr-safe { padding-right: env(safe-area-inset-right, 0px); }
+
+/* Bottom nav height + safe area — used by main content to avoid overlap */
+.pb-nav { padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 4rem); }
+
+/* PWA standalone: extend header bg into status bar */
+@media (display-mode: standalone) {
+  .pwa-header {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+}
+
+/* Momentum touch scrolling for horizontal scroll containers (iOS) */
+.table-scroll-touch {
+  -webkit-overflow-scrolling: touch;
+}
