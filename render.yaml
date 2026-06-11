@@ -3,61 +3,54 @@
 # Secrets (DATABASE_URL, JWT_SECRET, etc.) must be set in the Render dashboard
 # or via environment groups — never commit real values here.
 
+# Render service definition — https://render.com/docs/blueprint-spec
+
 services:
   - type: web
     name: gradiliste-api
     runtime: docker
     dockerfilePath: ./services/api/Dockerfile
     dockerContext: ./services/api
-    region: frankfurt  # eu-central-1 equivalent; choose the region closest to users
-    plan: starter      # upgrade to standard for production SLAs
-
+    region: frankfurt
+    plan: starter
     healthCheckPath: /health
 
-    # Render injects PORT automatically; the API reads it via SERVER_PORT fallback.
     envVars:
       - key: APP_ENV
         value: production
 
       - key: APP_VERSION
-        # Render sets RENDER_GIT_COMMIT automatically — use it as the version string.
-        fromEnvironmentGroup: gradiliste-shared  # optional group; or set per-service
+        value: production
 
       - key: DATABASE_URL
-        # Set this in the Render dashboard to your managed PostgreSQL internal URL.
-        # Example: postgres://user:pass@host/dbname
-        # sslmode=require is injected automatically for remote hosts.
-        value: REPLACE_WITH_RENDER_INTERNAL_DATABASE_URL  # placeholder — override in dashboard
+        sync: false
 
       - key: JWT_SECRET
-        # Generate: openssl rand -base64 48
-        value: REPLACE_WITH_STRONG_SECRET  # placeholder — override in dashboard
+        sync: false
 
       - key: CORS_ALLOWED_ORIGINS
-        # Your Vercel frontend URL(s); comma-separated if multiple.
-        value: REPLACE_WITH_VERCEL_URL  # placeholder — override in dashboard
+        sync: false
 
       - key: COOKIE_SECURE
         value: "true"
 
       - key: COOKIE_SAME_SITE
-        # Frontend (Vercel) and backend (Render) are on different origins.
         value: none
 
       - key: UPLOAD_STORAGE_DRIVER
-        value: s3  # never use "local" in production — container filesystem is ephemeral
+        value: s3
 
       - key: S3_ENDPOINT
-        value: REPLACE_WITH_R2_ENDPOINT  # placeholder
+        sync: false
 
       - key: S3_BUCKET
-        value: REPLACE_WITH_BUCKET_NAME  # placeholder
+        sync: false
 
       - key: S3_ACCESS_KEY_ID
-        value: REPLACE_WITH_R2_ACCESS_KEY_ID  # placeholder
+        sync: false
 
       - key: S3_SECRET_ACCESS_KEY
-        value: REPLACE_WITH_R2_SECRET_ACCESS_KEY  # placeholder
+        sync: false
 
       - key: S3_REGION
         value: auto
