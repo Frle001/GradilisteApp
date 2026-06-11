@@ -3,7 +3,7 @@ const nextConfig = {
   reactStrictMode: true,
   swcMinify: true,
   env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api',
+    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || 'https://gradiliste-api.onrender.com/api',
   },
   // Proxy /api/* to the local Go backend only in development.
   // Active when NEXT_PUBLIC_API_URL is unset or set to the relative '/api' path.
@@ -15,7 +15,7 @@ const nextConfig = {
     return [
       {
         source: '/api/:path*',
-        destination: 'http://localhost:8080/api/:path*',
+        destination: 'https://gradiliste-api.onrender.com/api/:path*',
       },
     ]
   },

@@ -1,7 +1,7 @@
 import axios, { type AxiosInstance, type InternalAxiosRequestConfig } from 'axios'
 import { clearAuth, getToken, setToken } from './auth'
 
-const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api'
+const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'https://gradiliste-api.onrender.com'
 
 const apiClient: AxiosInstance = axios.create({
   baseURL: BASE_URL,
