@@ -50,10 +50,10 @@ type AnalyzeHeaderSuggestion struct {
 	Index           int      `json:"index"`
 	Original        string   `json:"original"`
 	Normalized      string   `json:"normalized"`
-	SuggestedField  *string  `json:"suggested_field"`   // nil if confidence < 0.60
-	Confidence      float64  `json:"confidence"`        // 0.0–1.0
-	ConfidenceLabel string   `json:"confidence_label"`  // "high" | "medium" | "low" | "none"
-	Reasons         []string `json:"reasons"`           // human-readable explanation
+	SuggestedField  *string  `json:"suggested_field"`  // nil if confidence < 0.60
+	Confidence      float64  `json:"confidence"`       // 0.0–1.0
+	ConfidenceLabel string   `json:"confidence_label"` // "high" | "medium" | "low" | "none"
+	Reasons         []string `json:"reasons"`          // human-readable explanation
 }
 
 type AnalyzeSampleRow struct {
@@ -126,8 +126,8 @@ type WizardConfirmRowError struct {
 }
 
 type WizardConfirmResponse struct {
-	ImportedCount int                    `json:"imported_count"`
-	SkippedCount  int                    `json:"skipped_count"`
-	FailedCount   int                    `json:"failed_count"`
+	ImportedCount int                     `json:"imported_count"`
+	SkippedCount  int                     `json:"skipped_count"`
+	FailedCount   int                     `json:"failed_count"`
 	Errors        []WizardConfirmRowError `json:"errors"`
 }

@@ -23,14 +23,14 @@ func NewImportJobRepository(db *pgxpool.Pool) *ImportJobRepository {
 var ErrImportJobNotFound = errors.New("import job not found")
 
 type ImportJob struct {
-	ID              string
-	CompanyID       string
-	ProjectID       string
+	ID               string
+	CompanyID        string
+	ProjectID        string
 	OriginalFilename string
-	Status          string
-	TotalRows       int
-	ValidRows       int
-	InvalidRows     int
+	Status           string
+	TotalRows        int
+	ValidRows        int
+	InvalidRows      int
 }
 
 // CreateJob inserts a new import_jobs row and returns its ID.

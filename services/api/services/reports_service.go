@@ -11,16 +11,16 @@ import (
 )
 
 const (
-	ExportRowLimit  = 10_000
-	DefaultPerPage  = 25
-	MaxPerPage      = 100
+	ExportRowLimit = 10_000
+	DefaultPerPage = 25
+	MaxPerPage     = 100
 )
 
 var ErrExportLimitExceeded = errors.New("rezultati premašuju limit od 10 000 redova; suzite filtere i pokušajte ponovo")
 
 type ReportsService struct {
-	repo   *repositories.ReportsRepository
-	excel  *ExcelExportService
+	repo  *repositories.ReportsRepository
+	excel *ExcelExportService
 }
 
 func NewReportsService(repo *repositories.ReportsRepository) *ReportsService {

@@ -15,21 +15,21 @@ var ErrNotFound = errors.New("not found")
 
 // Employee is the internal DB model used within the repositories package.
 type Employee struct {
-	ID          string
-	CompanyID   string
-	FirstName   string
-	LastName    string
-	Role        string
-	Email       *string
-	Phone       *string
-	Active      bool
+	ID           string
+	CompanyID    string
+	FirstName    string
+	LastName     string
+	Role         string
+	Email        *string
+	Phone        *string
+	Active       bool
 	SupervisorID *string
 	// Populated only by GetByID (via LEFT JOIN)
 	SupervisorFirstName *string
 	SupervisorLastName  *string
 	SupervisorRole      *string
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	CreatedAt           time.Time
+	UpdatedAt           time.Time
 }
 
 type EmployeeListFilter struct {

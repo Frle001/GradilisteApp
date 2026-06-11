@@ -14,9 +14,9 @@ type AuditLogParams struct {
 	CompanyID  string
 	UserID     *string
 	EmployeeID *string
-	Action     string  // e.g. "auth.login", "project.create", "asset.transfer"
-	EntityType string  // e.g. "user", "project", "employee"
-	EntityID   *string // UUID of the affected record
+	Action     string      // e.g. "auth.login", "project.create", "asset.transfer"
+	EntityType string      // e.g. "user", "project", "employee"
+	EntityID   *string     // UUID of the affected record
 	OldData    interface{} // serialized to JSON; nil if not applicable
 	NewData    interface{} // serialized to JSON; nil if not applicable
 	IPAddress  string

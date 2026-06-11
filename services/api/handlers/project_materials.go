@@ -147,7 +147,7 @@ func (h *ProjectMaterialHandler) ImportConfirm(c *gin.Context) {
 	projectID := c.Param("id")
 
 	var body struct {
-		ImportJobID string               `json:"import_job_id" binding:"required"`
+		ImportJobID string                 `json:"import_job_id" binding:"required"`
 		Rows        []dto.WizardConfirmRow `json:"rows"`
 	}
 	if err := c.ShouldBindJSON(&body); err != nil {

@@ -176,11 +176,11 @@ func ReportsDebug(c *gin.Context) {
 			var (
 				reportID, reportDate, projectID, projectName string
 				projectAddress                               *string
-				poslovodaID, poslovodaName                  string
-				workerID, workerName                        string
-				hoursWorked                                 float64
-				notes                                       *string
-				status                                      string
+				poslovodaID, poslovodaName                   string
+				workerID, workerName                         string
+				hoursWorked                                  float64
+				notes                                        *string
+				status                                       string
 			)
 			if err := rows.Scan(
 				&reportID, &reportDate,

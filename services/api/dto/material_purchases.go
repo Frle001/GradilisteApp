@@ -68,15 +68,15 @@ type PurchaseBuyerRef struct {
 }
 
 type PurchaseDetail struct {
-	ID                      string             `json:"id"`
-	Project                 PurchaseProjectRef `json:"project"`
-	Buyer                   PurchaseBuyerRef   `json:"buyer"`
-	PurchasedAt             time.Time          `json:"purchased_at"`
-	ReceiptFileURL          *string            `json:"receipt_file_url"`
-	ReceiptOriginalFilename *string            `json:"receipt_original_filename"`
-	Notes                   *string            `json:"notes"`
+	ID                      string               `json:"id"`
+	Project                 PurchaseProjectRef   `json:"project"`
+	Buyer                   PurchaseBuyerRef     `json:"buyer"`
+	PurchasedAt             time.Time            `json:"purchased_at"`
+	ReceiptFileURL          *string              `json:"receipt_file_url"`
+	ReceiptOriginalFilename *string              `json:"receipt_original_filename"`
+	Notes                   *string              `json:"notes"`
 	Items                   []PurchaseItemDetail `json:"items"`
-	CreatedAt               time.Time          `json:"created_at"`
+	CreatedAt               time.Time            `json:"created_at"`
 }
 
 // ── Form data ─────────────────────────────────────────────────────────────────
