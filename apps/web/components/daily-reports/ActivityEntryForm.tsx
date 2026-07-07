@@ -31,7 +31,7 @@ export default function ActivityEntryForm({ materials, materialsLoading = false,
   function validate(): string[] {
     const errs: string[] = []
     if (isVtk) {
-      if (!customName.trim()) errs.push('Naziv materijala je obavezan za VTK aktivnost.')
+      if (!customName.trim()) errs.push('Naziv materijala je obavezan za VTR aktivnost.')
     } else {
       if (!materialId) errs.push('Odaberite materijal.')
     }
@@ -95,7 +95,7 @@ export default function ActivityEntryForm({ materials, materialsLoading = false,
       <div className="flex items-center gap-3">
         <h4 className="text-sm font-medium text-slate-300 flex-1">Dodaj aktivnost</h4>
         <label className="flex items-center gap-2 cursor-pointer select-none">
-          <span className="text-xs text-slate-400">VTK aktivnost</span>
+          <span className="text-xs text-slate-400">VTR aktivnost</span>
           <div
             role="checkbox"
             aria-checked={isVtk}
@@ -113,7 +113,7 @@ export default function ActivityEntryForm({ materials, materialsLoading = false,
         {/* Material / Custom Name */}
         {isVtk ? (
           <div className="sm:col-span-2">
-            <label className="block text-xs text-slate-400 mb-1">Naziv materijala (VTK) *</label>
+            <label className="block text-xs text-slate-400 mb-1">Naziv materijala (VTR) *</label>
             <input
               type="text"
               value={customName}

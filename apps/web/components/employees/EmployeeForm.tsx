@@ -155,7 +155,7 @@ export default function EmployeeForm({
         {errors.email && <FieldError msg={errors.email.message} />}
         {isLoginRole && !errors.email && (
           <p className="text-slate-500 text-xs mt-1">
-            Privremena lozinka <span className="font-mono text-slate-400">Temp1234!</span> bit će dodijeljena.
+            Privremena lozinka bit će automatski generirana nakon spremanja zaposlenika.
           </p>
         )}
       </div>
