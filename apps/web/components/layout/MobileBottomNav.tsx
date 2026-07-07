@@ -48,6 +48,9 @@ const navByRole: Record<string, NavItem[]> = {
     { href: '/dashboard/material-purchases', label: 'Materijal', Icon: ShoppingBag },
     { href: '/dashboard/inventory', label: 'Roba', Icon: Package },
   ],
+  radnik: [
+    { href: '/dashboard', label: 'Početna', Icon: Home, exact: true },
+  ],
 }
 
 interface Props {

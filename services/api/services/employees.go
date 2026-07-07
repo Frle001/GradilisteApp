@@ -49,7 +49,7 @@ var validEmployeeRoles = map[string]bool{
 // loginCapableRoles are the roles that get a users row and can log in.
 var loginCapableRoles = map[string]bool{
 	"direktor": true, "inzenjer": true,
-	"administracija": true, "poslovoda": true,
+	"administracija": true, "poslovoda": true, "radnik": true,
 }
 
 var validAssetTypes = map[string]bool{

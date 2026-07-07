@@ -53,6 +53,9 @@ const roleCards: Record<string, DashboardCard[]> = {
     { title: 'Građevinski dnevnik', description: 'Evidencija radnih sati', icon: '📓', href: '/dashboard/reports/gradevinski-dnevnik' },
     { title: 'Građevinska knjiga', description: 'Aktivnosti i utrošak materijala', icon: '📚', href: '/dashboard/reports/gradevinska-knjiga' },
   ],
+  radnik: [
+    { title: 'Moji sati', description: 'Unos vlastitih radnih sati bit će dostupan u sljedećem koraku.', icon: '⏱️' },
+  ],
 }
 
 export default function DashboardPage() {

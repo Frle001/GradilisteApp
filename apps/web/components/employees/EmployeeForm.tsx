@@ -19,7 +19,7 @@ interface SupervisorOption {
 }
 
 // Roles that require email (a user account will be created for them)
-const LOGIN_ROLES = new Set(['direktor', 'inzenjer', 'administracija', 'poslovoda'])
+const LOGIN_ROLES = new Set(['direktor', 'inzenjer', 'administracija', 'poslovoda', 'radnik'])
 
 export default function EmployeeForm({
   defaultValues,
