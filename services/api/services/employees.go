@@ -2,6 +2,8 @@ package services
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"strings"
@@ -25,10 +27,17 @@ func (e *ValidationError) Error() string { return e.Message }
 
 func validationErr(msg string) error { return &ValidationError{Message: msg} }
 
-// ── Constants ─────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-// tempPasswordValue is the default password issued to all new login-capable employees.
-const tempPasswordValue = "Temp1234!"
+// generateTempPassword returns a cryptographically random 22-character base64url string
+// (16 random bytes, no padding). Never log this value.
+func generateTempPassword() (string, error) {
+	buf := make([]byte, 16)
+	if _, err := rand.Read(buf); err != nil {
+		return "", fmt.Errorf("generate temp password: %w", err)
+	}
+	return base64.RawURLEncoding.EncodeToString(buf), nil
+}
 
 // ── Valid values ──────────────────────────────────────────────────────────────
 
@@ -156,7 +165,11 @@ func (s *EmployeeService) Create(ctx context.Context, companyID, callerUserID, i
 
 // createWithLogin creates an employee + user in a single transaction.
 func (s *EmployeeService) createWithLogin(ctx context.Context, companyID, callerUserID, ip, ua, firstName, lastName, role string, email, phone, supervisorID *string) (*CreateResult, error) {
-	hash, err := s.hashPassword(tempPasswordValue)
+	tmpPassword, err := generateTempPassword()
+	if err != nil {
+		return nil, err
+	}
+	hash, err := s.hashPassword(tmpPassword)
 	if err != nil {
 		return nil, fmt.Errorf("hash temp password: %w", err)
 	}
@@ -197,7 +210,7 @@ func (s *EmployeeService) createWithLogin(ctx context.Context, companyID, caller
 		UserAgent:  ua,
 	})
 
-	tmp := tempPasswordValue
+	tmp := tmpPassword
 	return &CreateResult{
 		Employee:           toDetail(emp),
 		LoginCreated:       true,
@@ -308,6 +321,54 @@ func (s *EmployeeService) SetActive(ctx context.Context, companyID, callerUserID
 	})
 
 	return nil
+}
+
+// ── Employee: ResetPassword ───────────────────────────────────────────────────
+
+// ResetPassword generates a new random temporary password, hashes it, updates the user record,
+// sets must_change_password = true, and returns the plain-text password exactly once.
+// Caller must return the value in the HTTP response and never log it.
+func (s *EmployeeService) ResetPassword(ctx context.Context, companyID, callerUserID, ip, ua, employeeID string) (string, error) {
+	emp, err := s.empRepo.GetByID(ctx, companyID, employeeID)
+	if errors.Is(err, repositories.ErrNotFound) {
+		return "", ErrNotFound
+	}
+	if err != nil {
+		return "", fmt.Errorf("reset password: %w", err)
+	}
+
+	if !loginCapableRoles[emp.Role] {
+		return "", validationErr("This employee does not have a login account")
+	}
+
+	tmpPassword, err := generateTempPassword()
+	if err != nil {
+		return "", err
+	}
+
+	hash, err := s.hashPassword(tmpPassword)
+	if err != nil {
+		return "", fmt.Errorf("hash temp password: %w", err)
+	}
+
+	if err := s.userRepo.ResetPasswordByEmployeeID(ctx, companyID, employeeID, hash); err != nil {
+		if errors.Is(err, repositories.ErrNotFound) {
+			return "", validationErr("This employee does not have a login account")
+		}
+		return "", fmt.Errorf("reset password: %w", err)
+	}
+
+	go s.auditRepo.Log(context.Background(), repositories.AuditParams{
+		CompanyID:  companyID,
+		UserID:     &callerUserID,
+		Action:     "employee.password_reset",
+		EntityType: "employee",
+		EntityID:   &employeeID,
+		IPAddress:  ip,
+		UserAgent:  ua,
+	})
+
+	return tmpPassword, nil
 }
 
 // ── Asset: ListByEmployee ─────────────────────────────────────────────────────

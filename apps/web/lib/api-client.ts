@@ -46,9 +46,15 @@ apiClient.interceptors.response.use(
       return Promise.reject(error)
     }
 
-    // Avoid refresh-loop if the refresh call itself returns 401
-    if (original.url?.includes('/auth/refresh')) {
-      clearAuth()
+    // Auth endpoints must not trigger a refresh — they manage credentials directly.
+    // A 401 on /auth/login means bad credentials; on /auth/refresh means the token
+    // is expired or revoked. In both cases propagate the error immediately.
+    if (
+      original.url?.includes('/auth/login') ||
+      original.url?.includes('/auth/refresh') ||
+      original.url?.includes('/auth/register')
+    ) {
+      if (original.url?.includes('/auth/refresh')) clearAuth()
       return Promise.reject(error)
     }
 

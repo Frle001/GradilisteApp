@@ -98,15 +98,18 @@ WHERE id IN (
 );
 
 -- Create test users (direktor, inzenjer, administracija, poslovoda)
-INSERT INTO users (id, company_id, employee_id, email, password_hash, role, active, email_verified)
+-- Password for all: Temp1234!  (bcrypt $2a$10$, cost 10 — valid for any BCRYPT_COST setting)
+-- must_change_password=true so user is forced to set a personal password on first login.
+INSERT INTO users (id, company_id, employee_id, email, password_hash, role, active, email_verified, must_change_password)
 VALUES
   (
     '30000000-0000-0000-0000-000000000001'::uuid,
     '10000000-0000-0000-0000-000000000001'::uuid,
     '20000000-0000-0000-0000-000000000001'::uuid,
     'direktor@example.com',
-    '$2a$12$placeholder_hash_direktor',
+    '$2a$10$TfnHyv4v6RNT39tNsWvuXO9mSb219/yrBSVSv1bUvkMJvZnoKIxI6',
     'direktor',
+    true,
     true,
     true
   ),
@@ -115,8 +118,9 @@ VALUES
     '10000000-0000-0000-0000-000000000001'::uuid,
     '20000000-0000-0000-0000-000000000002'::uuid,
     'inzenjer@example.com',
-    '$2a$12$placeholder_hash_inzenjer',
+    '$2a$10$TfnHyv4v6RNT39tNsWvuXO9mSb219/yrBSVSv1bUvkMJvZnoKIxI6',
     'inzenjer',
+    true,
     true,
     true
   ),
@@ -125,8 +129,9 @@ VALUES
     '10000000-0000-0000-0000-000000000001'::uuid,
     '20000000-0000-0000-0000-000000000003'::uuid,
     'admin@example.com',
-    '$2a$12$placeholder_hash_admin',
+    '$2a$10$TfnHyv4v6RNT39tNsWvuXO9mSb219/yrBSVSv1bUvkMJvZnoKIxI6',
     'administracija',
+    true,
     true,
     true
   ),
@@ -135,8 +140,9 @@ VALUES
     '10000000-0000-0000-0000-000000000001'::uuid,
     '20000000-0000-0000-0000-000000000004'::uuid,
     'poslovoda@example.com',
-    '$2a$12$placeholder_hash_poslovoda',
+    '$2a$10$TfnHyv4v6RNT39tNsWvuXO9mSb219/yrBSVSv1bUvkMJvZnoKIxI6',
     'poslovoda',
+    true,
     true,
     true
   )

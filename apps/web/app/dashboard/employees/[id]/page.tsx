@@ -8,9 +8,11 @@ import LoadingScreen from '@/components/ui/LoadingScreen'
 import DashboardShell from '@/components/layout/DashboardShell'
 import { RoleBadge, StatusBadge } from '@/components/employees/EmployeeBadge'
 import EmployeeAssetsList from '@/components/employees/EmployeeAssetsList'
-import { type EmployeeDetail, type Asset, canManageEmployees, fullName } from '@/lib/types/employees'
+import { type EmployeeDetail, type Asset, canManageEmployees, canResetPassword, fullName } from '@/lib/types/employees'
 import { canViewOtherInventory } from '@/lib/types/inventory'
 import apiClient from '@/lib/api-client'
+
+type ResetState = 'idle' | 'confirming' | 'loading' | 'done'
 
 export default function EmployeeDetailPage() {
   const params = useParams()
@@ -23,6 +25,10 @@ export default function EmployeeDetailPage() {
   const [dataLoading, setDataLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+
+  const [resetState, setResetState] = useState<ResetState>('idle')
+  const [resetPassword, setResetPassword] = useState<string | null>(null)
+  const [resetError, setResetError] = useState<string | null>(null)
 
   const fetchEmployee = () => {
     setError(null)
@@ -65,6 +71,20 @@ export default function EmployeeDetailPage() {
     }
   }
 
+  async function handleResetPassword() {
+    setResetState('loading')
+    setResetError(null)
+    try {
+      const res = await apiClient.patch(`/employees/${id}/reset-password`)
+      setResetPassword(res.data.temporaryPassword)
+      setResetState('done')
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } } }
+      setResetError(e?.response?.data?.error ?? 'Greška pri resetiranju lozinke.')
+      setResetState('idle')
+    }
+  }
+
   if (isLoading || dataLoading) return <LoadingScreen />
   if (!user) return null
   if (error) {
@@ -77,6 +97,7 @@ export default function EmployeeDetailPage() {
   if (!emp) return null
 
   const canManage = canManageEmployees(user.role)
+  const canReset = canResetPassword(user.role) && emp.role !== 'radnik'
   const canViewInv = canViewOtherInventory(user.role)
   const name = fullName(emp)
 
@@ -119,22 +140,65 @@ export default function EmployeeDetailPage() {
                 <StatusBadge active={emp.active} />
               </div>
             </div>
-            {canManage && (
-              <button
-                onClick={handleToggleActive}
-                className={`text-sm border px-3 py-1.5 rounded-lg transition ${
-                  emp.active
-                    ? 'border-red-800 text-red-400 hover:bg-red-950'
-                    : 'border-green-800 text-green-400 hover:bg-green-950'
-                }`}
-              >
-                {emp.active ? 'Deaktiviraj' : 'Aktiviraj'}
-              </button>
-            )}
+            <div className="flex items-center gap-2 flex-wrap">
+              {canReset && (
+                <button
+                  onClick={() => { setResetState('confirming'); setResetError(null) }}
+                  className="text-sm border border-amber-800 text-amber-400 hover:bg-amber-950 px-3 py-1.5 rounded-lg transition"
+                >
+                  Resetiraj lozinku
+                </button>
+              )}
+              {canManage && (
+                <button
+                  onClick={handleToggleActive}
+                  className={`text-sm border px-3 py-1.5 rounded-lg transition ${
+                    emp.active
+                      ? 'border-red-800 text-red-400 hover:bg-red-950'
+                      : 'border-green-800 text-green-400 hover:bg-green-950'
+                  }`}
+                >
+                  {emp.active ? 'Deaktiviraj' : 'Aktiviraj'}
+                </button>
+              )}
+            </div>
           </div>
 
           {actionError && (
             <p className="text-red-400 text-sm">{actionError}</p>
+          )}
+
+          {resetError && (
+            <p className="text-red-400 text-sm">{resetError}</p>
+          )}
+
+          {/* Reset password confirmation */}
+          {resetState === 'confirming' && (
+            <div className="bg-amber-950/40 border border-amber-800/60 rounded-lg px-4 py-3 space-y-3">
+              <p className="text-amber-200 text-sm font-medium">Resetirati lozinku za {name}?</p>
+              <p className="text-amber-300/70 text-xs">
+                Generirat će se nova privremena lozinka. Zaposlenik mora promijeniti lozinku pri sljedećoj prijavi.
+                Prikazat će se samo jednom.
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={handleResetPassword}
+                  className="text-sm bg-amber-600 hover:bg-amber-500 text-white font-medium px-3 py-1.5 rounded-lg transition"
+                >
+                  Da, resetiraj
+                </button>
+                <button
+                  onClick={() => setResetState('idle')}
+                  className="text-sm border border-slate-700 text-slate-400 hover:bg-slate-800 px-3 py-1.5 rounded-lg transition"
+                >
+                  Odustani
+                </button>
+              </div>
+            </div>
+          )}
+
+          {resetState === 'loading' && (
+            <p className="text-slate-400 text-sm">Resetiranje lozinke...</p>
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
@@ -161,6 +225,38 @@ export default function EmployeeDetailPage() {
           onAssetChange={() => fetchAssets()}
         />
       </div>
+
+      {/* Reset password result modal */}
+      {resetState === 'done' && resetPassword && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-xl p-6 w-full max-w-md space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-amber-900 flex items-center justify-center shrink-0">
+                <span className="text-amber-400 text-sm font-bold">!</span>
+              </div>
+              <p className="text-white font-semibold">Lozinka je resetirana</p>
+            </div>
+            <div className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 space-y-2">
+              <p className="text-slate-300 text-sm">Privremena lozinka za <span className="text-white font-medium">{name}</span>:</p>
+              <p className="font-mono text-lg text-white bg-slate-700 px-3 py-2 rounded select-all break-all">
+                {resetPassword}
+              </p>
+              <p className="text-amber-400 text-xs font-medium">
+                Prikazano samo jednom — zabilježite i podijelite sigurnim kanalom.
+              </p>
+              <p className="text-slate-400 text-xs">
+                Zaposlenik mora promijeniti lozinku pri sljedećoj prijavi.
+              </p>
+            </div>
+            <button
+              onClick={() => { setResetState('idle'); setResetPassword(null) }}
+              className="w-full py-2.5 px-4 bg-white text-slate-900 font-semibold rounded-lg text-sm hover:bg-slate-100 transition"
+            >
+              Zatvori
+            </button>
+          </div>
+        </div>
+      )}
     </DashboardShell>
   )
 }

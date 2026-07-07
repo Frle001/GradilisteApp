@@ -138,6 +138,24 @@ func (h *EmployeeHandler) Activate(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Employee activated"})
 }
 
+// ResetPassword PATCH /api/employees/:id/reset-password
+func (h *EmployeeHandler) ResetPassword(c *gin.Context) {
+	u := appctx.GetAuthUser(c)
+	id := c.Param("id")
+
+	tmpPassword, err := h.svc.ResetPassword(c.Request.Context(), u.CompanyID, u.UserID, c.ClientIP(), c.GetHeader("User-Agent"), id)
+	if err != nil {
+		respondServiceError(c, err)
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"temporaryPassword":  tmpPassword,
+		"mustChangePassword": true,
+		"message":            "Password reset. Share the temporary password securely — it will not be shown again.",
+	})
+}
+
 // ── Assets ────────────────────────────────────────────────────────────────────
 
 // ListAssets GET /api/employees/:id/assets

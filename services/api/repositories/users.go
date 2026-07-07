@@ -41,3 +41,21 @@ func (r *UserRepository) UpdatePassword(ctx context.Context, userID, newHash str
 	}
 	return nil
 }
+
+// ResetPasswordByEmployeeID replaces the password hash for the user linked to a given employee
+// within the company and sets must_change_password = true so the employee is forced to change it.
+// Returns ErrNotFound if the employee has no login account in this company.
+func (r *UserRepository) ResetPasswordByEmployeeID(ctx context.Context, companyID, employeeID, newHash string) error {
+	result, err := r.db.Exec(ctx, `
+		UPDATE users
+		SET password_hash = $1, must_change_password = true
+		WHERE company_id = $2::uuid AND employee_id = $3::uuid
+	`, newHash, companyID, employeeID)
+	if err != nil {
+		return fmt.Errorf("users.ResetPasswordByEmployeeID: %w", err)
+	}
+	if result.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}

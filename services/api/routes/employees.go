@@ -14,6 +14,7 @@ func RegisterEmployeeRoutes(
 	requireRoles func(roles ...string) gin.HandlerFunc,
 ) {
 	manageRoles := requireRoles("direktor", "inzenjer", "administracija")
+	resetRoles := requireRoles("direktor", "inzenjer")
 
 	employees := api.Group("/employees", authRequired)
 	{
@@ -23,6 +24,7 @@ func RegisterEmployeeRoutes(
 		employees.PUT("/:id", manageRoles, h.Update)
 		employees.PATCH("/:id/deactivate", manageRoles, h.Deactivate)
 		employees.PATCH("/:id/activate", manageRoles, h.Activate)
+		employees.PATCH("/:id/reset-password", resetRoles, h.ResetPassword)
 
 		employees.GET("/:id/assets", h.ListAssets)
 		employees.POST("/:id/assets", manageRoles, h.CreateAsset)

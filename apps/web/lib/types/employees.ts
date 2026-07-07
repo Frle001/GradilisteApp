@@ -80,6 +80,10 @@ export function canManageEmployees(role: string): boolean {
   return ['direktor', 'inzenjer', 'administracija'].includes(role)
 }
 
+export function canResetPassword(role: string): boolean {
+  return ['direktor', 'inzenjer'].includes(role)
+}
+
 export function fullName(e: { first_name: string; last_name: string }): string {
   return `${e.first_name} ${e.last_name}`
 }
