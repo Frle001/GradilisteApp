@@ -29,6 +29,11 @@ function formatDate(dateStr: string) {
   })
 }
 
+function formatTime(dateStr: string | null) {
+  if (!dateStr) return null
+  return new Date(dateStr).toLocaleTimeString('hr-HR', { hour: '2-digit', minute: '2-digit' })
+}
+
 export default function DailyReportsPage() {
   const { user, employee, isLoading, logout } = useAuth()
 
@@ -165,7 +170,12 @@ export default function DailyReportsPage() {
               <tbody className="divide-y divide-slate-800">
                 {filtered.map(r => (
                   <tr key={r.id} className="hover:bg-slate-800/40 transition-colors">
-                    <td className="px-4 py-3 text-slate-300 whitespace-nowrap">{formatDate(r.report_date)}</td>
+                    <td className="px-4 py-3 text-slate-300 whitespace-nowrap">
+                      {formatDate(r.report_date)}
+                      {formatTime(r.submitted_at ?? r.created_at) && (
+                        <span className="block text-xs text-slate-500">{formatTime(r.submitted_at ?? r.created_at)}</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-slate-200 font-medium max-w-48 truncate">{r.project_name}</td>
                     <td className="px-4 py-3 text-slate-400 hidden sm:table-cell whitespace-nowrap">{r.poslovoda_name}</td>
                     <td className="px-4 py-3 text-slate-400 hidden md:table-cell whitespace-nowrap">

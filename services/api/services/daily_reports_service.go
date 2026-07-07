@@ -64,6 +64,12 @@ func (s *DailyReportService) Create(ctx context.Context, companyID, callerUserID
 		return "", err
 	}
 
+	loc, _ := time.LoadLocation("Europe/Zagreb")
+	today := time.Now().In(loc).Format("2006-01-02")
+	if req.ReportDate != today {
+		return "", fmt.Errorf("Dnevni izvještaj se može kreirati samo za današnji datum (%s)", today)
+	}
+
 	if err := s.validateReport(ctx, companyID, req.ProjectID, poslovodaEmpID, callerRole, req); err != nil {
 		return "", err
 	}

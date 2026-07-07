@@ -24,21 +24,25 @@ interface Props {
   submitLabel?: string
 }
 
+function localTodayStr(): string {
+  return new Date().toLocaleDateString('sv') // YYYY-MM-DD in browser local time
+}
+
 export default function DailyReportForm({ formData, existing, onSubmit, submitLabel = 'Spremi izvještaj' }: Props) {
   const router = useRouter()
   const isEditMode = !!existing
 
-  // Draft preservation for create mode only
+  // Draft preservation for create mode only (reportDate excluded — always today)
   const [draftFields, setDraftFields, clearDraft] = useFormDraft(
     'daily-report-new',
-    { projectId: '', reportDate: '', notes: '' }
+    { projectId: '', notes: '' }
   )
 
   const [projectId, setProjectId] = useState(
     isEditMode ? existing!.project.id : draftFields.projectId
   )
-  const [reportDate, setReportDate] = useState(
-    isEditMode ? existing!.report_date : draftFields.reportDate
+  const [reportDate] = useState(
+    isEditMode ? existing!.report_date : localTodayStr()
   )
   const [notes, setNotes] = useState(
     isEditMode ? (existing!.notes ?? '') : draftFields.notes
@@ -47,9 +51,9 @@ export default function DailyReportForm({ formData, existing, onSubmit, submitLa
   // Sync to draft whenever fields change (create mode only)
   useEffect(() => {
     if (!isEditMode) {
-      setDraftFields({ projectId, reportDate, notes })
+      setDraftFields({ projectId, notes })
     }
-  }, [projectId, reportDate, notes, isEditMode, setDraftFields])
+  }, [projectId, notes, isEditMode, setDraftFields])
 
   const [workerEntries, setWorkerEntries] = useState<WorkerHoursEntry[]>(() => {
     if (!existing) return []
@@ -199,10 +203,13 @@ export default function DailyReportForm({ formData, existing, onSubmit, submitLa
             <input
               type="date"
               value={reportDate}
-              onChange={e => setReportDate(e.target.value)}
-              disabled={submitting || !!existing}
+              onChange={() => {}}
+              disabled={submitting || !!existing || !isEditMode}
               className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
             />
+            {!isEditMode && (
+              <p className="text-slate-500 text-xs mt-1">Dnevni izvještaj se može kreirati samo za današnji datum.</p>
+            )}
           </div>
 
           <div className="sm:col-span-2">
