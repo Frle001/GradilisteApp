@@ -5,12 +5,10 @@ import { useRouter } from 'next/navigation'
 import {
   type DailyReportFormData,
   type DailyReportDetail,
-  type WorkerHoursEntry,
   type ActivityInputUI,
   type CreateDailyReportPayload,
   type FormDataMaterial,
 } from '@/lib/types/daily-reports'
-import WorkerHoursEditor from './WorkerHoursEditor'
 import ActivityEntryForm from './ActivityEntryForm'
 import ActivityListPreview from './ActivityListPreview'
 import apiClient from '@/lib/api-client'
@@ -54,16 +52,6 @@ export default function DailyReportForm({ formData, existing, onSubmit, submitLa
       setDraftFields({ projectId, notes })
     }
   }, [projectId, notes, isEditMode, setDraftFields])
-
-  const [workerEntries, setWorkerEntries] = useState<WorkerHoursEntry[]>(() => {
-    if (!existing) return []
-    return existing.worker_hours.map(wh => ({
-      worker_id: wh.worker_id,
-      worker_name: wh.worker_name,
-      hours: String(wh.hours_worked),
-      notes: wh.notes ?? '',
-    }))
-  })
 
   const [activities, setActivities] = useState<ActivityInputUI[]>(() => {
     if (!existing) return []
@@ -118,15 +106,7 @@ export default function DailyReportForm({ formData, existing, onSubmit, submitLa
     const errs: string[] = []
     if (!projectId) errs.push('Odaberite projekt.')
     if (!reportDate) errs.push('Datum izvještaja je obavezan.')
-    const hasHours = workerEntries.some(e => e.hours.trim() !== '')
-    if (!hasHours) errs.push('Unesite sate za najmanje jednog radnika.')
-    for (const e of workerEntries) {
-      if (e.hours.trim() === '') continue
-      const n = parseFloat(e.hours)
-      if (isNaN(n) || n < 0 || n > 24) {
-        errs.push(`Nevažeći sati za radnika ${e.worker_name}.`)
-      }
-    }
+    if (activities.length === 0) errs.push('Dodajte barem jednu aktivnost.')
     return errs
   }
 
@@ -140,13 +120,7 @@ export default function DailyReportForm({ formData, existing, onSubmit, submitLa
       project_id: projectId,
       report_date: reportDate,
       notes: notes.trim() || null,
-      worker_hours: workerEntries
-        .filter(e => e.hours.trim() !== '')
-        .map(e => ({
-          worker_id: e.worker_id,
-          hours_worked: parseFloat(e.hours),
-          notes: e.notes.trim() || null,
-        })),
+      worker_hours: [],
       activities: activities.map(a => ({
         project_material_id: a.project_material_id,
         custom_material_name: a.custom_material_name,
@@ -173,8 +147,6 @@ export default function DailyReportForm({ formData, existing, onSubmit, submitLa
       setSubmitting(false)
     }
   }
-
-  const workers = formData.workers
 
   return (
     <form onSubmit={handleSubmit} className="space-y-8">
@@ -226,21 +198,15 @@ export default function DailyReportForm({ formData, existing, onSubmit, submitLa
         </div>
       </section>
 
-      {/* ── Worker hours ──────────────────────────────────────────────────── */}
-      <section className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
-        <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
-          Radni sati
-          <span className="ml-2 text-slate-600 font-normal normal-case text-xs">
-            ({workerEntries.filter(e => e.hours.trim() !== '').length} od {workers.length} radnika)
-          </span>
-        </h2>
-        <WorkerHoursEditor
-          workers={workers}
-          entries={workerEntries}
-          onChange={setWorkerEntries}
-          disabled={submitting}
-        />
-      </section>
+      {/* ── Worker hours info ─────────────────────────────────────────────── */}
+      <div className="flex items-start gap-3 bg-blue-950/40 border border-blue-800/50 rounded-xl px-4 py-3">
+        <svg className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+        </svg>
+        <p className="text-sm text-blue-300">
+          Radnici sada samostalno unose svoje radne sate kroz modul <span className="font-medium text-blue-200">Moji sati</span>.
+        </p>
+      </div>
 
       {/* ── Activities ────────────────────────────────────────────────────── */}
       <section className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">

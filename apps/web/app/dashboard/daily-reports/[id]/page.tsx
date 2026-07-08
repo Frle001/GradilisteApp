@@ -150,16 +150,14 @@ export default function DailyReportDetailPage() {
             </div>
 
             {/* ── Worker hours ────────────────────────────────────────── */}
-            <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
-              <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
-                Radni sati
-                <span className="ml-2 text-slate-600 font-normal normal-case text-xs">
-                  {report.worker_hours.length} radnika &middot; {report.worker_hours.reduce((s, w) => s + w.hours_worked, 0).toFixed(1)}h ukupno
-                </span>
-              </h2>
-              {report.worker_hours.length === 0 ? (
-                <p className="text-sm text-slate-500">Nema upisanih radnih sati.</p>
-              ) : (
+            {report.worker_hours.length > 0 ? (
+              <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
+                <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
+                  Radni sati
+                  <span className="ml-2 text-slate-600 font-normal normal-case text-xs">
+                    {report.worker_hours.length} radnika &middot; {report.worker_hours.reduce((s, w) => s + w.hours_worked, 0).toFixed(1)}h ukupno
+                  </span>
+                </h2>
                 <div className="space-y-1">
                   {report.worker_hours.map(wh => (
                     <div key={wh.id} className="flex items-center justify-between px-2 py-1.5 rounded hover:bg-slate-800/40">
@@ -171,8 +169,17 @@ export default function DailyReportDetailPage() {
                     </div>
                   ))}
                 </div>
-              )}
-            </div>
+              </div>
+            ) : (
+              <div className="flex items-start gap-3 bg-blue-950/40 border border-blue-800/50 rounded-xl px-4 py-3">
+                <svg className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <p className="text-sm text-blue-300">
+                  Radnici sada samostalno unose svoje radne sate kroz modul <span className="font-medium text-blue-200">Moji sati</span>.
+                </p>
+              </div>
+            )}
 
             {/* ── Activities ──────────────────────────────────────────── */}
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">

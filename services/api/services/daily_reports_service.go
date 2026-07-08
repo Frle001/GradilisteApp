@@ -306,9 +306,9 @@ func (s *DailyReportService) validateReport(ctx context.Context, companyID, proj
 		}
 	}
 
-	// At least one entry required
-	if len(req.WorkerHours) == 0 && len(req.Activities) == 0 {
-		return fmt.Errorf("izvještaj mora sadržavati barem jednog radnika ili jednu aktivnost")
+	// At least one activity required (worker hours are now entered by radnici independently)
+	if len(req.Activities) == 0 {
+		return fmt.Errorf("izvještaj mora sadržavati barem jednu aktivnost")
 	}
 
 	// Validate worker hours
