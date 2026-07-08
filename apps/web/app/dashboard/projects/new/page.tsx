@@ -64,6 +64,7 @@ export default function NewProjectPage() {
             submitLabel="Kreiraj projekt"
             isSubmitting={isSubmitting}
             serverError={serverError}
+            hideEndDate
           />
         </div>
       </div>

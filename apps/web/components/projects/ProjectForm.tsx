@@ -16,6 +16,7 @@ interface ProjectFormProps {
   submitLabel: string
   isSubmitting: boolean
   serverError: string | null
+  hideEndDate?: boolean
 }
 
 export default function ProjectForm({
@@ -24,6 +25,7 @@ export default function ProjectForm({
   submitLabel,
   isSubmitting,
   serverError,
+  hideEndDate = false,
 }: ProjectFormProps) {
   const {
     register,
@@ -87,16 +89,23 @@ export default function ProjectForm({
       </div>
 
       {/* Dates */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+      {hideEndDate ? (
         <div>
           <label className="block text-sm font-medium text-slate-300 mb-1.5">Datum početka</label>
           <input type="date" className={inputCls(false)} {...register('start_date')} />
         </div>
-        <div>
-          <label className="block text-sm font-medium text-slate-300 mb-1.5">Datum završetka</label>
-          <input type="date" className={inputCls(false)} {...register('end_date')} />
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1.5">Datum početka</label>
+            <input type="date" className={inputCls(false)} {...register('start_date')} />
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-slate-300 mb-1.5">Datum završetka</label>
+            <input type="date" className={inputCls(false)} {...register('end_date')} />
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Primary Poslovoda */}
       <div>
