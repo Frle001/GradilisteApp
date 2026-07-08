@@ -74,7 +74,8 @@ func main() {
 	matHandler := handlers.NewProjectMaterialHandler(matSvc)
 
 	drRepo := repositories.NewDailyReportRepository(db)
-	drSvc := services.NewDailyReportService(db, drRepo, auditRepo)
+	rmeRepo := repositories.NewReportMaterialEffectsRepository(db)
+	drSvc := services.NewDailyReportService(db, drRepo, auditRepo, rmeRepo)
 	drHandler := handlers.NewDailyReportHandler(drSvc)
 
 	reportsRepo := repositories.NewReportsRepository(db)

@@ -18,17 +18,19 @@ var ErrDailyReportNotEditable = errors.New("report cannot be edited in its curre
 var ErrDailyReportInvalidStatus = errors.New("report is not in a state that allows this action")
 
 type DailyReportService struct {
-	db        *pgxpool.Pool
-	drRepo    *repositories.DailyReportRepository
-	auditRepo *repositories.AuditRepository
+	db                 *pgxpool.Pool
+	drRepo             *repositories.DailyReportRepository
+	auditRepo          *repositories.AuditRepository
+	materialEffectsRepo *repositories.ReportMaterialEffectsRepository
 }
 
 func NewDailyReportService(
 	db *pgxpool.Pool,
 	drRepo *repositories.DailyReportRepository,
 	auditRepo *repositories.AuditRepository,
+	materialEffectsRepo *repositories.ReportMaterialEffectsRepository,
 ) *DailyReportService {
-	return &DailyReportService{db: db, drRepo: drRepo, auditRepo: auditRepo}
+	return &DailyReportService{db: db, drRepo: drRepo, auditRepo: auditRepo, materialEffectsRepo: materialEffectsRepo}
 }
 
 // ── List ──────────────────────────────────────────────────────────────────────
@@ -105,7 +107,7 @@ func (s *DailyReportService) Create(ctx context.Context, companyID, callerUserID
 // ── Update ────────────────────────────────────────────────────────────────────
 
 func (s *DailyReportService) Update(ctx context.Context, id, companyID, callerUserID, callerEmpID, callerRole string, req dto.CreateDailyReportRequest) (*dto.DailyReportDetail, error) {
-	status, poslovodaID, err := s.drRepo.GetByIDForEdit(ctx, id, companyID)
+	status, poslovodaID, _, err := s.drRepo.GetByIDForEdit(ctx, id, companyID)
 	if err != nil {
 		return nil, err
 	}
@@ -153,7 +155,7 @@ func (s *DailyReportService) Update(ctx context.Context, id, companyID, callerUs
 // ── Approve ───────────────────────────────────────────────────────────────────
 
 func (s *DailyReportService) Approve(ctx context.Context, id, companyID, callerUserID, callerEmpID string) error {
-	status, _, err := s.drRepo.GetByIDForEdit(ctx, id, companyID)
+	status, _, projectID, err := s.drRepo.GetByIDForEdit(ctx, id, companyID)
 	if err != nil {
 		return err
 	}
@@ -161,11 +163,27 @@ func (s *DailyReportService) Approve(ctx context.Context, id, companyID, callerU
 		return ErrDailyReportInvalidStatus
 	}
 
+	acts, err := s.drRepo.GetActivitiesForApproval(ctx, id, companyID)
+	if err != nil {
+		return err
+	}
+
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return err
 	}
 	defer tx.Rollback(ctx)
+
+	// Secondary idempotency guard — primary guard is the status check above.
+	applied, err := s.materialEffectsRepo.EffectsAlreadyApplied(ctx, tx, id)
+	if err != nil {
+		return err
+	}
+	if !applied {
+		if err := s.materialEffectsRepo.ValidateAndApply(ctx, tx, companyID, id, projectID, callerUserID, acts); err != nil {
+			return err
+		}
+	}
 
 	if err := s.drRepo.SetStatus(ctx, tx, id, companyID, "approved", nil); err != nil {
 		return err
@@ -188,7 +206,7 @@ func (s *DailyReportService) Approve(ctx context.Context, id, companyID, callerU
 // ── Reject ────────────────────────────────────────────────────────────────────
 
 func (s *DailyReportService) Reject(ctx context.Context, id, companyID, callerUserID, callerEmpID, reason string) error {
-	status, _, err := s.drRepo.GetByIDForEdit(ctx, id, companyID)
+	status, _, _, err := s.drRepo.GetByIDForEdit(ctx, id, companyID)
 	if err != nil {
 		return err
 	}

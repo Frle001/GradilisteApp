@@ -79,16 +79,68 @@ func (r *DailyReportRepository) IsMaterialInProject(ctx context.Context, materia
 	return exists, err
 }
 
-// GetByIDForEdit returns (status, poslovodaID) for edit-permission checks.
-func (r *DailyReportRepository) GetByIDForEdit(ctx context.Context, id, companyID string) (status, poslovodaID string, err error) {
+// GetByIDForEdit returns (status, poslovodaID, projectID) for edit-permission checks.
+func (r *DailyReportRepository) GetByIDForEdit(ctx context.Context, id, companyID string) (status, poslovodaID, projectID string, err error) {
 	err = r.db.QueryRow(ctx,
-		`SELECT status, poslovoda_id::text FROM daily_reports WHERE id = $1::uuid AND company_id = $2::uuid`,
+		`SELECT status, poslovoda_id::text, project_id::text FROM daily_reports WHERE id = $1::uuid AND company_id = $2::uuid`,
 		id, companyID,
-	).Scan(&status, &poslovodaID)
+	).Scan(&status, &poslovodaID, &projectID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return "", "", ErrDailyReportNotFound
+		return "", "", "", ErrDailyReportNotFound
 	}
-	return status, poslovodaID, err
+	return status, poslovodaID, projectID, err
+}
+
+// ActivityForApproval holds data for one activity needed during report approval.
+type ActivityForApproval struct {
+	ID                 string
+	ProjectMaterialID  *string
+	CustomMaterialName *string
+	Quantity           float64
+	Unit               string
+	ActivityType       string
+	IsVTK              bool
+}
+
+// GetActivitiesForApproval returns montaža and demontaža activities for a report.
+func (r *DailyReportRepository) GetActivitiesForApproval(ctx context.Context, reportID, companyID string) ([]ActivityForApproval, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT
+			id::text,
+			project_material_id::text,
+			custom_material_name,
+			quantity,
+			unit,
+			activity_type,
+			is_vtk
+		FROM daily_report_activities
+		WHERE daily_report_id = $1::uuid
+		  AND company_id = $2::uuid
+		  AND activity_type IN ('montaza', 'demontaza')
+		ORDER BY created_at
+	`, reportID, companyID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var acts []ActivityForApproval
+	for rows.Next() {
+		var a ActivityForApproval
+		if err := rows.Scan(
+			&a.ID,
+			&a.ProjectMaterialID,
+			&a.CustomMaterialName,
+			&a.Quantity,
+			&a.Unit,
+			&a.ActivityType,
+			&a.IsVTK,
+		); err != nil {
+			return nil, err
+		}
+		acts = append(acts, a)
+	}
+	return acts, rows.Err()
 }
 
 // ── List ──────────────────────────────────────────────────────────────────────

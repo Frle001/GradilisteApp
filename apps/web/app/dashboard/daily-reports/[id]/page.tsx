@@ -51,7 +51,7 @@ export default function DailyReportDetailPage() {
   const canManage = !!user && canApproveReject(user.role)
 
   async function handleApprove() {
-    if (!report || !confirm('Odobriti ovaj izvještaj?')) return
+    if (!report || !confirm('Odobriti ovaj izvještaj?\n\nOdobrenjem će se automatski ažurirati dostupno stanje materijala na projektu za sve aktivnosti montaže i demontaže.')) return
     setActing(true)
     setActionError(null)
     try {
