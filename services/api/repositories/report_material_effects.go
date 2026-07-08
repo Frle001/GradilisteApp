@@ -28,10 +28,10 @@ func (r *ReportMaterialEffectsRepository) EffectsAlreadyApplied(ctx context.Cont
 
 // ValidateAndApply applies material quantity changes for each activity, within the given transaction.
 //
-// montaža (non-VTK): subtracts quantity from available_quantity; returns error if insufficient.
-// demontaža (non-VTK): adds quantity to available_quantity.
-// demontaža (VTK): upserts project_material by (project_id, name, unit), then adds quantity.
-// montaža (VTK): skipped — no project_material_id to target.
+// montaža (non-VTR): subtracts quantity from available_quantity; returns error if insufficient.
+// demontaža (non-VTR): adds quantity to available_quantity.
+// montaža (VTR): looks up material by name+unit, subtracts; returns error if not found or insufficient.
+// demontaža (VTR): upserts project_material by (project_id, name, unit), then adds quantity.
 func (r *ReportMaterialEffectsRepository) ValidateAndApply(
 	ctx context.Context,
 	tx pgx.Tx,
@@ -44,6 +44,10 @@ func (r *ReportMaterialEffectsRepository) ValidateAndApply(
 			if err := r.applyMontaza(ctx, tx, companyID, reportID, projectID, appliedByUserID, a); err != nil {
 				return err
 			}
+		case a.ActivityType == "montaza" && a.IsVTK:
+			if err := r.applyMontazaVTK(ctx, tx, companyID, reportID, projectID, appliedByUserID, a); err != nil {
+				return err
+			}
 		case a.ActivityType == "demontaza" && !a.IsVTK:
 			if err := r.applyDemontaza(ctx, tx, companyID, reportID, projectID, appliedByUserID, a); err != nil {
 				return err
@@ -52,7 +56,6 @@ func (r *ReportMaterialEffectsRepository) ValidateAndApply(
 			if err := r.applyDemontazaVTK(ctx, tx, companyID, reportID, projectID, appliedByUserID, a); err != nil {
 				return err
 			}
-		// montaža VTK: no project_material_id — skip, no material effect recorded
 		}
 	}
 	return nil
@@ -92,6 +95,53 @@ func (r *ReportMaterialEffectsRepository) applyMontaza(
 	}
 
 	return r.insertEffect(ctx, tx, companyID, reportID, projectID, appliedByUserID, a, a.ProjectMaterialID)
+}
+
+func (r *ReportMaterialEffectsRepository) applyMontazaVTK(
+	ctx context.Context, tx pgx.Tx,
+	companyID, reportID, projectID, appliedByUserID string,
+	a ActivityForApproval,
+) error {
+	if a.CustomMaterialName == nil {
+		return fmt.Errorf("VTR montaža aktivnost nema naziv materijala")
+	}
+
+	// Atomic subtract by name+unit: only succeeds if material exists and available_quantity >= quantity.
+	var updatedID string
+	err := tx.QueryRow(ctx, `
+		UPDATE project_materials
+		SET available_quantity = available_quantity - $1,
+		    updated_at = NOW()
+		WHERE project_id = $2::uuid
+		  AND company_id = $3::uuid
+		  AND LOWER(material_name) = LOWER($4)
+		  AND unit = $5
+		  AND available_quantity >= $1
+		RETURNING id::text
+	`, a.Quantity, projectID, companyID, *a.CustomMaterialName, a.Unit).Scan(&updatedID)
+
+	if err == pgx.ErrNoRows {
+		// Distinguish "not found" from "insufficient stock"
+		var exists bool
+		_ = tx.QueryRow(ctx, `
+			SELECT EXISTS(
+				SELECT 1 FROM project_materials
+				WHERE project_id = $1::uuid
+				  AND company_id = $2::uuid
+				  AND LOWER(material_name) = LOWER($3)
+				  AND unit = $4
+			)
+		`, projectID, companyID, *a.CustomMaterialName, a.Unit).Scan(&exists)
+		if exists {
+			return fmt.Errorf("nedovoljno dostupnih zaliha za VTR materijal '%s' (potrebno %.2f %s)", *a.CustomMaterialName, a.Quantity, a.Unit)
+		}
+		return fmt.Errorf("VTR materijal '%s' (%s) nije pronađen u projektu", *a.CustomMaterialName, a.Unit)
+	}
+	if err != nil {
+		return fmt.Errorf("greška pri umanjenju stanja VTR materijala: %w", err)
+	}
+
+	return r.insertEffect(ctx, tx, companyID, reportID, projectID, appliedByUserID, a, &updatedID)
 }
 
 func (r *ReportMaterialEffectsRepository) applyDemontaza(
