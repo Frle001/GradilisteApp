@@ -54,7 +54,7 @@ const roleCards: Record<string, DashboardCard[]> = {
     { title: 'Građevinska knjiga', description: 'Aktivnosti i utrošak materijala', icon: '📚', href: '/dashboard/reports/gradevinska-knjiga' },
   ],
   radnik: [
-    { title: 'Moji sati', description: 'Unos vlastitih radnih sati bit će dostupan u sljedećem koraku.', icon: '⏱️' },
+    { title: 'Moji sati', description: 'Unos vlastitih dnevnih radnih sati po projektu.', icon: '⏱️', href: '/dashboard/my-hours' },
   ],
 }
 

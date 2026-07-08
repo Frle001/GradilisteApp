@@ -89,6 +89,10 @@ func main() {
 	invSvc := services.NewInventoryService(db, invRepo)
 	invHandler := handlers.NewInventoryHandler(invSvc)
 
+	whRepo := repositories.NewWorkerHoursRepository(db)
+	whSvc := services.NewWorkerHoursService(whRepo)
+	whHandler := handlers.NewWorkerHoursHandler(whSvc)
+
 	// ── Router ────────────────────────────────────────────────────────────────
 	if Config.Env != "development" {
 		gin.SetMode(gin.ReleaseMode)
@@ -172,6 +176,7 @@ func main() {
 	routes.RegisterReportsRoutes(api, reportsHandler, AuthRequired(), RequireRoles)
 	routes.RegisterMaterialPurchasesRoutes(api, mpHandler, AuthRequired(), RequireRoles)
 	routes.RegisterInventoryRoutes(api, invHandler, AuthRequired(), RequireRoles)
+	routes.RegisterWorkerHoursRoutes(api, whHandler, AuthRequired(), RequireRoles)
 
 	// ── Debug (development only) ──────────────────────────────────────────────
 	if Config.Env == "development" {

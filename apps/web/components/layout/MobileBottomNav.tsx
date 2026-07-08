@@ -9,6 +9,7 @@ import {
   Users,
   ShoppingBag,
   Package,
+  Clock,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -50,6 +51,7 @@ const navByRole: Record<string, NavItem[]> = {
   ],
   radnik: [
     { href: '/dashboard', label: 'Početna', Icon: Home, exact: true },
+    { href: '/dashboard/my-hours', label: 'Moji sati', Icon: Clock },
   ],
 }
 
