@@ -53,6 +53,9 @@ func (w *reportWhere) addRaw(cond string, arg interface{}) {
 }
 
 func (w *reportWhere) sql() string {
+	if len(w.conds) == 0 {
+		return ""
+	}
 	return "WHERE " + strings.Join(w.conds, " AND ")
 }
 
@@ -69,33 +72,89 @@ func (w *reportWhere) clone() *reportWhere {
 
 // ── Dnevnik helpers ───────────────────────────────────────────────────────────
 
+// dnevnikCTE combines worker_daily_hours (Radnik unos) and daily_report_worker_hours
+// (Dnevni izvještaj) into a single result set. $1 = company_id throughout.
+// Duplicate rule: worker_daily_hours takes priority; daily_report rows are excluded
+// when a matching worker_daily_hours row exists for the same worker/project/date.
+const dnevnikCTE = `
+WITH combined AS (
+	SELECT
+		wdh.id::text                            AS report_id,
+		wdh.work_date::text                     AS report_date,
+		wdh.project_id::text                    AS project_id,
+		p.name                                  AS project_name,
+		p.address                               AS project_address,
+		''::text                                AS poslovoda_id,
+		'—'::text                               AS poslovoda_name,
+		wdh.worker_id::text                     AS worker_id,
+		(we.first_name||' '||we.last_name)      AS worker_name,
+		wdh.hours_worked,
+		wdh.notes,
+		'radnik_unos'::text                     AS status,
+		'Radnik unos'::text                     AS source
+	FROM worker_daily_hours wdh
+	JOIN projects p  ON p.id  = wdh.project_id
+	JOIN employees we ON we.id = wdh.worker_id
+	WHERE wdh.company_id = $1::uuid
+
+	UNION ALL
+
+	SELECT
+		dr.id::text,
+		dr.report_date::text,
+		dr.project_id::text,
+		p.name,
+		p.address,
+		dr.poslovoda_id::text,
+		(pe.first_name||' '||pe.last_name),
+		drwh.worker_id::text,
+		(we.first_name||' '||we.last_name),
+		drwh.hours_worked,
+		drwh.notes,
+		dr.status,
+		'Dnevni izvještaj'::text
+	FROM daily_report_worker_hours drwh
+	JOIN daily_reports dr  ON dr.id   = drwh.daily_report_id
+	JOIN projects p        ON p.id    = dr.project_id
+	JOIN employees pe      ON pe.id   = dr.poslovoda_id
+	JOIN employees we      ON we.id   = drwh.worker_id
+	WHERE drwh.company_id = $1::uuid
+	  AND NOT EXISTS (
+		  SELECT 1 FROM worker_daily_hours wdh2
+		  WHERE wdh2.company_id = $1::uuid
+		    AND wdh2.worker_id  = drwh.worker_id
+		    AND wdh2.project_id = dr.project_id
+		    AND wdh2.work_date  = dr.report_date
+	  )
+)`
+
 func buildDnevnikWhere(companyID string, f dto.ReportFilter) *reportWhere {
-	w := newReportWhere(companyID, true)
+	// $1 = companyID is used inside the CTE; outer WHERE conditions start at $2.
+	w := &reportWhere{idx: 2, args: []interface{}{companyID}}
 
 	if f.PoslovodaID != nil {
-		w.add("dr.poslovoda_id = $%d::uuid", *f.PoslovodaID)
+		w.add("poslovoda_id = $%d::uuid", *f.PoslovodaID)
 	}
 	if f.ProjectID != nil {
-		w.add("dr.project_id = $%d::uuid", *f.ProjectID)
+		w.add("project_id = $%d::uuid", *f.ProjectID)
 	}
 	if f.WorkerID != nil {
-		w.add("drwh.worker_id = $%d::uuid", *f.WorkerID)
+		w.add("worker_id = $%d::uuid", *f.WorkerID)
 	}
 	if f.Status != nil {
-		w.add("dr.status = $%d", *f.Status)
+		w.add("status = $%d", *f.Status)
 	}
 	if f.DateFrom != nil {
-		w.add("dr.report_date >= $%d::date", *f.DateFrom)
+		w.add("report_date >= $%d::date", *f.DateFrom)
 	}
 	if f.DateTo != nil {
-		w.add("dr.report_date <= $%d::date", *f.DateTo)
+		w.add("report_date <= $%d::date", *f.DateTo)
 	}
 	if f.Search != nil && strings.TrimSpace(*f.Search) != "" {
 		like := "%" + *f.Search + "%"
-		// PostgreSQL allows referencing the same $N multiple times
 		n := w.idx
 		w.conds = append(w.conds, fmt.Sprintf(
-			"(p.name ILIKE $%d OR (pe.first_name||' '||pe.last_name) ILIKE $%d OR (we.first_name||' '||we.last_name) ILIKE $%d)",
+			"(project_name ILIKE $%d OR poslovoda_name ILIKE $%d OR worker_name ILIKE $%d)",
 			n, n, n,
 		))
 		w.args = append(w.args, like)
@@ -149,13 +208,6 @@ func buildKnjigaWhere(companyID string, f dto.ReportFilter) *reportWhere {
 	return w
 }
 
-const dnevnikJoins = `
-FROM daily_report_worker_hours drwh
-JOIN daily_reports dr ON dr.id = drwh.daily_report_id
-JOIN projects p ON p.id = dr.project_id
-JOIN employees pe ON pe.id = dr.poslovoda_id
-JOIN employees we ON we.id = drwh.worker_id`
-
 const knjigaJoins = `
 FROM daily_report_activities dra
 JOIN daily_reports dr ON dr.id = dra.daily_report_id
@@ -167,7 +219,7 @@ LEFT JOIN project_materials pm ON pm.id = dra.project_material_id`
 
 func (r *ReportsRepository) CountDnevnik(ctx context.Context, companyID string, f dto.ReportFilter) (int, error) {
 	w := buildDnevnikWhere(companyID, f)
-	q := fmt.Sprintf(`SELECT COUNT(*) %s %s`, dnevnikJoins, w.sql())
+	q := fmt.Sprintf(`%s SELECT COUNT(*) FROM combined %s`, dnevnikCTE, w.sql())
 	var total int
 	err := r.db.QueryRow(ctx, q, w.args...).Scan(&total)
 	return total, err
@@ -177,23 +229,16 @@ func (r *ReportsRepository) ListDnevnik(ctx context.Context, companyID string, f
 	w := buildDnevnikWhere(companyID, f)
 	offset := (page - 1) * perPage
 	q := fmt.Sprintf(`
+		%s
 		SELECT
-			dr.id::text,
-			dr.report_date::text,
-			dr.project_id::text,
-			p.name,
-			p.address,
-			dr.poslovoda_id::text,
-			pe.first_name||' '||pe.last_name,
-			drwh.worker_id::text,
-			we.first_name||' '||we.last_name,
-			drwh.hours_worked,
-			drwh.notes,
-			dr.status
-		%s %s
-		ORDER BY dr.report_date DESC, p.name, we.last_name, we.first_name
+			report_id, report_date, project_id, project_name, project_address,
+			poslovoda_id, poslovoda_name, worker_id, worker_name,
+			hours_worked, notes, status, source
+		FROM combined
+		%s
+		ORDER BY report_date DESC, project_name, worker_name
 		LIMIT $%d OFFSET $%d
-	`, dnevnikJoins, w.sql(), w.idx, w.idx+1)
+	`, dnevnikCTE, w.sql(), w.idx, w.idx+1)
 
 	args := append(w.args, perPage, offset)
 	rows, err := r.db.Query(ctx, q, args...)
@@ -210,7 +255,7 @@ func (r *ReportsRepository) ListDnevnik(ctx context.Context, companyID string, f
 			&row.ProjectID, &row.ProjectName, &row.ProjectAddress,
 			&row.PoslovodaID, &row.PoslovodaName,
 			&row.WorkerID, &row.WorkerName,
-			&row.HoursWorked, &row.Notes, &row.Status,
+			&row.HoursWorked, &row.Notes, &row.Status, &row.Source,
 		); err != nil {
 			return nil, err
 		}
@@ -225,12 +270,14 @@ func (r *ReportsRepository) ListDnevnik(ctx context.Context, companyID string, f
 func (r *ReportsRepository) SummaryDnevnik(ctx context.Context, companyID string, f dto.ReportFilter) (dto.GradevinskiDnevnikSummary, error) {
 	w := buildDnevnikWhere(companyID, f)
 	q := fmt.Sprintf(`
+		%s
 		SELECT
-			COALESCE(SUM(drwh.hours_worked), 0),
-			COUNT(DISTINCT drwh.worker_id),
-			COUNT(DISTINCT dr.project_id)
-		%s %s
-	`, dnevnikJoins, w.sql())
+			COALESCE(SUM(hours_worked), 0),
+			COUNT(DISTINCT worker_id),
+			COUNT(DISTINCT project_id)
+		FROM combined
+		%s
+	`, dnevnikCTE, w.sql())
 
 	var s dto.GradevinskiDnevnikSummary
 	err := r.db.QueryRow(ctx, q, w.args...).Scan(&s.TotalHours, &s.WorkersCount, &s.ProjectsCount)
@@ -240,25 +287,18 @@ func (r *ReportsRepository) SummaryDnevnik(ctx context.Context, companyID string
 func (r *ReportsRepository) ExportDnevnik(ctx context.Context, companyID string, f dto.ReportFilter, limit int) ([]dto.GradevinskiDnevnikRow, error) {
 	w := buildDnevnikWhere(companyID, f)
 	q := fmt.Sprintf(`
+		%s
 		SELECT
-			dr.id::text,
-			dr.report_date::text,
-			dr.project_id::text,
-			p.name,
-			p.address,
-			dr.poslovoda_id::text,
-			pe.first_name||' '||pe.last_name,
-			drwh.worker_id::text,
-			we.first_name||' '||we.last_name,
-			drwh.hours_worked,
-			drwh.notes,
-			dr.status
-		%s %s
-		ORDER BY dr.report_date DESC, p.name, we.last_name, we.first_name
+			report_id, report_date, project_id, project_name, project_address,
+			poslovoda_id, poslovoda_name, worker_id, worker_name,
+			hours_worked, notes, status, source
+		FROM combined
+		%s
+		ORDER BY report_date DESC, project_name, worker_name
 		LIMIT $%d
-	`, dnevnikJoins, w.sql(), w.idx)
+	`, dnevnikCTE, w.sql(), w.idx)
 
-	args := append(w.args, limit+1) // fetch limit+1 to detect overflow
+	args := append(w.args, limit+1)
 	rows, err := r.db.Query(ctx, q, args...)
 	if err != nil {
 		return nil, err
@@ -273,7 +313,7 @@ func (r *ReportsRepository) ExportDnevnik(ctx context.Context, companyID string,
 			&row.ProjectID, &row.ProjectName, &row.ProjectAddress,
 			&row.PoslovodaID, &row.PoslovodaName,
 			&row.WorkerID, &row.WorkerName,
-			&row.HoursWorked, &row.Notes, &row.Status,
+			&row.HoursWorked, &row.Notes, &row.Status, &row.Source,
 		); err != nil {
 			return nil, err
 		}

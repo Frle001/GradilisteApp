@@ -53,6 +53,8 @@ func statusLabel(s string) string {
 		return "Odobreno"
 	case "rejected":
 		return "Odbijeno"
+	case "radnik_unos":
+		return "—"
 	default:
 		return s
 	}
@@ -159,7 +161,7 @@ func (s *ExcelExportService) BuildDnevnikXLSX(rows []dto.GradevinskiDnevnikRow, 
 	headers := []string{
 		"Datum", "Gradilište", "Adresa gradilišta",
 		"Poslovođa", "Radnik", "Sati",
-		"Status izvještaja", "Napomena",
+		"Status izvještaja", "Napomena", "Izvor",
 	}
 
 	headerStyle, err := makeHeaderStyle(f)
@@ -188,17 +190,17 @@ func (s *ExcelExportService) BuildDnevnikXLSX(rows []dto.GradevinskiDnevnikRow, 
 		_ = f.SetCellValue(sheet, cellRef(6, r), row.HoursWorked)
 		_ = f.SetCellValue(sheet, cellRef(7, r), statusLabel(row.Status))
 		_ = f.SetCellValue(sheet, cellRef(8, r), strOrDash(row.Notes))
+		_ = f.SetCellValue(sheet, cellRef(9, r), row.Source)
 
 		_ = f.SetCellStyle(sheet, cellRef(1, r), cellRef(5, r), dataStyle)
 		_ = f.SetCellStyle(sheet, cellRef(6, r), cellRef(6, r), numStyle)
-		_ = f.SetCellStyle(sheet, cellRef(7, r), cellRef(8, r), dataStyle)
+		_ = f.SetCellStyle(sheet, cellRef(7, r), cellRef(9, r), dataStyle)
 	}
 
 	// Column widths
-	widths := []float64{12, 30, 25, 22, 22, 8, 18, 30}
-	cols := []string{"A", "B", "C", "D", "E", "F", "G", "H"}
-	for i, col := range cols {
-		_ = f.SetColWidth(sheet, col, col, widths[i])
+	widths := []float64{12, 30, 25, 22, 22, 8, 18, 30, 16}
+	for i, w := range widths {
+		_ = f.SetColWidth(sheet, colName(i+1), colName(i+1), w)
 	}
 
 	addSummarySheet(f, "Građevinski dnevnik", len(rows), []string{

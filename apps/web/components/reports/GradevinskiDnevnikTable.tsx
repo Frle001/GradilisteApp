@@ -15,14 +15,14 @@ interface Props {
 function LoadingSkeleton() {
   return (
     <div className="rounded-xl border border-slate-700 overflow-hidden">
-      <div className="bg-slate-800/80 px-4 py-3 border-b border-slate-700 grid grid-cols-7 gap-4">
-        {Array.from({ length: 7 }).map((_, i) => (
+      <div className="bg-slate-800/80 px-4 py-3 border-b border-slate-700 grid grid-cols-8 gap-4">
+        {Array.from({ length: 8 }).map((_, i) => (
           <div key={i} className="h-3 rounded bg-slate-700 animate-pulse" />
         ))}
       </div>
       {Array.from({ length: 8 }).map((_, i) => (
-        <div key={i} className="px-4 py-3 border-b border-slate-800 grid grid-cols-7 gap-4 last:border-0">
-          {Array.from({ length: 7 }).map((_, j) => (
+        <div key={i} className="px-4 py-3 border-b border-slate-800 grid grid-cols-8 gap-4 last:border-0">
+          {Array.from({ length: 8 }).map((_, j) => (
             <div key={j} className="h-3 rounded bg-slate-800 animate-pulse" style={{ width: `${60 + (i * j * 7) % 40}%` }} />
           ))}
         </div>
@@ -57,6 +57,7 @@ export default function GradevinskiDnevnikTable({ rows, loading }: Props) {
             <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider text-right whitespace-nowrap">Sati</th>
             <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Status</th>
             <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Napomena</th>
+            <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Izvor</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-800">
@@ -81,10 +82,22 @@ export default function GradevinskiDnevnikTable({ rows, loading }: Props) {
                 <span className="text-slate-500 font-normal text-xs ml-0.5">h</span>
               </td>
               <td className="px-4 py-3">
-                <DailyReportStatusBadge status={row.status as ReportStatus} />
+                {row.source === 'Radnik unos'
+                  ? <span className="text-slate-600">—</span>
+                  : <DailyReportStatusBadge status={row.status as ReportStatus} />
+                }
               </td>
               <td className="px-4 py-3 text-slate-400 max-w-[180px] truncate" title={row.notes ?? undefined}>
                 {row.notes || <span className="text-slate-700">—</span>}
+              </td>
+              <td className="px-4 py-3 whitespace-nowrap">
+                <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-xs font-semibold ${
+                  row.source === 'Radnik unos'
+                    ? 'bg-violet-500/15 text-violet-300 border border-violet-500/40'
+                    : 'bg-slate-700/70 text-slate-300 border border-slate-600'
+                }`}>
+                  {row.source}
+                </span>
               </td>
             </tr>
           ))}

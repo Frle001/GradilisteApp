@@ -37,6 +37,7 @@ export interface GradevinskiDnevnikRow {
   hours_worked: number
   notes: string | null
   status: string
+  source: string
 }
 
 export interface GradevinskiDnevnikSummary {

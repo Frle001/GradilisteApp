@@ -39,6 +39,7 @@ type GradevinskiDnevnikRow struct {
 	HoursWorked    float64 `json:"hours_worked"`
 	Notes          *string `json:"notes"`
 	Status         string  `json:"status"`
+	Source         string  `json:"source"`
 }
 
 type GradevinskiDnevnikSummary struct {
