@@ -24,7 +24,9 @@ WORKDIR /app
 
 COPY --from=builder /build/api .
 
-RUN chown appuser:appuser /app/api
+RUN chown appuser:appuser /app/api && \
+    mkdir -p /app/uploads && \
+    chown -R appuser:appuser /app/uploads
 
 USER appuser
 

@@ -18,11 +18,12 @@ import (
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 )
 
-// StorageService abstracts receipt file storage. Swap local disk for S3/R2 without changing callers.
+// StorageService abstracts file storage. Swap local disk for S3/R2 without changing callers.
 type StorageService interface {
 	SaveReceiptFile(ctx context.Context, file multipart.File, header *multipart.FileHeader, companyID, projectID string) (fileKey, originalFilename string, err error)
 	ReadReceiptFile(ctx context.Context, fileKey string) (reader io.ReadCloser, contentType string, err error)
 	DeleteReceiptFile(ctx context.Context, fileKey string) error
+	SaveDocumentFile(ctx context.Context, file multipart.File, header *multipart.FileHeader, companyID, projectID string) (fileKey, contentType string, fileSize int64, err error)
 	CheckHealth(ctx context.Context) error
 }
 
@@ -34,7 +35,43 @@ var AllowedReceiptMIMEs = map[string]string{
 	"application/pdf": ".pdf",
 }
 
-const MaxReceiptFileSize = 10 << 20 // 10 MB
+const MaxReceiptFileSize = 10 << 20  // 10 MB
+const MaxDocumentFileSize = 25 << 20 // 25 MB
+
+// AllowedDocumentMIMEs maps allowed MIME types to their canonical extension for project documents.
+var AllowedDocumentMIMEs = map[string]string{
+	"application/pdf":  ".pdf",
+	"application/msword":                                                        ".doc",
+	"application/vnd.openxmlformats-officedocument.wordprocessingml.document":  ".docx",
+	"application/vnd.ms-excel":                                                 ".xls",
+	"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet":        ".xlsx",
+	"application/vnd.ms-powerpoint":                                            ".ppt",
+	"application/vnd.openxmlformats-officedocument.presentationml.presentation": ".pptx",
+	"image/jpeg":                   ".jpg",
+	"image/png":                    ".png",
+	"image/webp":                   ".webp",
+	"image/gif":                    ".gif",
+	"image/tiff":                   ".tiff",
+	"text/plain":                   ".txt",
+	"text/csv":                     ".csv",
+	"application/zip":              ".zip",
+	"application/x-zip-compressed": ".zip",
+}
+
+// ValidateDocumentFile checks MIME type and file size for project documents.
+func ValidateDocumentFile(header *multipart.FileHeader) error {
+	if header.Size > MaxDocumentFileSize {
+		return fmt.Errorf("datoteka je prevelika (maksimalno 25 MB, primljeno %d bajtova)", header.Size)
+	}
+	ct := header.Header.Get("Content-Type")
+	if idx := strings.Index(ct, ";"); idx != -1 {
+		ct = strings.TrimSpace(ct[:idx])
+	}
+	if _, ok := AllowedDocumentMIMEs[ct]; !ok {
+		return fmt.Errorf("nepodržani tip datoteke %q; dopušteni su: PDF, Word, Excel, PowerPoint, slike, CSV, TXT, ZIP", ct)
+	}
+	return nil
+}
 
 // ValidateReceiptFile checks MIME type and file size. Call before saving.
 func ValidateReceiptFile(header *multipart.FileHeader) error {
@@ -123,6 +160,50 @@ func (s *LocalStorageService) ReadReceiptFile(ctx context.Context, fileKey strin
 
 func (s *LocalStorageService) DeleteReceiptFile(ctx context.Context, fileKey string) error {
 	return os.Remove(filepath.Join(s.basePath, fileKey))
+}
+
+func (s *LocalStorageService) SaveDocumentFile(
+	ctx context.Context,
+	file multipart.File,
+	header *multipart.FileHeader,
+	companyID, projectID string,
+) (string, string, int64, error) {
+	ct := header.Header.Get("Content-Type")
+	if idx := strings.Index(ct, ";"); idx != -1 {
+		ct = strings.TrimSpace(ct[:idx])
+	}
+	ext := AllowedDocumentMIMEs[ct]
+	if ext == "" {
+		ext = filepath.Ext(header.Filename)
+		if ext == "" {
+			ext = ".bin"
+		}
+	}
+
+	id, err := randomHex(16)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("generate file id: %w", err)
+	}
+
+	relPath := filepath.Join("documents", companyID, projectID, id+ext)
+	absPath := filepath.Join(s.basePath, relPath)
+
+	if err := os.MkdirAll(filepath.Dir(absPath), 0755); err != nil {
+		return "", "", 0, fmt.Errorf("create upload dir: %w", err)
+	}
+
+	dst, err := os.Create(absPath)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("create file: %w", err)
+	}
+	defer dst.Close()
+
+	n, err := io.Copy(dst, file)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("write file: %w", err)
+	}
+
+	return relPath, ct, n, nil
 }
 
 // ── S3 / Cloudflare R2 implementation ────────────────────────────────────────
@@ -244,6 +325,51 @@ func (s *S3StorageService) DeleteReceiptFile(ctx context.Context, fileKey string
 	return err
 }
 
+func (s *S3StorageService) SaveDocumentFile(
+	ctx context.Context,
+	file multipart.File,
+	header *multipart.FileHeader,
+	companyID, projectID string,
+) (string, string, int64, error) {
+	ct := header.Header.Get("Content-Type")
+	if idx := strings.Index(ct, ";"); idx != -1 {
+		ct = strings.TrimSpace(ct[:idx])
+	}
+	ext := AllowedDocumentMIMEs[ct]
+	if ext == "" {
+		ext = filepath.Ext(header.Filename)
+		if ext == "" {
+			ext = ".bin"
+		}
+	}
+
+	id, err := randomHex(16)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("generate file id: %w", err)
+	}
+
+	key := "documents/" + companyID + "/" + projectID + "/" + id + ext
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("read upload: %w", err)
+	}
+
+	size := int64(len(data))
+	_, err = s.client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:        aws.String(s.bucket),
+		Key:           aws.String(key),
+		Body:          bytes.NewReader(data),
+		ContentType:   aws.String(ct),
+		ContentLength: &size,
+	})
+	if err != nil {
+		return "", "", 0, fmt.Errorf("upload to S3: %w", err)
+	}
+
+	return key, ct, size, nil
+}
+
 // ── helpers ───────────────────────────────────────────────────────────────────
 
 func mimeFromKey(fileKey string) string {
@@ -254,8 +380,30 @@ func mimeFromKey(fileKey string) string {
 		return "image/png"
 	case ".webp":
 		return "image/webp"
+	case ".gif":
+		return "image/gif"
+	case ".tiff":
+		return "image/tiff"
 	case ".pdf":
 		return "application/pdf"
+	case ".doc":
+		return "application/msword"
+	case ".docx":
+		return "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+	case ".xls":
+		return "application/vnd.ms-excel"
+	case ".xlsx":
+		return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+	case ".ppt":
+		return "application/vnd.ms-powerpoint"
+	case ".pptx":
+		return "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+	case ".csv":
+		return "text/csv"
+	case ".txt":
+		return "text/plain"
+	case ".zip":
+		return "application/zip"
 	default:
 		return "application/octet-stream"
 	}

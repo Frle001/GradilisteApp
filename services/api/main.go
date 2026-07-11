@@ -94,6 +94,10 @@ func main() {
 	whSvc := services.NewWorkerHoursService(whRepo)
 	whHandler := handlers.NewWorkerHoursHandler(whSvc)
 
+	docRepo := repositories.NewProjectDocumentsRepository(db)
+	docSvc := services.NewProjectDocumentsService(docRepo, storageSvc)
+	docHandler := handlers.NewProjectDocumentsHandler(docSvc)
+
 	// ── Router ────────────────────────────────────────────────────────────────
 	if Config.Env != "development" {
 		gin.SetMode(gin.ReleaseMode)
@@ -178,6 +182,7 @@ func main() {
 	routes.RegisterMaterialPurchasesRoutes(api, mpHandler, AuthRequired(), RequireRoles)
 	routes.RegisterInventoryRoutes(api, invHandler, AuthRequired(), RequireRoles)
 	routes.RegisterWorkerHoursRoutes(api, whHandler, AuthRequired(), RequireRoles)
+	routes.RegisterProjectDocumentRoutes(projectsGroup, docHandler, RequireRoles)
 
 	// ── Debug (development only) ──────────────────────────────────────────────
 	if Config.Env == "development" {

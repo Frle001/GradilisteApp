@@ -10,6 +10,7 @@ import DashboardShell from '@/components/layout/DashboardShell'
 import ProjectStatusBadge from '@/components/projects/ProjectStatusBadge'
 import { type ProjectDetail, canManageProjects } from '@/lib/types/projects'
 import apiClient from '@/lib/api-client'
+import ProjectDocuments from '@/components/projects/ProjectDocuments'
 
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -186,6 +187,9 @@ export default function ProjectDetailPage() {
               </div>
             )}
           </div>
+
+          {/* Project documents */}
+          <ProjectDocuments projectId={id} canManage={canManage} />
 
           {/* Placeholder sections */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
