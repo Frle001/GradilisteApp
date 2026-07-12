@@ -8,6 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gradiliste/api/appctx"
 	"github.com/gradiliste/api/dto"
+	"github.com/gradiliste/api/repositories"
 	"github.com/gradiliste/api/services"
 )
 
@@ -158,12 +159,17 @@ func (h *ProjectHandler) Reactivate(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Project reactivated"})
 }
 
-// ── Delete DELETE /api/projects/:id ──────────────────────────────────────────
+// ── Delete DELETE /api/projects/:id  (hard delete, direktor only) ────────────
 
 func (h *ProjectHandler) Delete(c *gin.Context) {
-	c.JSON(http.StatusMethodNotAllowed, gin.H{
-		"error": "Projects are not permanently deleted. Use close or archive instead.",
-	})
+	u := appctx.GetAuthUser(c)
+	id := c.Param("id")
+
+	if err := h.svc.HardDelete(c.Request.Context(), u.CompanyID, u.UserID, id); err != nil {
+		respondProjectHardDeleteError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
 // ── ListAssignments GET /api/projects/:id/assignments ────────────────────────
@@ -243,7 +249,22 @@ func parseInt(s string) (int, error) {
 	return v, err
 }
 
-// ── Error helper ──────────────────────────────────────────────────────────────
+// ── Error helpers ─────────────────────────────────────────────────────────────
+
+func respondProjectHardDeleteError(c *gin.Context, err error) {
+	var blocked *repositories.HardDeleteBlockedError
+	var ve *services.ValidationError
+	switch {
+	case errors.As(err, &blocked):
+		c.JSON(http.StatusConflict, gin.H{"error": blocked.Reason})
+	case errors.Is(err, services.ErrNotFound):
+		c.JSON(http.StatusNotFound, gin.H{"error": "Projekt nije pronađen"})
+	case errors.As(err, &ve):
+		c.JSON(http.StatusBadRequest, gin.H{"error": ve.Message})
+	default:
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Greška pri brisanju projekta"})
+	}
+}
 
 func respondProjectError(c *gin.Context, err error) {
 	var ve *services.ValidationError

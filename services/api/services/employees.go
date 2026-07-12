@@ -491,6 +491,74 @@ func (s *EmployeeService) UpdateAsset(ctx context.Context, companyID, callerUser
 	return &item, nil
 }
 
+// ── Employee: HardDelete ──────────────────────────────────────────────────────
+
+// HardDelete permanently removes a test/accidental employee and their linked user account.
+// Returns ErrNotFound, ErrForbidden, ValidationError, or a repositories.HardDeleteBlockedError.
+func (s *EmployeeService) HardDelete(ctx context.Context, companyID, callerUserID, targetEmpID string) error {
+	emp, err := s.empRepo.GetByID(ctx, companyID, targetEmpID)
+	if errors.Is(err, repositories.ErrNotFound) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("hard delete fetch: %w", err)
+	}
+
+	// Prevent self-deletion.
+	linkedUserID, hasUser, err := s.empRepo.GetLinkedUserID(ctx, companyID, targetEmpID)
+	if err != nil {
+		return fmt.Errorf("hard delete self-check: %w", err)
+	}
+	if hasUser && linkedUserID == callerUserID {
+		return validationErr("Ne možete trajno izbrisati vlastiti korisnički račun.")
+	}
+
+	// Prevent deleting the last active direktor.
+	if emp.Role == "direktor" {
+		count, err := s.empRepo.CountActiveDirectors(ctx, companyID)
+		if err != nil {
+			return fmt.Errorf("hard delete director count: %w", err)
+		}
+		if count <= 1 {
+			return validationErr("Ne možete izbrisati zadnjeg aktivnog direktora u tvrtki.")
+		}
+	}
+
+	// Check for meaningful history.
+	if err := s.empRepo.HardDeleteCheck(ctx, companyID, targetEmpID); err != nil {
+		return err
+	}
+
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { tx.Rollback(ctx) }()
+
+	// Delete the user account first (users.employee_id is SET NULL on CASCADE,
+	// so we must delete it explicitly before the employee row disappears).
+	if err := s.userRepo.DeleteByEmployeeIDWithTx(ctx, tx, companyID, targetEmpID); err != nil {
+		return fmt.Errorf("delete user account: %w", err)
+	}
+
+	if err := s.empRepo.HardDeleteWithTx(ctx, tx, companyID, targetEmpID); err != nil {
+		return fmt.Errorf("delete employee: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+
+	go s.auditRepo.Log(context.Background(), repositories.AuditParams{
+		CompanyID:  companyID,
+		UserID:     &callerUserID,
+		Action:     "employee.hard_delete",
+		EntityType: "employee",
+		EntityID:   &targetEmpID,
+	})
+	return nil
+}
+
 // ── Asset: Deactivate ─────────────────────────────────────────────────────────
 
 func (s *EmployeeService) DeactivateAsset(ctx context.Context, companyID, callerUserID, ip, ua, employeeID, assetID string) error {

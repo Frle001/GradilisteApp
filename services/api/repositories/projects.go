@@ -615,3 +615,72 @@ func (r *ProjectRepository) GetArchiveSummary(ctx context.Context, companyID, id
 	}
 	return &s, rows.Err()
 }
+
+// ── Hard delete ───────────────────────────────────────────────────────────────
+
+// HardDeleteCheck returns a HardDeleteBlockedError if the project has any meaningful history.
+// A nil return means it is safe to proceed with hard delete.
+func (r *ProjectRepository) HardDeleteCheck(ctx context.Context, companyID, projectID string) error {
+	var (
+		dailyReports        int64
+		materials           int64
+		assignments         int64
+		purchases           int64
+		workerHours         int64
+		documents           int64
+		materialResponsib   int64
+		materialEffects     int64
+	)
+	err := r.db.QueryRow(ctx, `
+		SELECT
+		    (SELECT COUNT(*) FROM daily_reports                    WHERE project_id = $1::uuid AND company_id = $2::uuid),
+		    (SELECT COUNT(*) FROM project_materials                WHERE project_id = $1::uuid AND company_id = $2::uuid),
+		    (SELECT COUNT(*) FROM project_assignments              WHERE project_id = $1::uuid AND company_id = $2::uuid),
+		    (SELECT COUNT(*) FROM material_purchase_sessions       WHERE project_id = $1::uuid AND company_id = $2::uuid),
+		    (SELECT COUNT(*) FROM worker_daily_hours               WHERE project_id = $1::uuid AND company_id = $2::uuid),
+		    (SELECT COUNT(*) FROM project_documents                WHERE project_id = $1::uuid AND company_id = $2::uuid),
+		    (SELECT COUNT(*) FROM employee_material_responsibility WHERE project_id = $1::uuid AND company_id = $2::uuid),
+		    (SELECT COUNT(*) FROM report_material_effects          WHERE project_id = $1::uuid AND company_id = $2::uuid)
+	`, projectID, companyID).Scan(
+		&dailyReports, &materials, &assignments, &purchases,
+		&workerHours, &documents, &materialResponsib, &materialEffects,
+	)
+	if err != nil {
+		return fmt.Errorf("projects.HardDeleteCheck: %w", err)
+	}
+
+	switch {
+	case dailyReports > 0:
+		return &HardDeleteBlockedError{Reason: fmt.Sprintf("Trajno brisanje nije moguće: projekt ima %d dnevnih izvještaja. Koristite arhiviranje.", dailyReports)}
+	case materials > 0:
+		return &HardDeleteBlockedError{Reason: fmt.Sprintf("Trajno brisanje nije moguće: projekt ima %d stavki materijala. Koristite arhiviranje.", materials)}
+	case assignments > 0:
+		return &HardDeleteBlockedError{Reason: fmt.Sprintf("Trajno brisanje nije moguće: projekt ima %d dodjela zaposlenika. Koristite arhiviranje.", assignments)}
+	case purchases > 0:
+		return &HardDeleteBlockedError{Reason: fmt.Sprintf("Trajno brisanje nije moguće: projekt ima %d zapisa nabave materijala. Koristite arhiviranje.", purchases)}
+	case workerHours > 0:
+		return &HardDeleteBlockedError{Reason: fmt.Sprintf("Trajno brisanje nije moguće: projekt ima %d zapisa radnih sati. Koristite arhiviranje.", workerHours)}
+	case documents > 0:
+		return &HardDeleteBlockedError{Reason: fmt.Sprintf("Trajno brisanje nije moguće: projekt ima %d učitanih dokumenata. Koristite arhiviranje.", documents)}
+	case materialResponsib > 0:
+		return &HardDeleteBlockedError{Reason: fmt.Sprintf("Trajno brisanje nije moguće: projekt ima %d zapisa odgovornosti za materijal. Koristite arhiviranje.", materialResponsib)}
+	case materialEffects > 0:
+		return &HardDeleteBlockedError{Reason: fmt.Sprintf("Trajno brisanje nije moguće: projekt ima %d zapisa materijalne promjene. Koristite arhiviranje.", materialEffects)}
+	}
+	return nil
+}
+
+// HardDeleteWithTx permanently removes a project row within the given transaction.
+// Call only after HardDeleteCheck passes.
+func (r *ProjectRepository) HardDeleteWithTx(ctx context.Context, tx pgx.Tx, companyID, projectID string) error {
+	tag, err := tx.Exec(ctx, `
+		DELETE FROM projects WHERE id = $1::uuid AND company_id = $2::uuid
+	`, projectID, companyID)
+	if err != nil {
+		return fmt.Errorf("projects.HardDelete: %w", err)
+	}
+	if tag.RowsAffected() == 0 {
+		return ErrNotFound
+	}
+	return nil
+}

@@ -42,6 +42,15 @@ func (r *UserRepository) UpdatePassword(ctx context.Context, userID, newHash str
 	return nil
 }
 
+// DeleteByEmployeeIDWithTx permanently deletes the user account linked to an employee.
+// No-op (no error) if the employee has no linked user.
+func (r *UserRepository) DeleteByEmployeeIDWithTx(ctx context.Context, tx pgx.Tx, companyID, employeeID string) error {
+	_, err := tx.Exec(ctx, `
+		DELETE FROM users WHERE employee_id = $1::uuid AND company_id = $2::uuid
+	`, employeeID, companyID)
+	return err
+}
+
 // ResetPasswordByEmployeeID replaces the password hash for the user linked to a given employee
 // within the company and sets must_change_password = true so the employee is forced to change it.
 // Returns ErrNotFound if the employee has no login account in this company.

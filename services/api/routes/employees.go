@@ -15,6 +15,7 @@ func RegisterEmployeeRoutes(
 ) {
 	manageRoles := requireRoles("direktor", "inzenjer", "administracija")
 	resetRoles := requireRoles("direktor", "inzenjer")
+	direktorOnly := requireRoles("direktor")
 
 	employees := api.Group("/employees", authRequired)
 	{
@@ -25,6 +26,7 @@ func RegisterEmployeeRoutes(
 		employees.PATCH("/:id/deactivate", manageRoles, h.Deactivate)
 		employees.PATCH("/:id/activate", manageRoles, h.Activate)
 		employees.PATCH("/:id/reset-password", resetRoles, h.ResetPassword)
+		employees.DELETE("/:id", direktorOnly, h.HardDelete)
 
 		employees.GET("/:id/assets", h.ListAssets)
 		employees.POST("/:id/assets", manageRoles, h.CreateAsset)

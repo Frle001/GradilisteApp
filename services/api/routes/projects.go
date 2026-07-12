@@ -13,6 +13,7 @@ func RegisterProjectRoutes(
 ) *gin.RouterGroup {
 	manageRoles := requireRoles("direktor", "inzenjer")
 	archiveRoles := requireRoles("direktor", "inzenjer", "administracija")
+	direktorOnly := requireRoles("direktor")
 
 	projects := api.Group("/projects", authRequired)
 	{
@@ -23,7 +24,7 @@ func RegisterProjectRoutes(
 
 		projects.GET("/:id", h.GetByID)
 		projects.PUT("/:id", manageRoles, h.Update)
-		projects.DELETE("/:id", h.Delete)
+		projects.DELETE("/:id", direktorOnly, h.Delete)
 
 		projects.PATCH("/:id/assign-poslovoda", manageRoles, h.AssignPoslovoda)
 		projects.PATCH("/:id/close", manageRoles, h.Close)

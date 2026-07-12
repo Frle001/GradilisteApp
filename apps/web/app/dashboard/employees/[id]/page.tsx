@@ -13,6 +13,7 @@ import { canViewOtherInventory } from '@/lib/types/inventory'
 import apiClient from '@/lib/api-client'
 
 type ResetState = 'idle' | 'confirming' | 'loading' | 'done'
+type HardDeleteState = 'idle' | 'confirming' | 'loading'
 
 export default function EmployeeDetailPage() {
   const params = useParams()
@@ -29,6 +30,10 @@ export default function EmployeeDetailPage() {
   const [resetState, setResetState] = useState<ResetState>('idle')
   const [resetPassword, setResetPassword] = useState<string | null>(null)
   const [resetError, setResetError] = useState<string | null>(null)
+
+  const [hardDeleteState, setHardDeleteState] = useState<HardDeleteState>('idle')
+  const [hardDeleteInput, setHardDeleteInput] = useState('')
+  const [hardDeleteError, setHardDeleteError] = useState<string | null>(null)
 
   const fetchEmployee = () => {
     setError(null)
@@ -85,6 +90,20 @@ export default function EmployeeDetailPage() {
     }
   }
 
+  async function handleHardDelete() {
+    if (!emp) return
+    setHardDeleteState('loading')
+    setHardDeleteError(null)
+    try {
+      await apiClient.delete(`/employees/${id}`)
+      router.replace('/dashboard/employees')
+    } catch (err: unknown) {
+      const e = err as { response?: { data?: { error?: string } } }
+      setHardDeleteError(e?.response?.data?.error ?? 'Greška pri brisanju zaposlenika.')
+      setHardDeleteState('confirming')
+    }
+  }
+
   if (isLoading || dataLoading) return <LoadingScreen />
   if (!user) return null
   if (error) {
@@ -97,9 +116,11 @@ export default function EmployeeDetailPage() {
   if (!emp) return null
 
   const canManage = canManageEmployees(user.role)
+  const canHardDelete = user.role === 'direktor'
   const canReset = canResetPassword(user.role) && emp.role !== 'radnik'
   const canViewInv = canViewOtherInventory(user.role)
   const name = fullName(emp)
+  const hardDeleteConfirmPhrase = name
 
   return (
     <DashboardShell
@@ -159,6 +180,14 @@ export default function EmployeeDetailPage() {
                   }`}
                 >
                   {emp.active ? 'Deaktiviraj' : 'Aktiviraj'}
+                </button>
+              )}
+              {canHardDelete && (
+                <button
+                  onClick={() => { setHardDeleteState('confirming'); setHardDeleteInput(''); setHardDeleteError(null) }}
+                  className="text-sm border border-red-900 text-red-500 hover:bg-red-950/50 px-3 py-1.5 rounded-lg transition"
+                >
+                  Trajno izbriši
                 </button>
               )}
             </div>
@@ -225,6 +254,64 @@ export default function EmployeeDetailPage() {
           onAssetChange={() => fetchAssets()}
         />
       </div>
+
+      {/* Hard delete confirmation modal */}
+      {hardDeleteState !== 'idle' && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="bg-slate-900 border border-red-900/60 rounded-xl p-6 w-full max-w-md space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-8 h-8 rounded-full bg-red-950 flex items-center justify-center shrink-0">
+                <svg className="w-4 h-4 text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+              </div>
+              <p className="text-white font-semibold">Trajno brisanje zaposlenika</p>
+            </div>
+            <div className="bg-red-950/30 border border-red-900/40 rounded-lg px-4 py-3 space-y-1">
+              <p className="text-red-300 text-sm font-medium">Ova radnja je nepovratna.</p>
+              <p className="text-slate-400 text-xs">
+                Koristite samo za testne ili slučajno stvorene zapise. Za stvarne zaposlenike koristite <strong className="text-slate-300">deaktivaciju</strong>.
+              </p>
+            </div>
+            <div>
+              <p className="text-slate-300 text-sm mb-2">
+                Upišite <span className="font-mono text-white bg-slate-800 px-1.5 py-0.5 rounded">{hardDeleteConfirmPhrase}</span> ili <span className="font-mono text-white bg-slate-800 px-1.5 py-0.5 rounded">IZBRIŠI</span> za potvrdu:
+              </p>
+              <input
+                type="text"
+                value={hardDeleteInput}
+                onChange={e => setHardDeleteInput(e.target.value)}
+                autoFocus
+                className="w-full bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 text-sm text-white focus:outline-none focus:ring-1 focus:ring-red-700"
+                placeholder="Upišite potvrdu..."
+                disabled={hardDeleteState === 'loading'}
+              />
+            </div>
+            {hardDeleteError && (
+              <p className="text-red-400 text-sm">{hardDeleteError}</p>
+            )}
+            <div className="flex gap-2">
+              <button
+                onClick={handleHardDelete}
+                disabled={
+                  hardDeleteState === 'loading' ||
+                  (hardDeleteInput !== hardDeleteConfirmPhrase && hardDeleteInput !== 'IZBRIŠI')
+                }
+                className="flex-1 py-2 bg-red-700 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium rounded-lg transition"
+              >
+                {hardDeleteState === 'loading' ? 'Brisanje...' : 'Trajno izbriši'}
+              </button>
+              <button
+                onClick={() => setHardDeleteState('idle')}
+                disabled={hardDeleteState === 'loading'}
+                className="flex-1 py-2 border border-slate-700 text-slate-400 hover:bg-slate-800 text-sm rounded-lg transition disabled:opacity-40"
+              >
+                Odustani
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Reset password result modal */}
       {resetState === 'done' && resetPassword && (

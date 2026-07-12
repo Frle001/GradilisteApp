@@ -521,6 +521,46 @@ func validateDates(startDate, endDate *string) error {
 	return nil
 }
 
+// ── Project: HardDelete ───────────────────────────────────────────────────────
+
+// HardDelete permanently removes a test/accidental project.
+// Returns ErrNotFound or a repositories.HardDeleteBlockedError if dependencies exist.
+func (s *ProjectService) HardDelete(ctx context.Context, companyID, callerUserID, projectID string) error {
+	if _, err := s.projRepo.GetByID(ctx, companyID, projectID); err != nil {
+		if errors.Is(err, repositories.ErrNotFound) {
+			return ErrNotFound
+		}
+		return fmt.Errorf("hard delete fetch: %w", err)
+	}
+
+	if err := s.projRepo.HardDeleteCheck(ctx, companyID, projectID); err != nil {
+		return err
+	}
+
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer func() { tx.Rollback(ctx) }()
+
+	if err := s.projRepo.HardDeleteWithTx(ctx, tx, companyID, projectID); err != nil {
+		return fmt.Errorf("delete project: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+
+	go s.auditRepo.Log(context.Background(), repositories.AuditParams{
+		CompanyID:  companyID,
+		UserID:     &callerUserID,
+		Action:     "project.hard_delete",
+		EntityType: "project",
+		EntityID:   &projectID,
+	})
+	return nil
+}
+
 // ── Mapping helpers ───────────────────────────────────────────────────────────
 
 func projToListItem(p repositories.Project) dto.ProjectListItem {
