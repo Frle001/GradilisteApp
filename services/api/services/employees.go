@@ -3,7 +3,7 @@ package services
 import (
 	"context"
 	"crypto/rand"
-	"encoding/base64"
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"strings"
@@ -29,14 +29,29 @@ func validationErr(msg string) error { return &ValidationError{Message: msg} }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-// generateTempPassword returns a cryptographically random 22-character base64url string
-// (16 random bytes, no padding). Never log this value.
+// tempPasswordWords is the word pool for readable temporary passwords.
+// ASCII-only, no Croatian diacritics, short enough to combine with digits to ~8 chars.
+var tempPasswordWords = []string{
+	"more", "kuca", "riba", "zima", "brdo", "voda", "alat",
+	"roba", "posao", "polje", "cesta", "vrata", "sunce", "beton",
+}
+
+// generateTempPassword returns a readable word+digits temporary password (8 chars).
+// Format: word (4–5 letters) + digits to reach 8 characters total.
+// Uses crypto/rand throughout. Never log the return value.
 func generateTempPassword() (string, error) {
-	buf := make([]byte, 16)
-	if _, err := rand.Read(buf); err != nil {
+	// 2 bytes for word selection + up to 4 bytes for digits (max for a 4-letter word).
+	var b [6]byte
+	if _, err := rand.Read(b[:]); err != nil {
 		return "", fmt.Errorf("generate temp password: %w", err)
 	}
-	return base64.RawURLEncoding.EncodeToString(buf), nil
+	word := tempPasswordWords[binary.BigEndian.Uint16(b[:2])%uint16(len(tempPasswordWords))]
+	digitCount := 8 - len(word)
+	digits := make([]byte, digitCount)
+	for i := range digits {
+		digits[i] = '0' + b[2+i]%10
+	}
+	return word + string(digits), nil
 }
 
 // ── Valid values ──────────────────────────────────────────────────────────────
