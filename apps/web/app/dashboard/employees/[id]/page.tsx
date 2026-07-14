@@ -117,7 +117,7 @@ export default function EmployeeDetailPage() {
 
   const canManage = canManageEmployees(user.role)
   const canHardDelete = user.role === 'direktor'
-  const canReset = canResetPassword(user.role) && emp.role !== 'radnik'
+  const canReset = canResetPassword(user.role)
   const canViewInv = canViewOtherInventory(user.role)
   const name = fullName(emp)
   const hardDeleteConfirmPhrase = name
