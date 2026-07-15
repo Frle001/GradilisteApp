@@ -99,6 +99,20 @@ type PurchaseFormDataResponse struct {
 	Materials []PurchaseFormMaterial `json:"materials"`
 }
 
+// ── Update request ────────────────────────────────────────────────────────────
+
+type UpdatePurchaseItemRequest struct {
+	ProjectMaterialID string  `json:"project_material_id"`
+	Quantity          float64 `json:"quantity"`
+	Unit              string  `json:"unit"` // overridden from DB; sent by frontend for display purposes
+}
+
+type UpdatePurchaseRequest struct {
+	PurchasedAt string                      `json:"purchased_at"` // YYYY-MM-DD
+	Notes       *string                     `json:"notes"`
+	Items       []UpdatePurchaseItemRequest `json:"items"`
+}
+
 // ── Filter ────────────────────────────────────────────────────────────────────
 
 type PurchaseFilter struct {

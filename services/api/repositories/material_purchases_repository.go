@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"strings"
 	"time"
 
@@ -12,6 +13,12 @@ import (
 
 	"github.com/gradiliste/api/dto"
 )
+
+// InventoryConflictError is returned by Update when the edit would violate an
+// inventory constraint. Message is a user-facing Croatian description.
+type InventoryConflictError struct{ Message string }
+
+func (e *InventoryConflictError) Error() string { return e.Message }
 
 type MaterialPurchasesRepository struct {
 	db *pgxpool.Pool
@@ -465,4 +472,192 @@ func (r *MaterialPurchasesRepository) Create(ctx context.Context, p CreatePurcha
 		return "", fmt.Errorf("commit: %w", err)
 	}
 	return sessionID, nil
+}
+
+// ── Update (transaction) ──────────────────────────────────────────────────────
+
+type UpdatePurchaseParams struct {
+	CompanyID   string
+	SessionID   string
+	PurchasedAt time.Time
+	Notes       *string
+	NewItems    []dto.UpdatePurchaseItemRequest
+}
+
+// Update replaces a purchase session's items and metadata inside a single transaction.
+// It reverses the inventory effects of the original items and applies the effects of
+// the new items using per-material net deltas. Locks are acquired in sorted UUID order
+// to avoid deadlocks with concurrent approvals.
+func (r *MaterialPurchasesRepository) Update(ctx context.Context, p UpdatePurchaseParams) error {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin transaction: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	// 1. Lock the session row and fetch project/buyer identifiers.
+	var projectID, buyerID string
+	err = tx.QueryRow(ctx, `
+		SELECT project_id::text, buyer_id::text
+		FROM material_purchase_sessions
+		WHERE id = $1::uuid AND company_id = $2::uuid
+		FOR UPDATE
+	`, p.SessionID, p.CompanyID).Scan(&projectID, &buyerID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("lock session: %w", err)
+	}
+
+	// 2. Load original items.
+	rows, err := tx.Query(ctx, `
+		SELECT project_material_id::text, quantity
+		FROM material_purchase_items
+		WHERE purchase_session_id = $1::uuid AND company_id = $2::uuid
+	`, p.SessionID, p.CompanyID)
+	if err != nil {
+		return fmt.Errorf("load original items: %w", err)
+	}
+	oldMap := map[string]float64{}
+	for rows.Next() {
+		var matID string
+		var qty float64
+		if err := rows.Scan(&matID, &qty); err != nil {
+			rows.Close()
+			return fmt.Errorf("scan original item: %w", err)
+		}
+		oldMap[matID] += qty
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate original items: %w", err)
+	}
+
+	// 3. Build new-quantity and unit maps from the replacement items.
+	newMap := map[string]float64{}
+	newUnitMap := map[string]string{}
+	for _, item := range p.NewItems {
+		newMap[item.ProjectMaterialID] += item.Quantity
+		newUnitMap[item.ProjectMaterialID] = item.Unit
+	}
+
+	// 4. Collect all affected material IDs and sort them for consistent lock ordering
+	//    to prevent deadlocks with concurrent report-approval transactions.
+	allMatIDs := make([]string, 0, len(oldMap)+len(newMap))
+	seen := map[string]struct{}{}
+	for id := range oldMap {
+		seen[id] = struct{}{}
+		allMatIDs = append(allMatIDs, id)
+	}
+	for id := range newMap {
+		if _, ok := seen[id]; !ok {
+			allMatIDs = append(allMatIDs, id)
+		}
+	}
+	sort.Strings(allMatIDs)
+
+	// 5. Apply net deltas for each affected material.
+	for _, matID := range allMatIDs {
+		delta := newMap[matID] - oldMap[matID]
+		if delta == 0 {
+			continue
+		}
+
+		// --- project_materials ---
+		var avail float64
+		err = tx.QueryRow(ctx, `
+			SELECT available_quantity
+			FROM project_materials
+			WHERE id = $1::uuid AND company_id = $2::uuid
+			FOR UPDATE
+		`, matID, p.CompanyID).Scan(&avail)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return fmt.Errorf("materijal %s nije pronađen u projektu", matID)
+		}
+		if err != nil {
+			return fmt.Errorf("lock project_materials %s: %w", matID, err)
+		}
+		if avail+delta < 0 {
+			return &InventoryConflictError{
+				Message: "Nije moguće urediti upis — dostupne zalihe za jedan od materijala postale bi negativne (materijal je već dijelom ugrađen)",
+			}
+		}
+		if _, err = tx.Exec(ctx, `
+			UPDATE project_materials
+			SET available_quantity = available_quantity + $1
+			WHERE id = $2::uuid AND company_id = $3::uuid
+		`, delta, matID, p.CompanyID); err != nil {
+			return fmt.Errorf("update project_materials %s: %w", matID, err)
+		}
+
+		// --- employee_material_responsibility ---
+		var emrID string
+		var emrQty float64
+		err = tx.QueryRow(ctx, `
+			SELECT id::text, quantity
+			FROM employee_material_responsibility
+			WHERE employee_id = $1::uuid AND project_material_id = $2::uuid
+			  AND company_id = $3::uuid AND active = true
+			FOR UPDATE
+		`, buyerID, matID, p.CompanyID).Scan(&emrID, &emrQty)
+
+		if errors.Is(err, pgx.ErrNoRows) {
+			// No active responsibility row exists.
+			if delta > 0 {
+				unit := newUnitMap[matID]
+				if _, err = tx.Exec(ctx, `
+					INSERT INTO employee_material_responsibility
+						(company_id, employee_id, project_id, project_material_id, quantity, unit, source_purchase_session_id, active)
+					VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, $7::uuid, true)
+				`, p.CompanyID, buyerID, projectID, matID, delta, unit, p.SessionID); err != nil {
+					return fmt.Errorf("insert emr %s: %w", matID, err)
+				}
+			}
+			// delta < 0 with no EMR row: responsibility was already removed; skip.
+		} else if err != nil {
+			return fmt.Errorf("lock emr %s: %w", matID, err)
+		} else {
+			newEMRQty := emrQty + delta
+			if newEMRQty < 0 {
+				return &InventoryConflictError{
+					Message: "Nije moguće urediti upis — odgovornost za materijal je djelomično ili potpuno bila prenijeta",
+				}
+			}
+			if _, err = tx.Exec(ctx, `
+				UPDATE employee_material_responsibility
+				SET quantity = $1, updated_at = NOW()
+				WHERE id = $2::uuid
+			`, newEMRQty, emrID); err != nil {
+				return fmt.Errorf("update emr %s: %w", matID, err)
+			}
+		}
+	}
+
+	// 6. Replace items: delete old, insert new.
+	if _, err = tx.Exec(ctx, `
+		DELETE FROM material_purchase_items
+		WHERE purchase_session_id = $1::uuid AND company_id = $2::uuid
+	`, p.SessionID, p.CompanyID); err != nil {
+		return fmt.Errorf("delete old items: %w", err)
+	}
+	for _, item := range p.NewItems {
+		if _, err = tx.Exec(ctx, `
+			INSERT INTO material_purchase_items (company_id, purchase_session_id, project_material_id, quantity, unit)
+			VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5)
+		`, p.CompanyID, p.SessionID, item.ProjectMaterialID, item.Quantity, item.Unit); err != nil {
+			return fmt.Errorf("insert item %s: %w", item.ProjectMaterialID, err)
+		}
+	}
+
+	// 7. Update session metadata.
+	if _, err = tx.Exec(ctx, `
+		UPDATE material_purchase_sessions
+		SET purchased_at = $1, notes = $2
+		WHERE id = $3::uuid AND company_id = $4::uuid
+	`, p.PurchasedAt, p.Notes, p.SessionID, p.CompanyID); err != nil {
+		return fmt.Errorf("update session: %w", err)
+	}
+
+	return tx.Commit(ctx)
 }

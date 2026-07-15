@@ -196,6 +196,43 @@ func (h *MaterialPurchasesHandler) Create(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"id": id})
 }
 
+// PATCH /api/material-purchases/:id
+func (h *MaterialPurchasesHandler) Update(c *gin.Context) {
+	u := appctx.GetAuthUser(c)
+	if u == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthenticated"})
+		return
+	}
+	id := c.Param("id")
+
+	var req dto.UpdatePurchaseRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Neispravan zahtjev: " + err.Error()})
+		return
+	}
+
+	updated, err := h.svc.Update(c.Request.Context(), u.CompanyID, u.Role, u.EmployeeID, u.UserID, id, req)
+	if err != nil {
+		if errors.Is(err, services.ErrPurchaseNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Upis nije pronađen"})
+			return
+		}
+		if errors.Is(err, services.ErrForbidden) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Nemate ovlast za uređivanje ovog upisa"})
+			return
+		}
+		var ve *services.ValidationError
+		if errors.As(err, &ve) {
+			c.JSON(http.StatusUnprocessableEntity, gin.H{"error": ve.Message})
+			return
+		}
+		log.Printf("[material_purchases] Update error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Greška pri uređivanju upisa"})
+		return
+	}
+	c.JSON(http.StatusOK, updated)
+}
+
 // DELETE /api/material-purchases/:id
 func (h *MaterialPurchasesHandler) Delete(c *gin.Context) {
 	c.JSON(http.StatusMethodNotAllowed, gin.H{

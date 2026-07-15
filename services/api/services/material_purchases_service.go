@@ -322,6 +322,129 @@ func (s *MaterialPurchasesService) Create(
 	return sessionID, nil
 }
 
+// ── Update ────────────────────────────────────────────────────────────────────
+
+// Update corrects an existing purchase session's items and metadata.
+// Only direktor and inzenjer may call this; the route middleware enforces it,
+// and this method double-checks to prevent escalation through direct service calls.
+// The project and buyer are never changed; only items, notes, and purchased_at.
+func (s *MaterialPurchasesService) Update(
+	ctx context.Context,
+	companyID, role, employeeID, userID, sessionID string,
+	req dto.UpdatePurchaseRequest,
+) (*dto.PurchaseDetail, error) {
+	if role != "direktor" && role != "inzenjer" {
+		return nil, ErrForbidden
+	}
+
+	// Load existing session to confirm ownership and get the project ID for material validation.
+	existing, err := s.repo.GetByID(ctx, companyID, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("fetch purchase: %w", err)
+	}
+	if existing == nil {
+		return nil, ErrPurchaseNotFound
+	}
+
+	// Validate replacement items.
+	if len(req.Items) == 0 {
+		return nil, &ValidationError{Message: "Upis mora sadržavati najmanje jednu stavku materijala"}
+	}
+	for _, item := range req.Items {
+		if strings.TrimSpace(item.ProjectMaterialID) == "" || item.Quantity <= 0 || strings.TrimSpace(item.Unit) == "" {
+			return nil, &ValidationError{Message: "Sve stavke moraju imati odabrani materijal, pozitivnu količinu i mjeru"}
+		}
+	}
+
+	// Validate that every replacement material belongs to the same project and is active.
+	materialIDs := make([]string, len(req.Items))
+	for i, item := range req.Items {
+		materialIDs[i] = item.ProjectMaterialID
+	}
+	validMats, err := s.repo.ValidateMaterials(ctx, companyID, existing.Project.ID, materialIDs)
+	if err != nil {
+		return nil, fmt.Errorf("validate materials: %w", err)
+	}
+	for _, item := range req.Items {
+		if _, ok := validMats[item.ProjectMaterialID]; !ok {
+			return nil, &ValidationError{Message: "Jedan ili više materijala ne pripada projektu ovog upisa ili je neaktivan"}
+		}
+	}
+	// Enrich items with the authoritative unit from the DB.
+	for i, item := range req.Items {
+		req.Items[i].Unit = validMats[item.ProjectMaterialID]
+		_ = item // suppress unused warning
+	}
+
+	// Parse purchased_at.
+	if strings.TrimSpace(req.PurchasedAt) == "" {
+		return nil, &ValidationError{Message: "Datum kupnje je obavezan"}
+	}
+	purchasedAt, err := time.Parse("2006-01-02", strings.TrimSpace(req.PurchasedAt))
+	if err != nil {
+		return nil, &ValidationError{Message: "Neispravan format datuma kupnje (očekivano: YYYY-MM-DD)"}
+	}
+
+	var notes *string
+	if req.Notes != nil {
+		if n := strings.TrimSpace(*req.Notes); n != "" {
+			notes = &n
+		}
+	}
+
+	// Record old state for audit before the transaction modifies anything.
+	oldData := map[string]interface{}{
+		"items_count":  len(existing.Items),
+		"purchased_at": existing.PurchasedAt,
+		"notes":        existing.Notes,
+	}
+
+	params := repositories.UpdatePurchaseParams{
+		CompanyID:   companyID,
+		SessionID:   sessionID,
+		PurchasedAt: purchasedAt,
+		Notes:       notes,
+		NewItems:    req.Items,
+	}
+	if err := s.repo.Update(ctx, params); err != nil {
+		if errors.Is(err, repositories.ErrNotFound) {
+			return nil, ErrPurchaseNotFound
+		}
+		var invErr *repositories.InventoryConflictError
+		if errors.As(err, &invErr) {
+			return nil, &ValidationError{Message: invErr.Message}
+		}
+		return nil, fmt.Errorf("update purchase: %w", err)
+	}
+
+	// Fetch the fresh detail to return and for audit new_data.
+	updated, err := s.repo.GetByID(ctx, companyID, sessionID)
+	if err != nil {
+		return nil, fmt.Errorf("reload purchase after update: %w", err)
+	}
+	if updated == nil {
+		return nil, ErrPurchaseNotFound
+	}
+
+	newData := map[string]interface{}{
+		"items_count":  len(updated.Items),
+		"purchased_at": updated.PurchasedAt,
+		"notes":        updated.Notes,
+	}
+	s.audit.Log(ctx, repositories.AuditParams{
+		CompanyID:  companyID,
+		UserID:     &userID,
+		EmployeeID: &employeeID,
+		Action:     "material_purchase.update",
+		EntityType: "material_purchase_sessions",
+		EntityID:   &sessionID,
+		OldData:    oldData,
+		NewData:    newData,
+	})
+
+	return updated, nil
+}
+
 func clampPage(page, perPage int) (int, int) {
 	if page < 1 {
 		page = 1

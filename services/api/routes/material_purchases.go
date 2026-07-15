@@ -14,6 +14,7 @@ func RegisterMaterialPurchasesRoutes(
 ) {
 	allRoles := requireRoles("direktor", "inzenjer", "administracija", "poslovoda")
 	creators := requireRoles("direktor", "inzenjer", "poslovoda")
+	editors := requireRoles("direktor", "inzenjer")
 
 	rg := api.Group("/material-purchases", authRequired, allRoles)
 	{
@@ -23,6 +24,7 @@ func RegisterMaterialPurchasesRoutes(
 		rg.GET("", h.List)
 		rg.POST("", creators, h.Create)
 		rg.GET("/:id", h.GetByID)
+		rg.PATCH("/:id", editors, h.Update)
 		rg.GET("/:id/receipt", h.GetReceipt)
 		rg.DELETE("/:id", h.Delete)
 	}

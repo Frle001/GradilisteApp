@@ -80,6 +80,20 @@ export interface PurchaseItemDraft {
   unit: string
 }
 
+// ── Update request ────────────────────────────────────────────────────────────
+
+export interface UpdatePurchaseItemRequest {
+  project_material_id: string
+  quantity: number
+  unit: string
+}
+
+export interface UpdatePurchaseRequest {
+  purchased_at: string // YYYY-MM-DD
+  notes: string | null
+  items: UpdatePurchaseItemRequest[]
+}
+
 // ── Filter ────────────────────────────────────────────────────────────────────
 
 export interface PurchaseFilter {
