@@ -622,14 +622,14 @@ func (r *ProjectRepository) GetArchiveSummary(ctx context.Context, companyID, id
 // A nil return means it is safe to proceed with hard delete.
 func (r *ProjectRepository) HardDeleteCheck(ctx context.Context, companyID, projectID string) error {
 	var (
-		dailyReports        int64
-		materials           int64
-		assignments         int64
-		purchases           int64
-		workerHours         int64
-		documents           int64
-		materialResponsib   int64
-		materialEffects     int64
+		dailyReports      int64
+		materials         int64
+		assignments       int64
+		purchases         int64
+		workerHours       int64
+		documents         int64
+		materialResponsib int64
+		materialEffects   int64
 	)
 	err := r.db.QueryRow(ctx, `
 		SELECT

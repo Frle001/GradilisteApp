@@ -18,9 +18,9 @@ var ErrDailyReportNotEditable = errors.New("report cannot be edited in its curre
 var ErrDailyReportInvalidStatus = errors.New("report is not in a state that allows this action")
 
 type DailyReportService struct {
-	db                 *pgxpool.Pool
-	drRepo             *repositories.DailyReportRepository
-	auditRepo          *repositories.AuditRepository
+	db                  *pgxpool.Pool
+	drRepo              *repositories.DailyReportRepository
+	auditRepo           *repositories.AuditRepository
 	materialEffectsRepo *repositories.ReportMaterialEffectsRepository
 }
 
