@@ -43,6 +43,17 @@ func (h *WorkerHoursHandler) ListMy(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"entries": entries})
 }
 
+// GET /api/worker-hours/history
+func (h *WorkerHoursHandler) History(c *gin.Context) {
+	u := appctx.GetAuthUser(c)
+	entries, err := h.svc.ListHistory(c.Request.Context(), u.CompanyID, u.EmployeeID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"entries": entries})
+}
+
 // POST /api/worker-hours
 func (h *WorkerHoursHandler) Submit(c *gin.Context) {
 	u := appctx.GetAuthUser(c)

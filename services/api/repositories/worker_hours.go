@@ -144,6 +144,50 @@ func (r *WorkerHoursRepository) ListForWorkerDate(ctx context.Context, companyID
 	return result, rows.Err()
 }
 
+// ListBeforeDate returns all hour entries for a worker with work_date strictly
+// before beforeDate (YYYY-MM-DD), ordered newest date first then by project name.
+func (r *WorkerHoursRepository) ListBeforeDate(ctx context.Context, companyID, workerEmpID, beforeDate string) ([]dto.WorkerHoursEntry, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT
+			wdh.id::text,
+			wdh.worker_id::text,
+			wdh.project_id::text,
+			p.name AS project_name,
+			wdh.work_date::text,
+			wdh.hours_worked,
+			wdh.notes,
+			wdh.created_at,
+			wdh.updated_at
+		FROM worker_daily_hours wdh
+		JOIN projects p ON p.id = wdh.project_id
+		WHERE wdh.company_id = $1::uuid
+		  AND wdh.worker_id  = $2::uuid
+		  AND wdh.work_date  < $3::date
+		ORDER BY wdh.work_date DESC, p.name
+	`, companyID, workerEmpID, beforeDate)
+	if err != nil {
+		return nil, fmt.Errorf("worker_hours.ListBeforeDate: %w", err)
+	}
+	defer rows.Close()
+
+	var result []dto.WorkerHoursEntry
+	for rows.Next() {
+		var e dto.WorkerHoursEntry
+		if err := rows.Scan(
+			&e.ID, &e.WorkerID, &e.ProjectID, &e.ProjectName,
+			&e.WorkDate, &e.HoursWorked, &e.Notes,
+			&e.CreatedAt, &e.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("worker_hours.ListBeforeDate scan: %w", err)
+		}
+		result = append(result, e)
+	}
+	if result == nil {
+		result = []dto.WorkerHoursEntry{}
+	}
+	return result, rows.Err()
+}
+
 // GetProjectStatus returns project status or empty string if not found.
 func (r *WorkerHoursRepository) GetProjectStatus(ctx context.Context, companyID, projectID string) (string, error) {
 	var status string

@@ -33,6 +33,14 @@ func (s *WorkerHoursService) ListForDate(ctx context.Context, companyID, workerE
 	return s.repo.ListForWorkerDate(ctx, companyID, workerEmpID, date)
 }
 
+// ListHistory returns the radnik's hour entries for all days strictly before
+// today (Europe/Zagreb), newest date first. Never returns today's or future entries.
+func (s *WorkerHoursService) ListHistory(ctx context.Context, companyID, workerEmpID string) ([]dto.WorkerHoursEntry, error) {
+	loc, _ := time.LoadLocation("Europe/Zagreb")
+	today := time.Now().In(loc).Format("2006-01-02")
+	return s.repo.ListBeforeDate(ctx, companyID, workerEmpID, today)
+}
+
 // Submit validates and upserts the radnik's hours for today.
 func (s *WorkerHoursService) Submit(ctx context.Context, companyID, workerEmpID, callerUserID string, req dto.SubmitWorkerHoursRequest) (*dto.WorkerHoursEntry, error) {
 	// Enforce today-only in Europe/Zagreb timezone

@@ -17,6 +17,7 @@ func RegisterWorkerHoursRoutes(
 	{
 		wh.GET("/projects", h.ListProjects)
 		wh.GET("/my", h.ListMy)
+		wh.GET("/history", h.History)
 		wh.POST("", h.Submit)
 	}
 }

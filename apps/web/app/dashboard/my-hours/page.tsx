@@ -31,15 +31,26 @@ function formatHrDate(dateStr: string): string {
   })
 }
 
+// Parse YYYY-MM-DD as local date to avoid UTC-midnight timezone shift.
+function formatHistoryDate(dateStr: string): string {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  return new Date(y, m - 1, d).toLocaleDateString('hr-HR', {
+    weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric',
+  })
+}
+
 export default function MyHoursPage() {
   const { user, employee, isLoading, logout } = useAuth()
   const today = localTodayStr()
 
   const [projects, setProjects] = useState<WorkerProject[]>([])
   const [entries, setEntries] = useState<HoursEntry[]>([])
+  const [history, setHistory] = useState<HoursEntry[]>([])
   const [loadingProjects, setLoadingProjects] = useState(true)
   const [loadingEntries, setLoadingEntries] = useState(true)
+  const [loadingHistory, setLoadingHistory] = useState(true)
   const [fetchError, setFetchError] = useState<string | null>(null)
+  const [historyError, setHistoryError] = useState<string | null>(null)
 
   // Form state
   const [selectedProject, setSelectedProject] = useState('')
@@ -65,11 +76,21 @@ export default function MyHoursPage() {
       .finally(() => setLoadingEntries(false))
   }, [today])
 
+  const fetchHistory = useCallback(() => {
+    setLoadingHistory(true)
+    setHistoryError(null)
+    apiClient.get('/worker-hours/history')
+      .then(res => setHistory(res.data.entries ?? []))
+      .catch(() => setHistoryError('Greška pri dohvatu prethodnih unosa.'))
+      .finally(() => setLoadingHistory(false))
+  }, [])
+
   useEffect(() => {
     if (!user) return
     fetchProjects()
     fetchEntries()
-  }, [user, fetchProjects, fetchEntries])
+    fetchHistory()
+  }, [user, fetchProjects, fetchEntries, fetchHistory])
 
   // Pre-fill form when editing an existing entry
   useEffect(() => {
@@ -295,6 +316,43 @@ export default function MyHoursPage() {
                   >
                     Izmijeni
                   </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+      {/* Previous entries — read-only */}
+      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 mt-6">
+        <h2 className="text-sm font-semibold text-slate-300 mb-4">Prethodni unosi</h2>
+
+        {loadingHistory ? (
+          <p className="text-slate-500 text-sm">Učitavanje...</p>
+        ) : historyError ? (
+          <p className="text-red-400 text-sm">{historyError}</p>
+        ) : history.length === 0 ? (
+          <p className="text-slate-500 text-sm">Još nema prethodnih unosa.</p>
+        ) : (
+          <ul className="space-y-3">
+            {history.map(entry => (
+              <li
+                key={entry.id}
+                className="bg-slate-800/50 border border-slate-700/60 rounded-lg px-4 py-3"
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-xs text-slate-500 mb-0.5 capitalize">
+                      {formatHistoryDate(entry.work_date)}
+                    </p>
+                    <p className="text-sm font-medium text-white truncate">{entry.project_name}</p>
+                    {entry.notes && (
+                      <p className="text-xs text-slate-400 mt-1">{entry.notes}</p>
+                    )}
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <span className="text-lg font-bold text-white">{entry.hours_worked}</span>
+                    <span className="text-slate-400 text-sm ml-0.5">h</span>
+                  </div>
                 </div>
               </li>
             ))}
