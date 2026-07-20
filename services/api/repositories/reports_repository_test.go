@@ -166,8 +166,12 @@ func TestBuildDnevnikWhere_DateFilters(t *testing.T) {
 	sql := w.sql()
 
 	assertNoUUIDCast(t, "date filters", sql)
-	assertContains(t, "date filters", sql, "c.report_date >=")
-	assertContains(t, "date filters", sql, "c.report_date <=")
+	// c.report_date is text in the combined CTE; it must be cast to date before
+	// comparison to avoid "operator does not exist: text >= date" (SQLSTATE 42883).
+	assertContains(t, "date filters", sql, "c.report_date::date >=")
+	assertContains(t, "date filters", sql, "c.report_date::date <=")
+	assertNotContains(t, "date filters", sql, "c.report_date >=")
+	assertNotContains(t, "date filters", sql, "c.report_date <=")
 }
 
 // ── Project-only arg count and next-idx ──────────────────────────────────────
