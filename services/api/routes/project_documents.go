@@ -22,4 +22,5 @@ func RegisterProjectDocumentRoutes(
 	projects.DELETE("/:id/documents/:docId", manageRoles, h.Delete)
 
 	projects.GET("/:id/folders", viewRoles, folderHandler.ListFolders)
+	projects.DELETE("/:id/folders/:folderId", manageRoles, folderHandler.DeleteFolder)
 }

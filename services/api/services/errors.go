@@ -8,6 +8,11 @@ var (
 	ErrNotFound   = errors.New("not found")
 	ErrForbidden  = errors.New("forbidden")
 	ErrEmailInUse = errors.New("email already in use")
+
+	// ErrFolderHasDocs and ErrFolderHasChildren are returned by DeleteEmptyFolder
+	// when the folder still contains documents or sub-folders, respectively.
+	ErrFolderHasDocs     = errors.New("folder has documents")
+	ErrFolderHasChildren = errors.New("folder has child folders")
 )
 
 // ValidationError carries a human-readable message from input validation.

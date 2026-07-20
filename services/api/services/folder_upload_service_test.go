@@ -36,11 +36,31 @@ func flatInputPDF(filename string) BatchUploadInput {
 
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
+// mockTx is a minimal pgx.Tx for tests. Only Commit and Rollback are called by
+// FolderUploadService; the embedded nil interface panics on any other method.
+type mockTx struct {
+	pgx.Tx
+	committed bool
+	commitErr error
+}
+
+func (m *mockTx) Commit(_ context.Context) error   { m.committed = true; return m.commitErr }
+func (m *mockTx) Rollback(_ context.Context) error { return nil }
+
+// mockTxBeginner implements txBeginner for delete tests.
+type mockTxBeginner struct {
+	tx  pgx.Tx
+	err error
+}
+
+func (m *mockTxBeginner) Begin(_ context.Context) (pgx.Tx, error) { return m.tx, m.err }
+
 // mockDocRepo implements uploadDocRepo for tests.
 type mockDocRepo struct {
-	belongsFn func(ctx context.Context, companyID, projectID string) (bool, error)
-	dupFn     func(ctx context.Context, companyID, projectID string, folderID *string, name string) (bool, error)
-	createFn  func(ctx context.Context, companyID, projectID, userID, fileKey, name, ct string, size int64, folderID *string) (string, error)
+	belongsFn      func(ctx context.Context, companyID, projectID string) (bool, error)
+	dupFn          func(ctx context.Context, companyID, projectID string, folderID *string, name string) (bool, error)
+	createFn       func(ctx context.Context, companyID, projectID, userID, fileKey, name, ct string, size int64, folderID *string) (string, error)
+	hasActiveDocFn func(ctx context.Context, tx pgx.Tx, companyID, projectID, folderID string) (bool, error)
 }
 
 func (m *mockDocRepo) ProjectBelongsToCompany(ctx context.Context, companyID, projectID string) (bool, error) {
@@ -61,11 +81,21 @@ func (m *mockDocRepo) CreateWithFolder(ctx context.Context, companyID, projectID
 	}
 	return "doc-id-1", nil
 }
+func (m *mockDocRepo) HasActiveDocuments(ctx context.Context, tx pgx.Tx, companyID, projectID, folderID string) (bool, error) {
+	if m.hasActiveDocFn != nil {
+		return m.hasActiveDocFn(ctx, tx, companyID, projectID, folderID)
+	}
+	return false, nil
+}
 
 // mockFolderRepo implements uploadFolderRepo for tests.
 type mockFolderRepo struct {
-	belongsFn      func(ctx context.Context, companyID, projectID, folderID string) (bool, error)
-	findOrCreateFn func(ctx context.Context, tx pgx.Tx, companyID, projectID string, parentID *string, name, createdBy string) (string, error)
+	belongsFn            func(ctx context.Context, companyID, projectID, folderID string) (bool, error)
+	findOrCreateFn       func(ctx context.Context, tx pgx.Tx, companyID, projectID string, parentID *string, name, createdBy string) (string, error)
+	getFolderForUpdateFn func(ctx context.Context, tx pgx.Tx, companyID, projectID, folderID string) (bool, error)
+	hasChildFoldersFn    func(ctx context.Context, tx pgx.Tx, companyID, projectID, folderID string) (bool, error)
+	deleteFolderFn       func(ctx context.Context, tx pgx.Tx, companyID, projectID, folderID string) error
+	deletedFolderIDs     []string
 }
 
 func (m *mockFolderRepo) BelongsToProject(ctx context.Context, companyID, projectID, folderID string) (bool, error) {
@@ -79,6 +109,25 @@ func (m *mockFolderRepo) FindOrCreate(ctx context.Context, tx pgx.Tx, companyID,
 		return m.findOrCreateFn(ctx, tx, companyID, projectID, parentID, name, createdBy)
 	}
 	return "folder-id-1", nil
+}
+func (m *mockFolderRepo) GetFolderForUpdate(ctx context.Context, tx pgx.Tx, companyID, projectID, folderID string) (bool, error) {
+	if m.getFolderForUpdateFn != nil {
+		return m.getFolderForUpdateFn(ctx, tx, companyID, projectID, folderID)
+	}
+	return true, nil
+}
+func (m *mockFolderRepo) HasChildFolders(ctx context.Context, tx pgx.Tx, companyID, projectID, folderID string) (bool, error) {
+	if m.hasChildFoldersFn != nil {
+		return m.hasChildFoldersFn(ctx, tx, companyID, projectID, folderID)
+	}
+	return false, nil
+}
+func (m *mockFolderRepo) DeleteFolder(ctx context.Context, tx pgx.Tx, companyID, projectID, folderID string) error {
+	m.deletedFolderIDs = append(m.deletedFolderIDs, folderID)
+	if m.deleteFolderFn != nil {
+		return m.deleteFolderFn(ctx, tx, companyID, projectID, folderID)
+	}
+	return nil
 }
 
 // mockStorage implements StorageService for tests.
@@ -441,5 +490,138 @@ func TestProcess_SuccessfulUpload_SummaryCorrect(t *testing.T) {
 	}
 	if resp.Summary.Skipped != 1 {
 		t.Errorf("Skipped want 1, got %d", resp.Summary.Skipped)
+	}
+}
+
+// ── DeleteEmptyFolder ─────────────────────────────────────────────────────────
+
+func newDeleteSvc(docRepo uploadDocRepo, folderRepo uploadFolderRepo) *FolderUploadService {
+	tx := &mockTx{}
+	return &FolderUploadService{
+		db:         &mockTxBeginner{tx: tx},
+		docRepo:    docRepo,
+		folderRepo: folderRepo,
+		storage:    &mockStorage{},
+	}
+}
+
+func TestDeleteEmptyFolder_Success(t *testing.T) {
+	tx := &mockTx{}
+	folderRepo := &mockFolderRepo{}
+	svc := &FolderUploadService{
+		db:         &mockTxBeginner{tx: tx},
+		docRepo:    &mockDocRepo{},
+		folderRepo: folderRepo,
+		storage:    &mockStorage{},
+	}
+	err := svc.DeleteEmptyFolder(context.Background(), "co", "proj", "folder-1")
+	if err != nil {
+		t.Fatalf("expected nil, got %v", err)
+	}
+	if !tx.committed {
+		t.Error("expected transaction to be committed")
+	}
+	if len(folderRepo.deletedFolderIDs) != 1 || folderRepo.deletedFolderIDs[0] != "folder-1" {
+		t.Errorf("expected DeleteFolder(folder-1), got %v", folderRepo.deletedFolderIDs)
+	}
+}
+
+func TestDeleteEmptyFolder_HasDocuments_Returns409(t *testing.T) {
+	tx := &mockTx{}
+	docRepo := &mockDocRepo{
+		hasActiveDocFn: func(_ context.Context, _ pgx.Tx, _, _, _ string) (bool, error) {
+			return true, nil
+		},
+	}
+	svc := &FolderUploadService{
+		db:         &mockTxBeginner{tx: tx},
+		docRepo:    docRepo,
+		folderRepo: &mockFolderRepo{},
+		storage:    &mockStorage{},
+	}
+	err := svc.DeleteEmptyFolder(context.Background(), "co", "proj", "folder-1")
+	if !errors.Is(err, ErrFolderHasDocs) {
+		t.Errorf("expected ErrFolderHasDocs, got %v", err)
+	}
+}
+
+func TestDeleteEmptyFolder_HasChildFolders_Returns409(t *testing.T) {
+	tx := &mockTx{}
+	folderRepo := &mockFolderRepo{
+		hasChildFoldersFn: func(_ context.Context, _ pgx.Tx, _, _, _ string) (bool, error) {
+			return true, nil
+		},
+	}
+	svc := &FolderUploadService{
+		db:         &mockTxBeginner{tx: tx},
+		docRepo:    &mockDocRepo{},
+		folderRepo: folderRepo,
+		storage:    &mockStorage{},
+	}
+	err := svc.DeleteEmptyFolder(context.Background(), "co", "proj", "folder-1")
+	if !errors.Is(err, ErrFolderHasChildren) {
+		t.Errorf("expected ErrFolderHasChildren, got %v", err)
+	}
+}
+
+func TestDeleteEmptyFolder_ForeignProject_ReturnsNotFound(t *testing.T) {
+	folderRepo := &mockFolderRepo{
+		belongsFn: func(_ context.Context, _, _, _ string) (bool, error) { return false, nil },
+	}
+	svc := newDeleteSvc(&mockDocRepo{}, folderRepo)
+	err := svc.DeleteEmptyFolder(context.Background(), "co", "other-proj", "folder-1")
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestDeleteEmptyFolder_ForeignCompany_ReturnsNotFound(t *testing.T) {
+	folderRepo := &mockFolderRepo{
+		belongsFn: func(_ context.Context, companyID, _, _ string) (bool, error) {
+			return companyID == "correct-co", nil
+		},
+	}
+	svc := newDeleteSvc(&mockDocRepo{}, folderRepo)
+	err := svc.DeleteEmptyFolder(context.Background(), "wrong-co", "proj", "folder-1")
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestDeleteEmptyFolder_LockedButGone_ReturnsNotFound(t *testing.T) {
+	// BelongsToProject passes but GetFolderForUpdate finds nothing (race condition simulation).
+	tx := &mockTx{}
+	folderRepo := &mockFolderRepo{
+		getFolderForUpdateFn: func(_ context.Context, _ pgx.Tx, _, _, _ string) (bool, error) {
+			return false, nil
+		},
+	}
+	svc := &FolderUploadService{
+		db:         &mockTxBeginner{tx: tx},
+		docRepo:    &mockDocRepo{},
+		folderRepo: folderRepo,
+		storage:    &mockStorage{},
+	}
+	err := svc.DeleteEmptyFolder(context.Background(), "co", "proj", "folder-1")
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestDeleteEmptyFolder_OnlyTargetFolderDeleted(t *testing.T) {
+	tx := &mockTx{}
+	folderRepo := &mockFolderRepo{}
+	svc := &FolderUploadService{
+		db:         &mockTxBeginner{tx: tx},
+		docRepo:    &mockDocRepo{},
+		folderRepo: folderRepo,
+		storage:    &mockStorage{},
+	}
+	_ = svc.DeleteEmptyFolder(context.Background(), "co", "proj", "target-folder")
+	if len(folderRepo.deletedFolderIDs) != 1 {
+		t.Fatalf("expected exactly 1 deletion, got %d", len(folderRepo.deletedFolderIDs))
+	}
+	if folderRepo.deletedFolderIDs[0] != "target-folder" {
+		t.Errorf("expected target-folder to be deleted, got %q", folderRepo.deletedFolderIDs[0])
 	}
 }

@@ -21,12 +21,16 @@ type uploadDocRepo interface {
 	ProjectBelongsToCompany(ctx context.Context, companyID, projectID string) (bool, error)
 	CheckDuplicate(ctx context.Context, companyID, projectID string, folderID *string, originalName string) (bool, error)
 	CreateWithFolder(ctx context.Context, companyID, projectID, uploadedByUserID, fileKey, originalName, contentType string, fileSize int64, folderID *string) (string, error)
+	HasActiveDocuments(ctx context.Context, tx pgx.Tx, companyID, projectID, folderID string) (bool, error)
 }
 
 // uploadFolderRepo is the folder-repository surface used by FolderUploadService.
 type uploadFolderRepo interface {
 	BelongsToProject(ctx context.Context, companyID, projectID, folderID string) (bool, error)
 	FindOrCreate(ctx context.Context, tx pgx.Tx, companyID, projectID string, parentID *string, name, createdBy string) (string, error)
+	GetFolderForUpdate(ctx context.Context, tx pgx.Tx, companyID, projectID, folderID string) (bool, error)
+	HasChildFolders(ctx context.Context, tx pgx.Tx, companyID, projectID, folderID string) (bool, error)
+	DeleteFolder(ctx context.Context, tx pgx.Tx, companyID, projectID, folderID string) error
 }
 
 // txBeginner allows starting a transaction; satisfied by *pgxpool.Pool.
@@ -69,6 +73,71 @@ func NewFolderUploadService(
 	storage StorageService,
 ) *FolderUploadService {
 	return &FolderUploadService{db: db, docRepo: docRepo, folderRepo: folderRepo, storage: storage}
+}
+
+// DeleteEmptyFolder deletes a folder that has no documents and no child folders.
+// Returns ErrNotFound if the folder does not exist under the given company + project,
+// ErrFolderHasDocs if non-deleted documents exist in it, or ErrFolderHasChildren
+// if sub-folders exist. All checks and the deletion run in a single transaction
+// with a SELECT FOR UPDATE lock on the folder row.
+func (s *FolderUploadService) DeleteEmptyFolder(
+	ctx context.Context,
+	companyID, projectID, folderID string,
+) error {
+	// Early ownership check before acquiring any lock.
+	ok, err := s.folderRepo.BelongsToProject(ctx, companyID, projectID, folderID)
+	if err != nil {
+		return fmt.Errorf("check folder ownership: %w", err)
+	}
+	if !ok {
+		return ErrNotFound
+	}
+
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+
+	// Lock the folder row to prevent concurrent modification.
+	found, err := s.folderRepo.GetFolderForUpdate(ctx, tx, companyID, projectID, folderID)
+	if err != nil {
+		tx.Rollback(ctx)
+		return fmt.Errorf("lock folder: %w", err)
+	}
+	if !found {
+		tx.Rollback(ctx)
+		return ErrNotFound
+	}
+
+	hasDocs, err := s.docRepo.HasActiveDocuments(ctx, tx, companyID, projectID, folderID)
+	if err != nil {
+		tx.Rollback(ctx)
+		return fmt.Errorf("check documents: %w", err)
+	}
+	if hasDocs {
+		tx.Rollback(ctx)
+		return ErrFolderHasDocs
+	}
+
+	hasChildren, err := s.folderRepo.HasChildFolders(ctx, tx, companyID, projectID, folderID)
+	if err != nil {
+		tx.Rollback(ctx)
+		return fmt.Errorf("check child folders: %w", err)
+	}
+	if hasChildren {
+		tx.Rollback(ctx)
+		return ErrFolderHasChildren
+	}
+
+	if err := s.folderRepo.DeleteFolder(ctx, tx, companyID, projectID, folderID); err != nil {
+		tx.Rollback(ctx)
+		return fmt.Errorf("delete folder: %w", err)
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit: %w", err)
+	}
+	return nil
 }
 
 // IsSystemFile reports whether the given base filename is a known hidden/system file.

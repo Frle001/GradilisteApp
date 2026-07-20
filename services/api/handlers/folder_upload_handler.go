@@ -114,6 +114,34 @@ func (h *FolderUploadHandler) BatchUpload(c *gin.Context) {
 	c.JSON(http.StatusOK, resp)
 }
 
+// DELETE /api/projects/:id/folders/:folderId
+func (h *FolderUploadHandler) DeleteFolder(c *gin.Context) {
+	u := appctx.GetAuthUser(c)
+	if u == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthenticated"})
+		return
+	}
+	projectID := c.Param("id")
+	folderID := c.Param("folderId")
+
+	err := h.svc.DeleteEmptyFolder(c.Request.Context(), u.CompanyID, projectID, folderID)
+	if err != nil {
+		switch {
+		case errors.Is(err, services.ErrNotFound):
+			c.JSON(http.StatusNotFound, gin.H{"error": "mapa nije pronađena"})
+		case errors.Is(err, services.ErrFolderHasDocs):
+			c.JSON(http.StatusConflict, gin.H{"error": "Mapa sadrži datoteke. Obrišite datoteke prije brisanja mape."})
+		case errors.Is(err, services.ErrFolderHasChildren):
+			c.JSON(http.StatusConflict, gin.H{"error": "Mapa sadrži podmape. Prvo obrišite podmape."})
+		default:
+			log.Printf("[folders] DeleteFolder error: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "greška pri brisanju mape"})
+		}
+		return
+	}
+	c.Status(http.StatusNoContent)
+}
+
 // GET /api/projects/:id/folders?parent_id=xxx
 func (h *FolderUploadHandler) ListFolders(c *gin.Context) {
 	u := appctx.GetAuthUser(c)

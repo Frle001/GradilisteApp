@@ -199,6 +199,26 @@ func (r *ProjectDocumentsRepository) SoftDelete(ctx context.Context, companyID, 
 	return nil
 }
 
+// HasActiveDocuments reports whether the given folder contains any non-deleted documents.
+// Must be called inside a transaction that has already locked the folder row.
+func (r *ProjectDocumentsRepository) HasActiveDocuments(
+	ctx context.Context,
+	tx pgx.Tx,
+	companyID, projectID, folderID string,
+) (bool, error) {
+	var exists bool
+	err := tx.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM project_documents
+			WHERE folder_id = $1::uuid
+			  AND company_id = $2::uuid
+			  AND project_id = $3::uuid
+			  AND deleted_at IS NULL
+		)
+	`, folderID, companyID, projectID).Scan(&exists)
+	return exists, err
+}
+
 // IsProjectAssigned returns true if the given employee is actively assigned to the project.
 func (r *ProjectDocumentsRepository) IsProjectAssigned(
 	ctx context.Context,

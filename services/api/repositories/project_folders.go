@@ -106,6 +106,54 @@ func (r *ProjectFoldersRepository) BelongsToProject(
 	return exists, err
 }
 
+// GetFolderForUpdate locks the folder row within tx.
+// Returns (false, nil) if the folder does not exist under the given company + project.
+func (r *ProjectFoldersRepository) GetFolderForUpdate(
+	ctx context.Context,
+	tx pgx.Tx,
+	companyID, projectID, folderID string,
+) (bool, error) {
+	var id string
+	err := tx.QueryRow(ctx, `
+		SELECT id::text FROM project_folders
+		WHERE id = $1::uuid AND company_id = $2::uuid AND project_id = $3::uuid
+		FOR UPDATE
+	`, folderID, companyID, projectID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	return err == nil, err
+}
+
+// HasChildFolders reports whether the folder has any direct child sub-folders.
+func (r *ProjectFoldersRepository) HasChildFolders(
+	ctx context.Context,
+	tx pgx.Tx,
+	companyID, projectID, folderID string,
+) (bool, error) {
+	var exists bool
+	err := tx.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM project_folders
+			WHERE parent_id = $1::uuid AND company_id = $2::uuid AND project_id = $3::uuid
+		)
+	`, folderID, companyID, projectID).Scan(&exists)
+	return exists, err
+}
+
+// DeleteFolder hard-deletes a folder row scoped to company and project.
+func (r *ProjectFoldersRepository) DeleteFolder(
+	ctx context.Context,
+	tx pgx.Tx,
+	companyID, projectID, folderID string,
+) error {
+	_, err := tx.Exec(ctx, `
+		DELETE FROM project_folders
+		WHERE id = $1::uuid AND company_id = $2::uuid AND project_id = $3::uuid
+	`, folderID, companyID, projectID)
+	return err
+}
+
 // FindOrCreate returns an existing matching folder's ID or creates it.
 // Safe under concurrent inserts: uses INSERT…ON CONFLICT DO NOTHING then re-SELECT.
 func (r *ProjectFoldersRepository) FindOrCreate(

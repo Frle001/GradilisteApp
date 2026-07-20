@@ -67,6 +67,7 @@ export default function ProjectDocuments({ projectId, canManage }: Props) {
   const [isUploading, setIsUploading] = useState(false)
   const [downloading, setDownloading] = useState<string | null>(null)
   const [deleting, setDeleting] = useState<string | null>(null)
+  const [deletingFolder, setDeletingFolder] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const folderInputRef = useRef<HTMLInputElement>(null)
@@ -187,6 +188,33 @@ export default function ProjectDocuments({ projectId, canManage }: Props) {
     await startUpload(entries)
   }
 
+  // ── Folder deletion ───────────────────────────────────────────────────────
+
+  async function handleDeleteFolder() {
+    if (!currentFolderId) return
+    const currentItem = breadcrumb[breadcrumb.length - 1]
+    const confirmed = confirm(
+      `Obrisati mapu "${currentItem.name}"?\n\nMapa mora biti prazna. Ova radnja se ne može poništiti.`,
+    )
+    if (!confirmed) return
+
+    setDeletingFolder(true)
+    try {
+      await apiClient.delete(`/projects/${projectId}/folders/${currentFolderId}`)
+      // Navigate to parent — useEffect will refresh parent content automatically.
+      setBreadcrumb(prev => prev.slice(0, -1))
+    } catch (err: unknown) {
+      const e = err as { response?: { status?: number; data?: { error?: string } } }
+      if (e?.response?.status === 409 && e?.response?.data?.error) {
+        alert(e.response.data.error)
+      } else {
+        alert('Greška pri brisanju mape.')
+      }
+    } finally {
+      setDeletingFolder(false)
+    }
+  }
+
   // ── Delete / Download ─────────────────────────────────────────────────────
 
   async function handleDelete(doc: ProjectDocument) {
@@ -242,46 +270,70 @@ export default function ProjectDocuments({ projectId, canManage }: Props) {
       {/* Header */}
       <div className="flex items-center justify-between gap-4 mb-4">
         <h2 className="text-white font-semibold">Dokumenti projekta</h2>
-        {canManage && (
-          <div className="flex items-center gap-2">
-            <label
-              className={`cursor-pointer px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                isUploading
-                  ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
-                  : 'bg-blue-600 hover:bg-blue-500 text-white'
-              }`}
+        <div className="flex items-center gap-2">
+          {canManage && currentFolderId && (
+            <button
+              onClick={handleDeleteFolder}
+              disabled={deletingFolder || isUploading}
+              title="Obriši mapu"
+              className="p-1.5 rounded text-slate-500 hover:text-red-400 hover:bg-slate-700 transition disabled:opacity-40"
             >
-              + Dodaj datoteke
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                className="hidden"
-                disabled={isUploading}
-                onChange={handleFileInput}
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.webp,.gif,.tiff,.txt,.csv,.zip,.dwg"
-              />
-            </label>
-            <label
-              className={`cursor-pointer px-3 py-1.5 rounded-lg text-xs font-medium transition ${
-                isUploading
-                  ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
-                  : 'bg-slate-700 hover:bg-slate-600 text-white'
-              }`}
-            >
-              + Dodaj mapu
-              <input
-                ref={folderInputRef}
-                type="file"
-                multiple
-                className="hidden"
-                disabled={isUploading}
-                onChange={handleFileInput}
-                {...({ webkitdirectory: '', directory: '' } as object)}
-              />
-            </label>
-          </div>
-        )}
+              <svg
+                className="w-4 h-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"
+                />
+              </svg>
+            </button>
+          )}
+          {canManage && (
+            <>
+              <label
+                className={`cursor-pointer px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                  isUploading
+                    ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                    : 'bg-blue-600 hover:bg-blue-500 text-white'
+                }`}
+              >
+                + Dodaj datoteke
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  disabled={isUploading}
+                  onChange={handleFileInput}
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.webp,.gif,.tiff,.txt,.csv,.zip,.dwg"
+                />
+              </label>
+              <label
+                className={`cursor-pointer px-3 py-1.5 rounded-lg text-xs font-medium transition ${
+                  isUploading
+                    ? 'bg-slate-700 text-slate-400 cursor-not-allowed'
+                    : 'bg-slate-700 hover:bg-slate-600 text-white'
+                }`}
+              >
+                + Dodaj mapu
+                <input
+                  ref={folderInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  disabled={isUploading}
+                  onChange={handleFileInput}
+                  {...({ webkitdirectory: '', directory: '' } as object)}
+                />
+              </label>
+            </>
+          )}
+        </div>
       </div>
 
       {/* Breadcrumb */}
