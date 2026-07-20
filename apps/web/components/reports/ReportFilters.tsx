@@ -11,6 +11,7 @@ interface Props {
   showActivityType?: boolean
   showVtk?: boolean
   loading?: boolean
+  hideSelectFilters?: boolean
 }
 
 const ACTIVITY_TYPE_LABELS: Record<string, string> = {
@@ -64,6 +65,7 @@ export default function ReportFilters({
   showActivityType = false,
   showVtk = false,
   loading = false,
+  hideSelectFilters = false,
 }: Props) {
   const activeCount = countActiveFilters(filter)
 
@@ -98,97 +100,101 @@ export default function ReportFilters({
       {/* Filter grid */}
       <div className="p-4">
         <div className="grid grid-cols-2 gap-x-4 gap-y-3 sm:grid-cols-3 lg:grid-cols-4">
-          <FilterField label="Gradilište">
-            <select
-              disabled={loading || !options}
-              className={inputCls}
-              value={filter.project_id ?? ''}
-              onChange={e => onChange(set(filter, 'project_id', e.target.value))}
-            >
-              <option value="">Sva gradilišta</option>
-              {options?.projects.map(p => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-          </FilterField>
-
-          <FilterField label="Poslovođa">
-            <select
-              disabled={loading || !options}
-              className={inputCls}
-              value={filter.poslovoda_id ?? ''}
-              onChange={e => onChange(set(filter, 'poslovoda_id', e.target.value))}
-            >
-              <option value="">Svi poslovođe</option>
-              {options?.poslovode.map(p => (
-                <option key={p.id} value={p.id}>{p.full_name}</option>
-              ))}
-            </select>
-          </FilterField>
-
-          {showWorker && (
-            <FilterField label="Radnik">
-              <select
-                disabled={loading || !options}
-                className={inputCls}
-                value={filter.worker_id ?? ''}
-                onChange={e => onChange(set(filter, 'worker_id', e.target.value))}
-              >
-                <option value="">Svi radnici</option>
-                {options?.workers.map(w => (
-                  <option key={w.id} value={w.id}>{w.full_name}</option>
-                ))}
-              </select>
-            </FilterField>
-          )}
-
-          {showMaterial && (
-            <FilterField label="Materijal">
-              <select
-                disabled={loading || !options}
-                className={inputCls}
-                value={filter.material_id ?? ''}
-                onChange={e => onChange(set(filter, 'material_id', e.target.value))}
-              >
-                <option value="">Svi materijali</option>
-                {options?.materials
-                  .filter(m => !filter.project_id || m.project_id === filter.project_id)
-                  .map(m => (
-                    <option key={m.id} value={m.id}>{m.material_name}</option>
+          {!hideSelectFilters && (
+            <>
+              <FilterField label="Gradilište">
+                <select
+                  disabled={loading || !options}
+                  className={inputCls}
+                  value={filter.project_id ?? ''}
+                  onChange={e => onChange(set(filter, 'project_id', e.target.value))}
+                >
+                  <option value="">Sva gradilišta</option>
+                  {options?.projects.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
-              </select>
-            </FilterField>
-          )}
+                </select>
+              </FilterField>
 
-          {showActivityType && (
-            <FilterField label="Aktivnost">
-              <select
-                disabled={loading || !options}
-                className={inputCls}
-                value={filter.activity_type ?? ''}
-                onChange={e => onChange(set(filter, 'activity_type', e.target.value))}
-              >
-                <option value="">Sve aktivnosti</option>
-                {options?.activity_types.map(t => (
-                  <option key={t} value={t}>{ACTIVITY_TYPE_LABELS[t] ?? t}</option>
-                ))}
-              </select>
-            </FilterField>
-          )}
+              <FilterField label="Poslovođa">
+                <select
+                  disabled={loading || !options}
+                  className={inputCls}
+                  value={filter.poslovoda_id ?? ''}
+                  onChange={e => onChange(set(filter, 'poslovoda_id', e.target.value))}
+                >
+                  <option value="">Svi poslovođe</option>
+                  {options?.poslovode.map(p => (
+                    <option key={p.id} value={p.id}>{p.full_name}</option>
+                  ))}
+                </select>
+              </FilterField>
 
-          <FilterField label="Status">
-            <select
-              disabled={loading || !options}
-              className={inputCls}
-              value={filter.status ?? ''}
-              onChange={e => onChange(set(filter, 'status', e.target.value))}
-            >
-              <option value="">Svi statusi</option>
-              {(options?.statuses ?? ['draft', 'submitted', 'approved', 'rejected']).map(s => (
-                <option key={s} value={s}>{STATUS_LABELS[s] ?? s}</option>
-              ))}
-            </select>
-          </FilterField>
+              {showWorker && (
+                <FilterField label="Radnik">
+                  <select
+                    disabled={loading || !options}
+                    className={inputCls}
+                    value={filter.worker_id ?? ''}
+                    onChange={e => onChange(set(filter, 'worker_id', e.target.value))}
+                  >
+                    <option value="">Svi radnici</option>
+                    {options?.workers.map(w => (
+                      <option key={w.id} value={w.id}>{w.full_name}</option>
+                    ))}
+                  </select>
+                </FilterField>
+              )}
+
+              {showMaterial && (
+                <FilterField label="Materijal">
+                  <select
+                    disabled={loading || !options}
+                    className={inputCls}
+                    value={filter.material_id ?? ''}
+                    onChange={e => onChange(set(filter, 'material_id', e.target.value))}
+                  >
+                    <option value="">Svi materijali</option>
+                    {options?.materials
+                      .filter(m => !filter.project_id || m.project_id === filter.project_id)
+                      .map(m => (
+                        <option key={m.id} value={m.id}>{m.material_name}</option>
+                      ))}
+                  </select>
+                </FilterField>
+              )}
+
+              {showActivityType && (
+                <FilterField label="Aktivnost">
+                  <select
+                    disabled={loading || !options}
+                    className={inputCls}
+                    value={filter.activity_type ?? ''}
+                    onChange={e => onChange(set(filter, 'activity_type', e.target.value))}
+                  >
+                    <option value="">Sve aktivnosti</option>
+                    {options?.activity_types.map(t => (
+                      <option key={t} value={t}>{ACTIVITY_TYPE_LABELS[t] ?? t}</option>
+                    ))}
+                  </select>
+                </FilterField>
+              )}
+
+              <FilterField label="Status">
+                <select
+                  disabled={loading || !options}
+                  className={inputCls}
+                  value={filter.status ?? ''}
+                  onChange={e => onChange(set(filter, 'status', e.target.value))}
+                >
+                  <option value="">Svi statusi</option>
+                  {(options?.statuses ?? ['draft', 'submitted', 'approved', 'rejected']).map(s => (
+                    <option key={s} value={s}>{STATUS_LABELS[s] ?? s}</option>
+                  ))}
+                </select>
+              </FilterField>
+            </>
+          )}
 
           <FilterField label="Datum od">
             <input

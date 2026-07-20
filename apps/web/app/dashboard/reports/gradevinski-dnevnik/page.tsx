@@ -105,6 +105,7 @@ export default function GradevinskiDnevnikPage() {
           onChange={handleFilterChange}
           showWorker
           loading={optionsLoading}
+          hideSelectFilters
         />
 
         {optionsError && (
