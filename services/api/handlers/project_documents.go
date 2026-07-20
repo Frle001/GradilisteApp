@@ -10,15 +10,17 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"github.com/gradiliste/api/appctx"
+	"github.com/gradiliste/api/repositories"
 	"github.com/gradiliste/api/services"
 )
 
 type ProjectDocumentsHandler struct {
-	svc *services.ProjectDocumentsService
+	svc        *services.ProjectDocumentsService
+	folderRepo *repositories.ProjectFoldersRepository
 }
 
-func NewProjectDocumentsHandler(svc *services.ProjectDocumentsService) *ProjectDocumentsHandler {
-	return &ProjectDocumentsHandler{svc: svc}
+func NewProjectDocumentsHandler(svc *services.ProjectDocumentsService, folderRepo *repositories.ProjectFoldersRepository) *ProjectDocumentsHandler {
+	return &ProjectDocumentsHandler{svc: svc, folderRepo: folderRepo}
 }
 
 // GET /api/projects/:id/documents
@@ -30,7 +32,17 @@ func (h *ProjectDocumentsHandler) List(c *gin.Context) {
 	}
 	projectID := c.Param("id")
 
-	docs, err := h.svc.List(c.Request.Context(), u.CompanyID, u.Role, u.EmployeeID, projectID)
+	var folderID *string
+	if fid := c.Query("folder_id"); fid != "" {
+		folderID = &fid
+		ok, err := h.folderRepo.BelongsToProject(c.Request.Context(), u.CompanyID, projectID, fid)
+		if err != nil || !ok {
+			c.JSON(http.StatusNotFound, gin.H{"error": "mapa nije pronađena"})
+			return
+		}
+	}
+
+	docs, err := h.svc.List(c.Request.Context(), u.CompanyID, u.Role, u.EmployeeID, projectID, folderID)
 	if err != nil {
 		if errors.Is(err, services.ErrDocumentNotFound) {
 			c.JSON(http.StatusNotFound, gin.H{"error": "projekt nije pronađen"})

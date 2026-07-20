@@ -12,17 +12,18 @@ import (
 // AppConfig holds all runtime configuration derived from environment variables.
 // Loaded once at startup via LoadConfig(); accessed globally via Config.
 type AppConfig struct {
-	Env                 string
-	ServerPort          string
-	AppVersion          string // set via APP_VERSION env var or build ldflags
-	JWTSecret           string
-	JWTExpiresIn        string
-	BcryptCost          int
-	CORSAllowedOrigins  []string // empty = allow all (dev only)
-	UploadStorageDriver string   // "local" | "s3"
-	LocalUploadDir      string
-	MaxUploadSizeMB     int64
-	LogLevel            string
+	Env                  string
+	ServerPort           string
+	AppVersion           string // set via APP_VERSION env var or build ldflags
+	JWTSecret            string
+	JWTExpiresIn         string
+	BcryptCost           int
+	CORSAllowedOrigins   []string // empty = allow all (dev only)
+	UploadStorageDriver  string   // "local" | "s3"
+	LocalUploadDir       string
+	MaxUploadSizeMB      int64
+	MaxBatchUploadSizeMB int64
+	LogLevel             string
 	// Cookie settings — override with COOKIE_SECURE and COOKIE_SAME_SITE env vars.
 	// For cross-origin HTTPS (Vercel frontend + Render API): COOKIE_SECURE=true, COOKIE_SAME_SITE=none
 	CookieSecure   bool
@@ -110,6 +111,11 @@ func LoadConfig() {
 		maxUploadMB = 10
 	}
 
+	maxBatchUploadMB, _ := strconv.ParseInt(os.Getenv("MAX_BATCH_UPLOAD_SIZE_MB"), 10, 64)
+	if maxBatchUploadMB <= 0 {
+		maxBatchUploadMB = 512
+	}
+
 	logLevel := os.Getenv("LOG_LEVEL")
 	if logLevel == "" {
 		if env == "development" {
@@ -175,26 +181,27 @@ func LoadConfig() {
 	}
 
 	Config = &AppConfig{
-		Env:                 env,
-		ServerPort:          serverPort,
-		AppVersion:          appVersion,
-		JWTSecret:           jwtSecret,
-		JWTExpiresIn:        jwtExpiresIn,
-		BcryptCost:          bcryptCost,
-		CORSAllowedOrigins:  corsOrigins,
-		UploadStorageDriver: uploadDriver,
-		LocalUploadDir:      localUploadDir,
-		MaxUploadSizeMB:     maxUploadMB,
-		LogLevel:            logLevel,
-		CookieSecure:        cookieSecure,
-		CookieSameSite:      cookieSameSite,
-		S3Endpoint:          s3Endpoint,
-		S3Bucket:            s3Bucket,
-		S3AccessKeyID:       s3AccessKey,
-		S3SecretKey:         s3SecretKey,
-		S3Region:            s3Region,
-		S3UsePathStyle:      s3UsePathStyle,
-		S3PublicBaseURL:     s3PublicBaseURL,
+		Env:                  env,
+		ServerPort:           serverPort,
+		AppVersion:           appVersion,
+		JWTSecret:            jwtSecret,
+		JWTExpiresIn:         jwtExpiresIn,
+		BcryptCost:           bcryptCost,
+		CORSAllowedOrigins:   corsOrigins,
+		UploadStorageDriver:  uploadDriver,
+		LocalUploadDir:       localUploadDir,
+		MaxUploadSizeMB:      maxUploadMB,
+		MaxBatchUploadSizeMB: maxBatchUploadMB,
+		LogLevel:             logLevel,
+		CookieSecure:         cookieSecure,
+		CookieSameSite:       cookieSameSite,
+		S3Endpoint:           s3Endpoint,
+		S3Bucket:             s3Bucket,
+		S3AccessKeyID:        s3AccessKey,
+		S3SecretKey:          s3SecretKey,
+		S3Region:             s3Region,
+		S3UsePathStyle:       s3UsePathStyle,
+		S3PublicBaseURL:      s3PublicBaseURL,
 	}
 
 	configureSlog(logLevel)

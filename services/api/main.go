@@ -96,7 +96,12 @@ func main() {
 
 	docRepo := repositories.NewProjectDocumentsRepository(db)
 	docSvc := services.NewProjectDocumentsService(docRepo, storageSvc)
-	docHandler := handlers.NewProjectDocumentsHandler(docSvc)
+
+	folderRepo := repositories.NewProjectFoldersRepository(db)
+	docHandler := handlers.NewProjectDocumentsHandler(docSvc, folderRepo)
+
+	folderUploadSvc := services.NewFolderUploadService(db, docRepo, folderRepo, storageSvc)
+	folderHandler := handlers.NewFolderUploadHandler(folderUploadSvc, folderRepo, docRepo)
 
 	// ── Router ────────────────────────────────────────────────────────────────
 	if Config.Env != "development" {
@@ -108,14 +113,14 @@ func main() {
 	router.Use(RequestIDMiddleware())
 	router.Use(StructuredLogMiddleware())
 	router.Use(CORSMiddleware())
-	router.Use(BodySizeLimitMiddleware(Config.MaxUploadSizeMB << 20))
 
 	// Root-level health check — used by load balancers and cloud platforms.
 	router.GET("/health", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 
-	api := router.Group("/api")
+	// api carries the standard 10 MB body limit for all routes.
+	api := router.Group("/api", BodySizeLimitMiddleware(Config.MaxUploadSizeMB<<20))
 
 	// ── Liveness + readiness ──────────────────────────────────────────────────
 	api.GET("/health", func(c *gin.Context) {
@@ -182,7 +187,16 @@ func main() {
 	routes.RegisterMaterialPurchasesRoutes(api, mpHandler, AuthRequired(), RequireRoles)
 	routes.RegisterInventoryRoutes(api, invHandler, AuthRequired(), RequireRoles)
 	routes.RegisterWorkerHoursRoutes(api, whHandler, AuthRequired(), RequireRoles)
-	routes.RegisterProjectDocumentRoutes(projectsGroup, docHandler, RequireRoles)
+	routes.RegisterProjectDocumentRoutes(projectsGroup, docHandler, folderHandler, RequireRoles)
+
+	// Batch upload is registered on a separate group without the standard 10 MB body limit.
+	// It applies its own 512 MB limit and requires the same auth/role middleware.
+	batchGroup := router.Group("/api/projects",
+		BodySizeLimitMiddleware(Config.MaxBatchUploadSizeMB<<20),
+		AuthRequired(),
+		RequireRoles("direktor", "inzenjer"),
+	)
+	batchGroup.POST("/:id/documents/folder-upload", folderHandler.BatchUpload)
 
 	// ── Debug (development only) ──────────────────────────────────────────────
 	if Config.Env == "development" {
