@@ -21,12 +21,21 @@ export default function GradevinskiDnevnikPage() {
 
   const [filter, setFilter] = useState<ReportFilter>({ page: 1, per_page: 25 })
   const [options, setOptions] = useState<ReportFilterOptions | null>(null)
+  const [optionsLoading, setOptionsLoading] = useState(true)
+  const [optionsError, setOptionsError] = useState<string | null>(null)
   const [data, setData] = useState<GradevinskiDnevnikResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    apiClient.get('/reports/filter-options').then(res => setOptions(res.data)).catch(() => {})
+    apiClient.get('/reports/filter-options')
+      .then(res => { setOptions(res.data); setOptionsError(null) })
+      .catch(() => {
+        // Unblock the dropdowns even on failure — show empty lists with an error notice.
+        setOptions({ projects: [], poslovode: [], workers: [], materials: [], activity_types: [], statuses: [] })
+        setOptionsError('Greška pri učitavanju opcija filtera. Filteri gradilišta, radnika i poslovođe nisu dostupni.')
+      })
+      .finally(() => setOptionsLoading(false))
   }, [])
 
   const fetchData = useCallback(async (f: ReportFilter) => {
@@ -95,8 +104,14 @@ export default function GradevinskiDnevnikPage() {
           options={options}
           onChange={handleFilterChange}
           showWorker
-          loading={loading && !data}
+          loading={optionsLoading}
         />
+
+        {optionsError && (
+          <div className="rounded-xl bg-amber-950 border border-amber-800 text-amber-300 text-sm px-4 py-3">
+            {optionsError}
+          </div>
+        )}
 
         {data && <DnevnikSummaryCards summary={data.summary} />}
 
