@@ -169,10 +169,10 @@ func buildDnevnikWhere(companyID string, f dto.ReportFilter) *reportWhere {
 		w.add("c.status = $%d", *f.Status)
 	}
 	if f.DateFrom != nil {
-		w.add("c.report_date >= $%d::date", *f.DateFrom)
+		w.add("c.report_date::date >= $%d::date", *f.DateFrom)
 	}
 	if f.DateTo != nil {
-		w.add("c.report_date <= $%d::date", *f.DateTo)
+		w.add("c.report_date::date <= $%d::date", *f.DateTo)
 	}
 	if f.Search != nil && strings.TrimSpace(*f.Search) != "" {
 		like := "%" + *f.Search + "%"
