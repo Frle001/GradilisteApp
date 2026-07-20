@@ -159,15 +159,6 @@ func (s *ProjectDocumentsService) checkProjectAccess(
 		return ErrDocumentNotFound
 	}
 
-	if role == "poslovoda" {
-		assigned, err := s.repo.IsProjectAssigned(ctx, companyID, projectID, employeeID)
-		if err != nil {
-			return fmt.Errorf("check assignment: %w", err)
-		}
-		if !assigned {
-			return ErrDocumentForbidden
-		}
-	}
 	return nil
 }
 

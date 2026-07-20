@@ -20,7 +20,6 @@ export default function ProjectsPage() {
   const [error, setError] = useState<string | null>(null)
 
   const canManage = !!user && canManageProjects(user.role)
-  const isPoslovoda = user?.role === 'poslovoda'
 
   const fetchProjects = useCallback(() => {
     if (!user) return
@@ -79,7 +78,7 @@ export default function ProjectsPage() {
   if (isLoading) return <LoadingScreen />
   if (!user) return null
 
-  const title = isPoslovoda ? 'Moja gradilišta' : 'Projekti / Gradilišta'
+  const title = 'Projekti / Gradilišta'
 
   return (
     <DashboardShell
@@ -113,18 +112,16 @@ export default function ProjectsPage() {
             placeholder="Pretraži po nazivu ili adresi..."
             className="flex-1 px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent transition"
           />
-          {!isPoslovoda && (
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent transition"
-            >
-              <option value="">Svi statusi</option>
-              <option value="active">Aktivni</option>
-              <option value="closed">Zatvoreni</option>
-              <option value="archived">Arhivirani</option>
-            </select>
-          )}
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent transition"
+          >
+            <option value="">Svi statusi</option>
+            <option value="active">Aktivni</option>
+            <option value="closed">Zatvoreni</option>
+            <option value="archived">Arhivirani</option>
+          </select>
         </div>
 
         {/* Error */}
