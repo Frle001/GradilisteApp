@@ -531,8 +531,10 @@ func (r *ReportsRepository) FilterOptionsForAll(ctx context.Context, companyID s
 	}
 
 	// Workers — include active radnici plus any who have submitted hours (even if now inactive).
+	// EXISTS is unique per employee row so DISTINCT is not needed (and would conflict with
+	// ORDER BY columns not in the select list under PostgreSQL's DISTINCT rules).
 	rows3, err := r.db.Query(ctx, `
-		SELECT DISTINCT e.id::text, e.first_name||' '||e.last_name, e.supervisor_id::text
+		SELECT e.id::text, e.first_name||' '||e.last_name, e.supervisor_id::text
 		FROM employees e
 		WHERE e.company_id = $1::uuid
 		  AND e.role = 'radnik'
@@ -628,11 +630,13 @@ func (r *ReportsRepository) FilterOptionsForPoslovoda(ctx context.Context, compa
 
 	// Workers: those who submitted hours to this poslovoda's projects (worker_daily_hours),
 	// or who were included in this poslovoda's daily reports.
-	// Using project_assignments to identify projects owned by this poslovoda.
+	// EXISTS is unique per employee row so DISTINCT is not needed (and conflicts with
+	// ORDER BY columns not in the select list under PostgreSQL's DISTINCT rules).
 	rows2, err := r.db.Query(ctx, `
-		SELECT DISTINCT e.id::text, e.first_name||' '||e.last_name, e.supervisor_id::text
+		SELECT e.id::text, e.first_name||' '||e.last_name, e.supervisor_id::text
 		FROM employees e
 		WHERE e.company_id = $2::uuid
+		  AND e.role = 'radnik'
 		  AND (
 		    EXISTS (
 		      SELECT 1 FROM worker_daily_hours wdh
