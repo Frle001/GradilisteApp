@@ -41,10 +41,13 @@ export default function EditProjectPage() {
         end_date: data.end_date || null,
       })
 
-      // If poslovoda changed, assign separately
-      if (data.primary_poslovoda_id) {
+      // Only call assign-poslovoda when the value has actually changed to avoid
+      // a pointless deactivate+reactivate cycle on every project edit.
+      const newId = data.primary_poslovoda_id || null
+      const oldId = project?.primary_poslovoda_id ?? null
+      if (newId && newId !== oldId) {
         await apiClient.patch(`/projects/${id}/assign-poslovoda`, {
-          poslovoda_id: data.primary_poslovoda_id,
+          poslovoda_id: newId,
         })
       }
 
