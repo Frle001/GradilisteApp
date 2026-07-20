@@ -36,15 +36,17 @@ func NewProjectDocumentsService(
 	return &ProjectDocumentsService{repo: repo, storage: storage}
 }
 
-// List returns all documents for a project. Poslovoda must be assigned to the project.
+// List returns documents for a project, optionally scoped to a folder.
+// folderID nil returns project-root documents; non-nil returns that folder's documents.
 func (s *ProjectDocumentsService) List(
 	ctx context.Context,
 	companyID, role, employeeID, projectID string,
+	folderID *string,
 ) ([]dto.ProjectDocumentItem, error) {
 	if err := s.checkProjectAccess(ctx, companyID, role, employeeID, projectID); err != nil {
 		return nil, err
 	}
-	return s.repo.List(ctx, companyID, projectID)
+	return s.repo.ListInFolder(ctx, companyID, projectID, folderID)
 }
 
 // Upload saves a file to storage and creates a DB record. Only direktor/inzenjer may call this.
@@ -78,16 +80,6 @@ func (s *ProjectDocumentsService) Upload(
 		// Best-effort cleanup — ignore cleanup error, log it separately if needed.
 		_ = s.storage.DeleteReceiptFile(ctx, fileKey)
 		return nil, fmt.Errorf("create document record: %w", err)
-	}
-
-	// Fetch the newly created record to return full DTO.
-	docs, err := s.repo.List(ctx, companyID, projectID)
-	if err == nil {
-		for _, d := range docs {
-			if d.ID == docID {
-				return &d, nil
-			}
-		}
 	}
 
 	return &dto.ProjectDocumentItem{

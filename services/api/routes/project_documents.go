@@ -5,11 +5,12 @@ import (
 	"github.com/gradiliste/api/handlers"
 )
 
-// RegisterProjectDocumentRoutes attaches document routes to the /projects group.
+// RegisterProjectDocumentRoutes attaches document and folder routes to the /projects group.
 // projects is the *gin.RouterGroup returned by RegisterProjectRoutes.
 func RegisterProjectDocumentRoutes(
 	projects *gin.RouterGroup,
 	h *handlers.ProjectDocumentsHandler,
+	folderHandler *handlers.FolderUploadHandler,
 	requireRoles func(...string) gin.HandlerFunc,
 ) {
 	manageRoles := requireRoles("direktor", "inzenjer")
@@ -19,4 +20,6 @@ func RegisterProjectDocumentRoutes(
 	projects.POST("/:id/documents", manageRoles, h.Upload)
 	projects.GET("/:id/documents/:docId/download", viewRoles, h.Download)
 	projects.DELETE("/:id/documents/:docId", manageRoles, h.Delete)
+
+	projects.GET("/:id/folders", viewRoles, folderHandler.ListFolders)
 }
