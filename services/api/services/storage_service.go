@@ -58,7 +58,38 @@ var AllowedDocumentMIMEs = map[string]string{
 	"application/x-zip-compressed": ".zip",
 }
 
+// dwgMIMEValues is the set of MIME types that browsers and tools may report for AutoCAD
+// DWG files. Includes application/octet-stream because many browsers send it for
+// unrecognised formats; it is only accepted when the filename ends in .dwg.
+var dwgMIMEValues = map[string]bool{
+	"application/acad":         true,
+	"application/x-acad":       true,
+	"application/autocad":      true,
+	"application/x-autocad":    true,
+	"application/dwg":          true,
+	"application/x-dwg":        true,
+	"image/vnd.dwg":            true,
+	"application/octet-stream": true,
+}
+
+// canonicalDWGMIME is the content type stored in the DB and returned on download
+// for all DWG files, regardless of what the browser reported.
+const canonicalDWGMIME = "application/dwg"
+
+// NormalizeDocumentMIME returns the canonical MIME for storage. For files whose
+// sanitized name ends in .dwg it always returns canonicalDWGMIME so that
+// downloads have a useful Content-Type even when the browser sent octet-stream.
+func NormalizeDocumentMIME(ct, filename string) string {
+	if strings.ToLower(filepath.Ext(filepath.Base(filename))) == ".dwg" {
+		return canonicalDWGMIME
+	}
+	return ct
+}
+
 // ValidateDocumentFile checks MIME type and file size for project documents.
+// DWG files are accepted when the filename ends in .dwg (case-insensitive) AND
+// the MIME type is a known DWG value or application/octet-stream. All other files
+// must have a MIME type listed in AllowedDocumentMIMEs.
 func ValidateDocumentFile(header *multipart.FileHeader) error {
 	if header.Size > MaxDocumentFileSize {
 		return fmt.Errorf("datoteka je prevelika (maksimalno 25 MB, primljeno %d bajtova)", header.Size)
@@ -67,8 +98,17 @@ func ValidateDocumentFile(header *multipart.FileHeader) error {
 	if idx := strings.Index(ct, ";"); idx != -1 {
 		ct = strings.TrimSpace(ct[:idx])
 	}
+
+	ext := strings.ToLower(filepath.Ext(filepath.Base(header.Filename)))
+	if ext == ".dwg" {
+		if dwgMIMEValues[ct] {
+			return nil
+		}
+		return fmt.Errorf("nepodržani tip datoteke %q za DWG datoteku; očekivani su DWG MIME tipovi ili application/octet-stream", ct)
+	}
+
 	if _, ok := AllowedDocumentMIMEs[ct]; !ok {
-		return fmt.Errorf("nepodržani tip datoteke %q; dopušteni su: PDF, Word, Excel, PowerPoint, slike, CSV, TXT, ZIP", ct)
+		return fmt.Errorf("nepodržani tip datoteke %q; dopušteni su: PDF, Word, Excel, PowerPoint, slike, CSV, TXT, ZIP, DWG", ct)
 	}
 	return nil
 }
@@ -172,9 +212,10 @@ func (s *LocalStorageService) SaveDocumentFile(
 	if idx := strings.Index(ct, ";"); idx != -1 {
 		ct = strings.TrimSpace(ct[:idx])
 	}
+	ct = NormalizeDocumentMIME(ct, header.Filename)
 	ext := AllowedDocumentMIMEs[ct]
 	if ext == "" {
-		ext = filepath.Ext(header.Filename)
+		ext = strings.ToLower(filepath.Ext(header.Filename))
 		if ext == "" {
 			ext = ".bin"
 		}
@@ -335,9 +376,10 @@ func (s *S3StorageService) SaveDocumentFile(
 	if idx := strings.Index(ct, ";"); idx != -1 {
 		ct = strings.TrimSpace(ct[:idx])
 	}
+	ct = NormalizeDocumentMIME(ct, header.Filename)
 	ext := AllowedDocumentMIMEs[ct]
 	if ext == "" {
-		ext = filepath.Ext(header.Filename)
+		ext = strings.ToLower(filepath.Ext(header.Filename))
 		if ext == "" {
 			ext = ".bin"
 		}
@@ -404,6 +446,8 @@ func mimeFromKey(fileKey string) string {
 		return "text/plain"
 	case ".zip":
 		return "application/zip"
+	case ".dwg":
+		return canonicalDWGMIME
 	default:
 		return "application/octet-stream"
 	}

@@ -116,7 +116,7 @@ export default function ProjectDocuments({ projectId, canManage }: Props) {
               className="hidden"
               disabled={uploading}
               onChange={handleUpload}
-              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.webp,.gif,.tiff,.txt,.csv,.zip"
+              accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.jpg,.jpeg,.png,.webp,.gif,.tiff,.txt,.csv,.zip,.dwg"
             />
           </label>
         )}
@@ -206,6 +206,7 @@ function resolveType(ct: string): { label: string; className: string } {
   if (ct.startsWith('image/'))     return { label: 'Slika', className: 'bg-purple-900/60 text-purple-300' }
   if (ct.includes('csv') || ct.includes('text/plain')) return { label: 'TXT', className: 'bg-slate-700 text-slate-300' }
   if (ct.includes('zip'))          return { label: 'ZIP',   className: 'bg-yellow-900/60 text-yellow-300' }
+  if (ct.includes('dwg') || ct.includes('acad') || ct.includes('autocad')) return { label: 'DWG', className: 'bg-cyan-900/60 text-cyan-300' }
   return { label: 'Dat.', className: 'bg-slate-700 text-slate-400' }
 }
 
