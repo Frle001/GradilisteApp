@@ -52,6 +52,7 @@ const navByRole: Record<string, NavItem[]> = {
   radnik: [
     { href: '/dashboard', label: 'Početna', Icon: Home, exact: true },
     { href: '/dashboard/my-hours', label: 'Moji sati', Icon: Clock },
+    { href: '/dashboard/projects', label: 'Projekti', Icon: FolderOpen },
   ],
 }
 

@@ -55,6 +55,7 @@ const roleCards: Record<string, DashboardCard[]> = {
   ],
   radnik: [
     { title: 'Moji sati', description: 'Unos vlastitih dnevnih radnih sati po projektu.', icon: '⏱️', href: '/dashboard/my-hours' },
+    { title: 'Projekti / Gradilišta', description: 'Pregled projekata tvrtke', icon: '🏗️', href: '/dashboard/projects' },
   ],
 }
 

@@ -48,9 +48,6 @@ func (s *ProjectService) List(ctx context.Context, companyID, callerRole, caller
 		Search: f.Search,
 		Status: f.Status,
 	}
-	if callerRole == "poslovoda" && callerEmpID != "" {
-		repoFilter.ScopeEmpID = &callerEmpID
-	}
 
 	rows, err := s.projRepo.List(ctx, companyID, repoFilter)
 	if err != nil {
@@ -73,19 +70,6 @@ func (s *ProjectService) GetByID(ctx context.Context, companyID, callerRole, cal
 	}
 	if err != nil {
 		return nil, fmt.Errorf("get project: %w", err)
-	}
-
-	if callerRole == "poslovoda" {
-		if proj.Status != "active" {
-			return nil, ErrForbidden
-		}
-		assigned, err := s.projRepo.IsAssigned(ctx, companyID, id, callerEmpID, "poslovoda")
-		if err != nil {
-			return nil, fmt.Errorf("check assignment: %w", err)
-		}
-		if !assigned {
-			return nil, ErrForbidden
-		}
 	}
 
 	assignments, err := s.projRepo.ListAssignments(ctx, companyID, id)
@@ -353,22 +337,10 @@ func (s *ProjectService) Reactivate(ctx context.Context, companyID, callerUserID
 // ── ListAssignments ───────────────────────────────────────────────────────────
 
 func (s *ProjectService) ListAssignments(ctx context.Context, companyID, callerRole, callerEmpID, projectID string) ([]dto.AssignmentItem, error) {
-	proj, err := s.projRepo.GetByID(ctx, companyID, projectID)
-	if errors.Is(err, repositories.ErrNotFound) {
+	if _, err := s.projRepo.GetByID(ctx, companyID, projectID); errors.Is(err, repositories.ErrNotFound) {
 		return nil, ErrNotFound
-	}
-	if err != nil {
+	} else if err != nil {
 		return nil, fmt.Errorf("list assignments: %w", err)
-	}
-
-	if callerRole == "poslovoda" {
-		if proj.Status != "active" {
-			return nil, ErrForbidden
-		}
-		assigned, err := s.projRepo.IsAssigned(ctx, companyID, projectID, callerEmpID, "poslovoda")
-		if err != nil || !assigned {
-			return nil, ErrForbidden
-		}
 	}
 
 	assignments, err := s.projRepo.ListAssignments(ctx, companyID, projectID)

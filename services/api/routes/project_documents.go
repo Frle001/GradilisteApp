@@ -13,7 +13,7 @@ func RegisterProjectDocumentRoutes(
 	requireRoles func(...string) gin.HandlerFunc,
 ) {
 	manageRoles := requireRoles("direktor", "inzenjer")
-	viewRoles := requireRoles("direktor", "inzenjer", "poslovoda")
+	viewRoles := requireRoles("direktor", "inzenjer", "poslovoda", "radnik")
 
 	projects.GET("/:id/documents", viewRoles, h.List)
 	projects.POST("/:id/documents", manageRoles, h.Upload)
