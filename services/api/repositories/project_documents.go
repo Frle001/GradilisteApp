@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/gradiliste/api/dto"
@@ -27,23 +28,39 @@ type ProjectDocumentRecord struct {
 	DeletedAt    *time.Time
 }
 
-// Create inserts a new document record and returns the new document ID.
+// Create inserts a new document record at project root (no folder) and returns the new document ID.
 func (r *ProjectDocumentsRepository) Create(
 	ctx context.Context,
 	companyID, projectID, uploadedByUserID, fileKey, originalName, contentType string,
 	fileSize int64,
 ) (string, error) {
+	return r.CreateWithFolder(ctx, companyID, projectID, uploadedByUserID, fileKey, originalName, contentType, fileSize, nil)
+}
+
+// CreateWithFolder inserts a document record in the given folder (nil = project root).
+func (r *ProjectDocumentsRepository) CreateWithFolder(
+	ctx context.Context,
+	companyID, projectID, uploadedByUserID, fileKey, originalName, contentType string,
+	fileSize int64,
+	folderID *string,
+) (string, error) {
 	var id string
 	err := r.db.QueryRow(ctx, `
 		INSERT INTO project_documents
-		    (company_id, project_id, uploaded_by, file_key, original_name, content_type, file_size)
-		VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7)
+		    (company_id, project_id, uploaded_by, file_key, original_name, content_type, file_size, folder_id)
+		VALUES ($1::uuid, $2::uuid, $3::uuid, $4, $5, $6, $7, $8::uuid)
 		RETURNING id::text
-	`, companyID, projectID, uploadedByUserID, fileKey, originalName, contentType, fileSize).Scan(&id)
+	`, companyID, projectID, uploadedByUserID, fileKey, originalName, contentType, fileSize, folderID).Scan(&id)
 	return id, err
 }
 
+// BeginTx starts a transaction on the underlying pool.
+func (r *ProjectDocumentsRepository) BeginTx(ctx context.Context) (pgx.Tx, error) {
+	return r.db.Begin(ctx)
+}
+
 // List returns all non-deleted documents for the given project, newest first.
+// Kept for backwards compatibility; new callers should prefer ListInFolder.
 func (r *ProjectDocumentsRepository) List(
 	ctx context.Context,
 	companyID, projectID string,
@@ -54,7 +71,8 @@ func (r *ProjectDocumentsRepository) List(
 		       pd.content_type,
 		       pd.file_size,
 		       COALESCE(u.email, '') AS uploaded_by_email,
-		       pd.created_at
+		       pd.created_at,
+		       pd.folder_id::text
 		FROM   project_documents pd
 		LEFT JOIN users u ON u.id = pd.uploaded_by
 		WHERE  pd.project_id = $1::uuid
@@ -70,12 +88,72 @@ func (r *ProjectDocumentsRepository) List(
 	items := make([]dto.ProjectDocumentItem, 0)
 	for rows.Next() {
 		var d dto.ProjectDocumentItem
-		if err := rows.Scan(&d.ID, &d.OriginalName, &d.ContentType, &d.FileSize, &d.UploadedByEmail, &d.CreatedAt); err != nil {
+		if err := rows.Scan(&d.ID, &d.OriginalName, &d.ContentType, &d.FileSize, &d.UploadedByEmail, &d.CreatedAt, &d.FolderID); err != nil {
 			return nil, err
 		}
 		items = append(items, d)
 	}
 	return items, rows.Err()
+}
+
+// ListInFolder returns documents in the given folder (nil = project root).
+func (r *ProjectDocumentsRepository) ListInFolder(
+	ctx context.Context,
+	companyID, projectID string,
+	folderID *string,
+) ([]dto.ProjectDocumentItem, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT pd.id::text,
+		       pd.original_name,
+		       pd.content_type,
+		       pd.file_size,
+		       COALESCE(u.email, '') AS uploaded_by_email,
+		       pd.created_at,
+		       pd.folder_id::text
+		FROM   project_documents pd
+		LEFT JOIN users u ON u.id = pd.uploaded_by
+		WHERE  pd.project_id = $1::uuid
+		  AND  pd.company_id = $2::uuid
+		  AND  pd.deleted_at IS NULL
+		  AND  (pd.folder_id IS NOT DISTINCT FROM $3::uuid)
+		ORDER BY lower(pd.original_name)
+	`, projectID, companyID, folderID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	items := make([]dto.ProjectDocumentItem, 0)
+	for rows.Next() {
+		var d dto.ProjectDocumentItem
+		if err := rows.Scan(&d.ID, &d.OriginalName, &d.ContentType, &d.FileSize, &d.UploadedByEmail, &d.CreatedAt, &d.FolderID); err != nil {
+			return nil, err
+		}
+		items = append(items, d)
+	}
+	return items, rows.Err()
+}
+
+// CheckDuplicate returns true if an active document with the same name (case-insensitive)
+// already exists in the given folder (nil = project root).
+func (r *ProjectDocumentsRepository) CheckDuplicate(
+	ctx context.Context,
+	companyID, projectID string,
+	folderID *string,
+	originalName string,
+) (bool, error) {
+	var exists bool
+	err := r.db.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM project_documents
+			WHERE company_id = $1::uuid
+			  AND project_id = $2::uuid
+			  AND (folder_id IS NOT DISTINCT FROM $3::uuid)
+			  AND lower(original_name) = lower($4)
+			  AND deleted_at IS NULL
+		)
+	`, companyID, projectID, folderID, originalName).Scan(&exists)
+	return exists, err
 }
 
 // GetByID fetches a single document by ID, scoped to company and project. Returns ErrNotFound if missing or deleted.

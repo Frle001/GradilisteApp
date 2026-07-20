@@ -13,20 +13,6 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-// ── Sentinel errors ───────────────────────────────────────────────────────────
-
-var (
-	ErrNotFound   = errors.New("not found")
-	ErrForbidden  = errors.New("forbidden")
-	ErrEmailInUse = errors.New("email already in use")
-)
-
-type ValidationError struct{ Message string }
-
-func (e *ValidationError) Error() string { return e.Message }
-
-func validationErr(msg string) error { return &ValidationError{Message: msg} }
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 // tempPasswordWords is the word pool for readable temporary passwords.
