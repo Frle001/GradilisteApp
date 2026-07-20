@@ -130,31 +130,55 @@ WITH combined AS (
 
 func buildDnevnikWhere(companyID string, f dto.ReportFilter) *reportWhere {
 	// $1 = companyID is used inside the CTE; outer WHERE conditions start at $2.
+	// All outer-CTE column references are qualified with the "c" alias (FROM combined c)
+	// so that correlated EXISTS subqueries with inner tables that share column names
+	// (e.g. project_assignments.project_id) cannot shadow the outer column.
 	w := &reportWhere{idx: 2, args: []interface{}{companyID}}
 
 	if f.PoslovodaID != nil {
-		w.add("poslovoda_id = $%d::uuid", *f.PoslovodaID)
+		// Radnik-unos rows carry c.poslovoda_id = '' (no poslovoda). Match them via
+		// project_assignments using c.project_id as the correlated column — the
+		// explicit "c." qualifier prevents PostgreSQL from binding "project_id" to
+		// pa.project_id inside the EXISTS, which would be a self-comparison and a
+		// text = uuid type error. Both $N occurrences use ::text so PostgreSQL
+		// resolves the parameter type consistently (mixing ::uuid and bare $N for the
+		// same placeholder causes SQLSTATE 42883).
+		n := w.idx
+		w.conds = append(w.conds, fmt.Sprintf(`(
+			c.poslovoda_id = $%d::text
+			OR (c.poslovoda_id = '' AND EXISTS (
+				SELECT 1 FROM project_assignments pa
+				WHERE pa.project_id::text = c.project_id
+				  AND pa.employee_id::text = $%d::text
+				  AND pa.role_on_project = 'poslovoda'
+				  AND pa.active = true
+			))
+		)`, n, n))
+		w.args = append(w.args, *f.PoslovodaID)
+		w.idx++
 	}
 	if f.ProjectID != nil {
-		w.add("project_id = $%d::uuid", *f.ProjectID)
+		// c.project_id is text in the combined CTE; compare as text to avoid text = uuid.
+		w.add("c.project_id = $%d::text", *f.ProjectID)
 	}
 	if f.WorkerID != nil {
-		w.add("worker_id = $%d::uuid", *f.WorkerID)
+		// c.worker_id is text in the combined CTE; compare as text to avoid text = uuid.
+		w.add("c.worker_id = $%d::text", *f.WorkerID)
 	}
 	if f.Status != nil {
-		w.add("status = $%d", *f.Status)
+		w.add("c.status = $%d", *f.Status)
 	}
 	if f.DateFrom != nil {
-		w.add("report_date >= $%d::date", *f.DateFrom)
+		w.add("c.report_date >= $%d::date", *f.DateFrom)
 	}
 	if f.DateTo != nil {
-		w.add("report_date <= $%d::date", *f.DateTo)
+		w.add("c.report_date <= $%d::date", *f.DateTo)
 	}
 	if f.Search != nil && strings.TrimSpace(*f.Search) != "" {
 		like := "%" + *f.Search + "%"
 		n := w.idx
 		w.conds = append(w.conds, fmt.Sprintf(
-			"(project_name ILIKE $%d OR poslovoda_name ILIKE $%d OR worker_name ILIKE $%d)",
+			"(c.project_name ILIKE $%d OR c.poslovoda_name ILIKE $%d OR c.worker_name ILIKE $%d)",
 			n, n, n,
 		))
 		w.args = append(w.args, like)
@@ -219,7 +243,7 @@ LEFT JOIN project_materials pm ON pm.id = dra.project_material_id`
 
 func (r *ReportsRepository) CountDnevnik(ctx context.Context, companyID string, f dto.ReportFilter) (int, error) {
 	w := buildDnevnikWhere(companyID, f)
-	q := fmt.Sprintf(`%s SELECT COUNT(*) FROM combined %s`, dnevnikCTE, w.sql())
+	q := fmt.Sprintf(`%s SELECT COUNT(*) FROM combined c %s`, dnevnikCTE, w.sql())
 	var total int
 	err := r.db.QueryRow(ctx, q, w.args...).Scan(&total)
 	return total, err
@@ -234,7 +258,7 @@ func (r *ReportsRepository) ListDnevnik(ctx context.Context, companyID string, f
 			report_id, report_date, project_id, project_name, project_address,
 			poslovoda_id, poslovoda_name, worker_id, worker_name,
 			hours_worked, notes, status, source
-		FROM combined
+		FROM combined c
 		%s
 		ORDER BY report_date DESC, project_name, worker_name
 		LIMIT $%d OFFSET $%d
@@ -275,7 +299,7 @@ func (r *ReportsRepository) SummaryDnevnik(ctx context.Context, companyID string
 			COALESCE(SUM(hours_worked), 0),
 			COUNT(DISTINCT worker_id),
 			COUNT(DISTINCT project_id)
-		FROM combined
+		FROM combined c
 		%s
 	`, dnevnikCTE, w.sql())
 
@@ -292,7 +316,7 @@ func (r *ReportsRepository) ExportDnevnik(ctx context.Context, companyID string,
 			report_id, report_date, project_id, project_name, project_address,
 			poslovoda_id, poslovoda_name, worker_id, worker_name,
 			hours_worked, notes, status, source
-		FROM combined
+		FROM combined c
 		%s
 		ORDER BY report_date DESC, project_name, worker_name
 		LIMIT $%d
@@ -506,11 +530,24 @@ func (r *ReportsRepository) FilterOptionsForAll(ctx context.Context, companyID s
 		return opts, err
 	}
 
-	// Workers
+	// Workers — include active radnici plus any who have submitted hours (even if now inactive).
 	rows3, err := r.db.Query(ctx, `
-		SELECT id::text, first_name||' '||last_name, supervisor_id::text FROM employees
-		WHERE company_id = $1::uuid AND role = 'radnik' AND active = true
-		ORDER BY last_name, first_name
+		SELECT DISTINCT e.id::text, e.first_name||' '||e.last_name, e.supervisor_id::text
+		FROM employees e
+		WHERE e.company_id = $1::uuid
+		  AND e.role = 'radnik'
+		  AND (
+		    e.active = true
+		    OR EXISTS (
+		      SELECT 1 FROM worker_daily_hours wdh
+		      WHERE wdh.company_id = $1::uuid AND wdh.worker_id = e.id
+		    )
+		    OR EXISTS (
+		      SELECT 1 FROM daily_report_worker_hours drwh
+		      WHERE drwh.company_id = $1::uuid AND drwh.worker_id = e.id
+		    )
+		  )
+		ORDER BY e.last_name, e.first_name
 	`, companyID)
 	if err != nil {
 		return opts, err
@@ -589,11 +626,32 @@ func (r *ReportsRepository) FilterOptionsForPoslovoda(ctx context.Context, compa
 		opts.Poslovode = append(opts.Poslovode, self)
 	}
 
-	// Workers under them
+	// Workers: those who submitted hours to this poslovoda's projects (worker_daily_hours),
+	// or who were included in this poslovoda's daily reports.
+	// Using project_assignments to identify projects owned by this poslovoda.
 	rows2, err := r.db.Query(ctx, `
-		SELECT id::text, first_name||' '||last_name, supervisor_id::text FROM employees
-		WHERE supervisor_id = $1::uuid AND company_id = $2::uuid AND role = 'radnik' AND active = true
-		ORDER BY last_name, first_name
+		SELECT DISTINCT e.id::text, e.first_name||' '||e.last_name, e.supervisor_id::text
+		FROM employees e
+		WHERE e.company_id = $2::uuid
+		  AND (
+		    EXISTS (
+		      SELECT 1 FROM worker_daily_hours wdh
+		      JOIN project_assignments pa ON pa.project_id = wdh.project_id
+		      WHERE wdh.worker_id = e.id
+		        AND wdh.company_id = $2::uuid
+		        AND pa.employee_id = $1::uuid
+		        AND pa.role_on_project = 'poslovoda'
+		        AND pa.active = true
+		    )
+		    OR EXISTS (
+		      SELECT 1 FROM daily_report_worker_hours drwh
+		      JOIN daily_reports dr ON dr.id = drwh.daily_report_id
+		      WHERE drwh.worker_id = e.id
+		        AND drwh.company_id = $2::uuid
+		        AND dr.poslovoda_id = $1::uuid
+		    )
+		  )
+		ORDER BY e.last_name, e.first_name
 	`, empID, companyID)
 	if err != nil {
 		return opts, err
