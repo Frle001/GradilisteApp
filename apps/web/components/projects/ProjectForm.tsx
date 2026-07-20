@@ -30,7 +30,8 @@ export default function ProjectForm({
   const {
     register,
     handleSubmit,
-    formState: { errors },
+    setValue,
+    formState: { errors, dirtyFields },
   } = useForm<CreateProjectPayload>({ defaultValues: defaultValues ?? {} })
 
   const [poslovodaOptions, setPoslovodaOptions] = useState<PoslovodaOption[]>([])
@@ -49,6 +50,20 @@ export default function ProjectForm({
       })
       .catch(() => {})
   }, [])
+
+  // React Hook Form initialises the select value before async options load, so
+  // the browser keeps the empty option selected. Re-apply the default value once
+  // the option that matches it is available in the DOM.
+  const defaultPoslovodaId = defaultValues?.primary_poslovoda_id ?? ''
+  useEffect(() => {
+    if (
+      defaultPoslovodaId &&
+      poslovodaOptions.some((o) => o.id === defaultPoslovodaId) &&
+      !dirtyFields.primary_poslovoda_id
+    ) {
+      setValue('primary_poslovoda_id', defaultPoslovodaId)
+    }
+  }, [poslovodaOptions, defaultPoslovodaId, setValue, dirtyFields.primary_poslovoda_id])
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-5">

@@ -68,6 +68,70 @@ func NewProjectRepository(db *pgxpool.Pool) *ProjectRepository {
 
 // ── List ──────────────────────────────────────────────────────────────────────
 
+// poslovodaIDSubquery and poslovodaNameSubquery are scalar subqueries used in all project
+// SELECT statements to look up the current active poslovoda. Subqueries with LIMIT 1 are
+// used instead of a LEFT JOIN so that a project with more than one active poslovoda row
+// (possible during concurrent reassignments) never produces duplicate project rows.
+const poslovodaIDSubquery = `(
+	SELECT pa.employee_id::text
+	FROM project_assignments pa
+	WHERE pa.project_id = p.id AND pa.role_on_project = 'poslovoda'
+	  AND pa.active = true AND pa.company_id = p.company_id
+	ORDER BY pa.updated_at DESC, pa.id DESC
+	LIMIT 1
+)`
+
+const poslovodaNameSubquery = `(
+	SELECT e.first_name || ' ' || e.last_name
+	FROM project_assignments pa
+	JOIN employees e ON e.id = pa.employee_id
+	WHERE pa.project_id = p.id AND pa.role_on_project = 'poslovoda'
+	  AND pa.active = true AND pa.company_id = p.company_id
+	ORDER BY pa.updated_at DESC, pa.id DESC
+	LIMIT 1
+)`
+
+// poslovodaLockSQL acquires row-level locks on all poslovoda assignment rows for a project
+// within a transaction. Must run before deactivating the old poslovoda to prevent two
+// concurrent reassignments from both seeing the old row as active and both committing,
+// which would leave two active poslovoda rows.
+const poslovodaLockSQL = `
+	SELECT id FROM project_assignments
+	WHERE project_id = $1::uuid AND company_id = $2::uuid AND role_on_project = 'poslovoda'
+	FOR UPDATE
+`
+
+// projectLockSQL acquires a row-level lock on the project row within a transaction.
+// Called before deactivating the old poslovoda so that two concurrent reassignments
+// cannot both proceed past validation simultaneously: the second transaction blocks
+// on this lock until the first commits or rolls back.
+const projectLockSQL = `
+	SELECT id FROM projects
+	WHERE id = $1::uuid AND company_id = $2::uuid
+	FOR UPDATE
+`
+
+// poslovodaDeactivateSQL deactivates all current active poslovoda assignments for a project.
+const poslovodaDeactivateSQL = `
+	UPDATE project_assignments
+	SET active = false
+	WHERE project_id = $1::uuid AND company_id = $2::uuid AND role_on_project = 'poslovoda' AND active = true
+`
+
+// poslovodaUpsertSQL inserts a new poslovoda assignment or reactivates an existing one.
+// The DO UPDATE also sets role_on_project so that an employee with a prior non-poslovoda
+// assignment on the project is correctly promoted to poslovoda on reassignment.
+const poslovodaUpsertSQL = `
+	INSERT INTO project_assignments (company_id, project_id, employee_id, role_on_project, active, assigned_by, assigned_at)
+	VALUES ($1::uuid, $2::uuid, $3::uuid, 'poslovoda', true, $4::uuid, NOW())
+	ON CONFLICT (project_id, employee_id, company_id)
+	DO UPDATE SET
+		role_on_project = 'poslovoda',
+		active = true,
+		assigned_by = EXCLUDED.assigned_by,
+		assigned_at = NOW()
+`
+
 const projectSelectCols = `
 	p.id::text,
 	p.company_id::text,
@@ -81,20 +145,14 @@ const projectSelectCols = `
 	p.created_by::text,
 	p.created_at,
 	p.updated_at,
-	pa.employee_id::text AS primary_poslovoda_id,
-	CASE WHEN e.id IS NOT NULL THEN (e.first_name || ' ' || e.last_name) END AS primary_poslovoda_name,
+	` + poslovodaIDSubquery + ` AS primary_poslovoda_id,
+	` + poslovodaNameSubquery + ` AS primary_poslovoda_name,
 	(SELECT COUNT(*) FROM project_assignments pac
 	 WHERE pac.project_id = p.id AND pac.active = true AND pac.company_id = p.company_id) AS assignment_count
 `
 
 const projectJoins = `
 	FROM projects p
-	LEFT JOIN project_assignments pa ON
-		pa.project_id = p.id
-		AND pa.role_on_project = 'poslovoda'
-		AND pa.active = true
-		AND pa.company_id = p.company_id
-	LEFT JOIN employees e ON e.id = pa.employee_id
 `
 
 func (r *ProjectRepository) List(ctx context.Context, companyID string, filter ProjectListFilter) ([]Project, error) {
@@ -178,8 +236,8 @@ func (r *ProjectRepository) GetByID(ctx context.Context, companyID, id string) (
 			p.closed_by::text,
 			p.created_at,
 			p.updated_at,
-			pa.employee_id::text AS primary_poslovoda_id,
-			CASE WHEN e.id IS NOT NULL THEN (e.first_name || ' ' || e.last_name) END AS primary_poslovoda_name,
+			`+poslovodaIDSubquery+` AS primary_poslovoda_id,
+			`+poslovodaNameSubquery+` AS primary_poslovoda_name,
 			(SELECT COUNT(*) FROM project_assignments pac
 			 WHERE pac.project_id = p.id AND pac.active = true AND pac.company_id = p.company_id) AS assignment_count,
 			(SELECT COUNT(*) FROM project_materials pm
@@ -187,12 +245,6 @@ func (r *ProjectRepository) GetByID(ctx context.Context, companyID, id string) (
 			(SELECT COUNT(*) FROM daily_reports dr
 			 WHERE dr.project_id = p.id AND dr.company_id = p.company_id) AS daily_reports_count
 		FROM projects p
-		LEFT JOIN project_assignments pa ON
-			pa.project_id = p.id
-			AND pa.role_on_project = 'poslovoda'
-			AND pa.active = true
-			AND pa.company_id = p.company_id
-		LEFT JOIN employees e ON e.id = pa.employee_id
 		WHERE p.id = $1::uuid AND p.company_id = $2::uuid
 	`, id, companyID).Scan(
 		&p.ID, &p.CompanyID, &p.Name, &p.Address, &p.Description,
@@ -351,11 +403,19 @@ func (r *ProjectRepository) ListAssignments(ctx context.Context, companyID, proj
 }
 
 func (r *ProjectRepository) DeactivatePoslovodaAssignments(ctx context.Context, tx pgx.Tx, companyID, projectID string) error {
-	_, err := tx.Exec(ctx, `
-		UPDATE project_assignments
-		SET active = false
-		WHERE project_id = $1::uuid AND company_id = $2::uuid AND role_on_project = 'poslovoda' AND active = true
-	`, projectID, companyID)
+	// Lock all poslovoda rows for this project before deactivating. This prevents
+	// two concurrent reassignments from both reading the old assignment as active,
+	// then both committing, which would leave two active poslovoda rows.
+	lockRows, err := tx.Query(ctx, poslovodaLockSQL, projectID, companyID)
+	if err != nil {
+		return fmt.Errorf("projects.DeactivatePoslovodaAssignments lock: %w", err)
+	}
+	lockRows.Close()
+	if err := lockRows.Err(); err != nil {
+		return fmt.Errorf("projects.DeactivatePoslovodaAssignments lock: %w", err)
+	}
+
+	_, err = tx.Exec(ctx, poslovodaDeactivateSQL, projectID, companyID)
 	if err != nil {
 		return fmt.Errorf("projects.DeactivatePoslovodaAssignments: %w", err)
 	}
@@ -363,14 +423,21 @@ func (r *ProjectRepository) DeactivatePoslovodaAssignments(ctx context.Context, 
 }
 
 func (r *ProjectRepository) UpsertPoslovodaAssignment(ctx context.Context, tx pgx.Tx, companyID, projectID, employeeID, assignedByUserID string) error {
-	_, err := tx.Exec(ctx, `
-		INSERT INTO project_assignments (company_id, project_id, employee_id, role_on_project, active, assigned_by, assigned_at)
-		VALUES ($1::uuid, $2::uuid, $3::uuid, 'poslovoda', true, $4::uuid, NOW())
-		ON CONFLICT (project_id, employee_id, company_id)
-		DO UPDATE SET active = true, assigned_by = EXCLUDED.assigned_by, assigned_at = NOW()
-	`, companyID, projectID, employeeID, assignedByUserID)
+	_, err := tx.Exec(ctx, poslovodaUpsertSQL, companyID, projectID, employeeID, assignedByUserID)
 	if err != nil {
 		return fmt.Errorf("projects.UpsertPoslovodaAssignment: %w", err)
+	}
+	return nil
+}
+
+func (r *ProjectRepository) LockProjectForUpdate(ctx context.Context, tx pgx.Tx, projectID, companyID string) error {
+	var id string
+	err := tx.QueryRow(ctx, projectLockSQL, projectID, companyID).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ErrNotFound
+	}
+	if err != nil {
+		return fmt.Errorf("projects.LockProjectForUpdate: %w", err)
 	}
 	return nil
 }
@@ -485,7 +552,7 @@ func (r *ProjectRepository) ListArchive(ctx context.Context, companyID string, f
 			p.end_date::text,
 			p.closed_at,
 			COALESCE(ecb.first_name || ' ' || ecb.last_name, ucb.email) AS closed_by_name,
-			CASE WHEN e.id IS NOT NULL THEN (e.first_name || ' ' || e.last_name) END AS primary_poslovoda_name,
+			`+poslovodaNameSubquery+` AS primary_poslovoda_name,
 			(SELECT COUNT(*)::int FROM daily_reports dr
 			 WHERE dr.project_id = p.id AND dr.company_id = p.company_id) AS daily_reports_count,
 			(SELECT COUNT(*)::int FROM material_purchase_sessions mps
@@ -493,12 +560,6 @@ func (r *ProjectRepository) ListArchive(ctx context.Context, companyID string, f
 			(SELECT COUNT(*)::int FROM project_materials pm
 			 WHERE pm.project_id = p.id AND pm.company_id = p.company_id) AS project_materials_count
 		FROM projects p
-		LEFT JOIN project_assignments pa ON
-			pa.project_id = p.id
-			AND pa.role_on_project = 'poslovoda'
-			AND pa.active = true
-			AND pa.company_id = p.company_id
-		LEFT JOIN employees e ON e.id = pa.employee_id
 		LEFT JOIN users ucb ON ucb.id = p.closed_by
 		LEFT JOIN employees ecb ON ecb.id = ucb.employee_id
 		WHERE %s

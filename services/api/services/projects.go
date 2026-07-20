@@ -203,6 +203,13 @@ func (s *ProjectService) AssignPoslovoda(ctx context.Context, companyID, callerU
 	}
 	defer func() { tx.Rollback(ctx) }()
 
+	if err := s.projRepo.LockProjectForUpdate(ctx, tx, projectID, companyID); err != nil {
+		if errors.Is(err, repositories.ErrNotFound) {
+			return ErrNotFound
+		}
+		return fmt.Errorf("lock project: %w", err)
+	}
+
 	if err := s.projRepo.DeactivatePoslovodaAssignments(ctx, tx, companyID, projectID); err != nil {
 		return fmt.Errorf("deactivate old assignment: %w", err)
 	}
