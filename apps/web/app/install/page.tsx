@@ -68,7 +68,7 @@ export default function InstallPage() {
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-start gap-3">
               <span className="text-xl shrink-0">2</span>
               <p className="text-sm text-slate-300">
-                Pomičite popis prema dolje i odaberite <strong className="text-white">„Dodaj na početni zaslon"</strong>.
+                Pomičite popis prema dolje i odaberite <strong className="text-white">„Dodaj na početni zaslon&#x201C;</strong>.
               </p>
             </div>
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-start gap-3">
@@ -92,7 +92,7 @@ export default function InstallPage() {
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-start gap-3">
               <span className="text-xl shrink-0">2</span>
               <p className="text-sm text-slate-300">
-                Odaberite <strong className="text-white">Dodaj na početni zaslon</strong> ili <strong className="text-white">„Instaliraj aplikaciju"</strong>.
+                Odaberite <strong className="text-white">Dodaj na početni zaslon</strong> ili <strong className="text-white">„Instaliraj aplikaciju&#x201C;</strong>.
               </p>
             </div>
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex items-start gap-3">
