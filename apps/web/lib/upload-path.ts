@@ -18,7 +18,7 @@ export function isSystemFile(name: string): boolean {
 }
 
 export function normalizeRelativePath(raw: string): string | null {
-  let p = raw.replace(/\\/g, '/')
+  const p = raw.replace(/\\/g, '/')
 
   if (p.includes('\x00')) return null
   if (p.startsWith('/') || /^[a-zA-Z]:/.test(p)) return null
