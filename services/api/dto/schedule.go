@@ -8,8 +8,8 @@ type CreateShiftRequest struct {
 	StartTime        string   `json:"start_time" binding:"required"` // "HH:MM"
 	EndTime          string   `json:"end_time"   binding:"required"` // "HH:MM"
 	Notes            *string  `json:"notes"`
-	EmployeeIDs      []string `json:"employee_ids"`       // optional; assigned in the same transaction
-	OverrideOverlaps bool     `json:"override_overlaps"`  // if true, overlapping employees are still assigned
+	EmployeeIDs      []string `json:"employee_ids"`      // optional; assigned in the same transaction
+	OverrideOverlaps bool     `json:"override_overlaps"` // if true, overlapping employees are still assigned
 }
 
 type UpdateShiftRequest struct {
