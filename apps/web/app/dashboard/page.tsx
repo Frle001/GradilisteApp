@@ -17,6 +17,7 @@ const roleCards: Record<string, DashboardCard[]> = {
   direktor: [
     { title: 'Zaposlenici', description: 'Upravljanje osobljem', icon: '👥', href: '/dashboard/employees' },
     { title: 'Projekti / Gradilišta', description: 'Pregled i upravljanje projektima', icon: '🏗️', href: '/dashboard/projects' },
+    { title: 'Raspored smjena', description: 'Tjedni raspored radnih smjena', icon: '📅', href: '/dashboard/schedule' },
     { title: 'Novi projekt', description: 'Pokretanje novog gradilišta', icon: '➕', href: '/dashboard/projects/new' },
     { title: 'Arhiva projekata', description: 'Zatvoreni i arhivirani projekti', icon: '🗄️', href: '/dashboard/projects/archive' },
     { title: 'Dnevni izvještaji', description: 'Pregled svih dnevnih izvještaja', icon: '📋', href: '/dashboard/daily-reports' },
@@ -28,6 +29,7 @@ const roleCards: Record<string, DashboardCard[]> = {
   inzenjer: [
     { title: 'Zaposlenici', description: 'Pregled osoblja', icon: '👥', href: '/dashboard/employees' },
     { title: 'Projekti / Gradilišta', description: 'Pregled i upravljanje projektima', icon: '🏗️', href: '/dashboard/projects' },
+    { title: 'Raspored smjena', description: 'Tjedni raspored radnih smjena', icon: '📅', href: '/dashboard/schedule' },
     { title: 'Novi projekt', description: 'Pokretanje novog gradilišta', icon: '➕', href: '/dashboard/projects/new' },
     { title: 'Arhiva projekata', description: 'Zatvoreni i arhivirani projekti', icon: '🗄️', href: '/dashboard/projects/archive' },
     { title: 'Dnevni izvještaji', description: 'Pregled svih dnevnih izvještaja', icon: '📋', href: '/dashboard/daily-reports' },
@@ -38,6 +40,7 @@ const roleCards: Record<string, DashboardCard[]> = {
   ],
   administracija: [
     { title: 'Zaposlenici', description: 'Upravljanje zaposlenicima', icon: '👥', href: '/dashboard/employees' },
+    { title: 'Raspored smjena', description: 'Tjedni raspored radnih smjena', icon: '📅', href: '/dashboard/schedule' },
     { title: 'Projekti / Gradilišta', description: 'Pregled projekata', icon: '🏗️', href: '/dashboard/projects' },
     { title: 'Arhiva projekata', description: 'Zatvoreni i arhivirani projekti', icon: '🗄️', href: '/dashboard/projects/archive' },
     { title: 'Upisi materijala', description: 'Pregled upisa materijala', icon: '📦', href: '/dashboard/material-purchases' },
@@ -45,6 +48,7 @@ const roleCards: Record<string, DashboardCard[]> = {
   ],
   poslovoda: [
     { title: 'Moj tim', description: 'Pregled vaših zaposlenika', icon: '👥', href: '/dashboard/employees' },
+    { title: 'Raspored smjena', description: 'Tjedni raspored radnih smjena', icon: '📅', href: '/dashboard/schedule' },
     { title: 'Moja gradilišta', description: 'Aktivni projekti dodijeljeni vama', icon: '🏗️', href: '/dashboard/projects' },
     { title: 'Dnevni izvještaj', description: 'Unos dnevnog izvještaja', icon: '📋', href: '/dashboard/daily-reports' },
     { title: 'Upis materijala', description: 'Evidentiranje kupljenog materijala', icon: '📦', href: '/dashboard/material-purchases/new' },
@@ -54,6 +58,7 @@ const roleCards: Record<string, DashboardCard[]> = {
     { title: 'Građevinska knjiga', description: 'Aktivnosti i utrošak materijala', icon: '📚', href: '/dashboard/reports/gradevinska-knjiga' },
   ],
   radnik: [
+    { title: 'Raspored smjena', description: 'Moje smjene i raspored', icon: '📅', href: '/dashboard/schedule' },
     { title: 'Moji sati', description: 'Unos vlastitih dnevnih radnih sati po projektu.', icon: '⏱️', href: '/dashboard/my-hours' },
     { title: 'Projekti / Gradilišta', description: 'Pregled projekata tvrtke', icon: '🏗️', href: '/dashboard/projects' },
   ],

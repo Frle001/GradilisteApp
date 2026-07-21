@@ -13,6 +13,9 @@ var (
 	// when the folder still contains documents or sub-folders, respectively.
 	ErrFolderHasDocs     = errors.New("folder has documents")
 	ErrFolderHasChildren = errors.New("folder has child folders")
+
+	// ErrShiftCancelled is returned when a management operation targets a cancelled shift.
+	ErrShiftCancelled = errors.New("shift is cancelled")
 )
 
 // ValidationError carries a human-readable message from input validation.

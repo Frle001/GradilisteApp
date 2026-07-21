@@ -8,8 +8,8 @@ import {
   FileText,
   Users,
   ShoppingBag,
-  Package,
   Clock,
+  CalendarDays,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -24,33 +24,34 @@ const navByRole: Record<string, NavItem[]> = {
   direktor: [
     { href: '/dashboard', label: 'Početna', Icon: Home, exact: true },
     { href: '/dashboard/projects', label: 'Projekti', Icon: FolderOpen },
+    { href: '/dashboard/schedule', label: 'Raspored', Icon: CalendarDays },
     { href: '/dashboard/daily-reports', label: 'Izvještaji', Icon: FileText },
     { href: '/dashboard/employees', label: 'Zaposlenici', Icon: Users },
-    { href: '/dashboard/material-purchases', label: 'Materijal', Icon: ShoppingBag },
   ],
   inzenjer: [
     { href: '/dashboard', label: 'Početna', Icon: Home, exact: true },
     { href: '/dashboard/projects', label: 'Projekti', Icon: FolderOpen },
+    { href: '/dashboard/schedule', label: 'Raspored', Icon: CalendarDays },
     { href: '/dashboard/daily-reports', label: 'Izvještaji', Icon: FileText },
     { href: '/dashboard/employees', label: 'Zaposlenici', Icon: Users },
-    { href: '/dashboard/material-purchases', label: 'Materijal', Icon: ShoppingBag },
   ],
   administracija: [
     { href: '/dashboard', label: 'Početna', Icon: Home, exact: true },
+    { href: '/dashboard/schedule', label: 'Raspored', Icon: CalendarDays },
     { href: '/dashboard/employees', label: 'Zaposlenici', Icon: Users },
     { href: '/dashboard/projects', label: 'Projekti', Icon: FolderOpen },
     { href: '/dashboard/material-purchases', label: 'Materijal', Icon: ShoppingBag },
-    { href: '/dashboard/inventory', label: 'Roba', Icon: Package },
   ],
   poslovoda: [
     { href: '/dashboard', label: 'Početna', Icon: Home, exact: true },
+    { href: '/dashboard/schedule', label: 'Raspored', Icon: CalendarDays },
     { href: '/dashboard/projects', label: 'Projekti', Icon: FolderOpen },
     { href: '/dashboard/daily-reports', label: 'Izvještaji', Icon: FileText },
     { href: '/dashboard/material-purchases', label: 'Materijal', Icon: ShoppingBag },
-    { href: '/dashboard/inventory', label: 'Roba', Icon: Package },
   ],
   radnik: [
     { href: '/dashboard', label: 'Početna', Icon: Home, exact: true },
+    { href: '/dashboard/schedule', label: 'Raspored', Icon: CalendarDays },
     { href: '/dashboard/my-hours', label: 'Moji sati', Icon: Clock },
     { href: '/dashboard/projects', label: 'Projekti', Icon: FolderOpen },
   ],

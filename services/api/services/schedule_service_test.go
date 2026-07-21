@@ -1,0 +1,496 @@
+package services
+
+import (
+	"context"
+	"errors"
+	"testing"
+	"time"
+
+	"github.com/jackc/pgx/v5"
+
+	"github.com/gradiliste/api/dto"
+	"github.com/gradiliste/api/repositories"
+)
+
+// ── Test infrastructure ───────────────────────────────────────────────────────
+
+type schedMockTx struct {
+	pgx.Tx    // nil embed; only Commit/Rollback are called
+	committed bool
+	commitErr error
+}
+
+func (m *schedMockTx) Commit(_ context.Context) error   { m.committed = true; return m.commitErr }
+func (m *schedMockTx) Rollback(_ context.Context) error { return nil }
+
+type schedTxBeginner struct {
+	tx  pgx.Tx
+	err error
+}
+
+func (b *schedTxBeginner) Begin(_ context.Context) (pgx.Tx, error) { return b.tx, b.err }
+
+type mockSchedRepo struct {
+	projectBelongsFn    func(context.Context, string, string) (bool, error)
+	createShiftFn       func(context.Context, pgx.Tx, string, string, string, string, string, *string, string) (string, error)
+	getShiftFn          func(context.Context, string, string) (*repositories.ShiftRow, error)
+	getShiftForUpdateFn func(context.Context, pgx.Tx, string, string) (*repositories.ShiftRow, error)
+	listShiftsFn        func(context.Context, string, string, string, *string) ([]repositories.ShiftRow, error)
+	updateShiftFn       func(context.Context, pgx.Tx, string, string, string, string, *string) error
+	cancelShiftFn       func(context.Context, pgx.Tx, string, string, string) error
+	listAssignmentsFn   func(context.Context, string, string) ([]repositories.ShiftAssignmentRow, error)
+	findOverlapsFn      func(context.Context, string, string, string, string, string, []string) ([]repositories.ShiftOverlapRow, error)
+	deleteAssignmentsFn func(context.Context, pgx.Tx, string) error
+	createAssignmentFn  func(context.Context, pgx.Tx, string, string, string, string, bool, *string) error
+}
+
+func (m *mockSchedRepo) ProjectBelongsToCompany(ctx context.Context, companyID, projectID string) (bool, error) {
+	if m.projectBelongsFn != nil {
+		return m.projectBelongsFn(ctx, companyID, projectID)
+	}
+	return true, nil
+}
+
+func (m *mockSchedRepo) CreateShift(ctx context.Context, tx pgx.Tx, companyID, projectID, shiftDate, startTime, endTime string, notes *string, createdBy string) (string, error) {
+	if m.createShiftFn != nil {
+		return m.createShiftFn(ctx, tx, companyID, projectID, shiftDate, startTime, endTime, notes, createdBy)
+	}
+	return "shift-id", nil
+}
+
+func (m *mockSchedRepo) GetShift(ctx context.Context, companyID, shiftID string) (*repositories.ShiftRow, error) {
+	if m.getShiftFn != nil {
+		return m.getShiftFn(ctx, companyID, shiftID)
+	}
+	return testSchedShiftRow(shiftID), nil
+}
+
+func (m *mockSchedRepo) GetShiftForUpdate(ctx context.Context, tx pgx.Tx, companyID, shiftID string) (*repositories.ShiftRow, error) {
+	if m.getShiftForUpdateFn != nil {
+		return m.getShiftForUpdateFn(ctx, tx, companyID, shiftID)
+	}
+	return testSchedShiftRow(shiftID), nil
+}
+
+func (m *mockSchedRepo) ListShifts(ctx context.Context, companyID, dateFrom, dateTo string, projectID *string) ([]repositories.ShiftRow, error) {
+	if m.listShiftsFn != nil {
+		return m.listShiftsFn(ctx, companyID, dateFrom, dateTo, projectID)
+	}
+	return nil, nil
+}
+
+func (m *mockSchedRepo) UpdateShift(ctx context.Context, tx pgx.Tx, shiftID, shiftDate, startTime, endTime string, notes *string) error {
+	if m.updateShiftFn != nil {
+		return m.updateShiftFn(ctx, tx, shiftID, shiftDate, startTime, endTime, notes)
+	}
+	return nil
+}
+
+func (m *mockSchedRepo) CancelShift(ctx context.Context, tx pgx.Tx, companyID, shiftID, cancelledBy string) error {
+	if m.cancelShiftFn != nil {
+		return m.cancelShiftFn(ctx, tx, companyID, shiftID, cancelledBy)
+	}
+	return nil
+}
+
+func (m *mockSchedRepo) ListAssignments(ctx context.Context, companyID, shiftID string) ([]repositories.ShiftAssignmentRow, error) {
+	if m.listAssignmentsFn != nil {
+		return m.listAssignmentsFn(ctx, companyID, shiftID)
+	}
+	return nil, nil
+}
+
+func (m *mockSchedRepo) FindOverlaps(ctx context.Context, companyID, shiftDate, startTime, endTime, excludeShiftID string, employeeIDs []string) ([]repositories.ShiftOverlapRow, error) {
+	if m.findOverlapsFn != nil {
+		return m.findOverlapsFn(ctx, companyID, shiftDate, startTime, endTime, excludeShiftID, employeeIDs)
+	}
+	return nil, nil
+}
+
+func (m *mockSchedRepo) DeleteAssignments(ctx context.Context, tx pgx.Tx, shiftID string) error {
+	if m.deleteAssignmentsFn != nil {
+		return m.deleteAssignmentsFn(ctx, tx, shiftID)
+	}
+	return nil
+}
+
+func (m *mockSchedRepo) CreateAssignment(ctx context.Context, tx pgx.Tx, companyID, shiftID, employeeID, assignedBy string, overlapOverridden bool, overriddenBy *string) error {
+	if m.createAssignmentFn != nil {
+		return m.createAssignmentFn(ctx, tx, companyID, shiftID, employeeID, assignedBy, overlapOverridden, overriddenBy)
+	}
+	return nil
+}
+
+func testSchedShiftRow(id string) *repositories.ShiftRow {
+	return &repositories.ShiftRow{
+		ID:        id,
+		CompanyID: "company-1",
+		ProjectID: "project-1",
+		ShiftDate: "2025-01-15",
+		StartTime: "08:00",
+		EndTime:   "16:00",
+		Status:    "active",
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+	}
+}
+
+func newSchedSvc(repo *mockSchedRepo) *ScheduleService {
+	return &ScheduleService{
+		db:   &schedTxBeginner{tx: &schedMockTx{}},
+		repo: repo,
+	}
+}
+
+// ── CreateShift ───────────────────────────────────────────────────────────────
+
+func TestSchedule_CreateShift_Success(t *testing.T) {
+	svc := newSchedSvc(&mockSchedRepo{})
+	shift, err := svc.CreateShift(context.Background(), "company-1", "project-1", "user-1",
+		&dto.CreateShiftRequest{ProjectID: "project-1", ShiftDate: "2025-01-15", StartTime: "08:00", EndTime: "16:00"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if shift == nil || shift.Status != "active" {
+		t.Errorf("expected active shift, got %+v", shift)
+	}
+}
+
+func TestSchedule_CreateShift_InvalidDate(t *testing.T) {
+	svc := newSchedSvc(&mockSchedRepo{})
+	_, err := svc.CreateShift(context.Background(), "company-1", "project-1", "user-1",
+		&dto.CreateShiftRequest{ProjectID: "project-1", ShiftDate: "not-a-date", StartTime: "08:00", EndTime: "16:00"})
+	if AsValidationError(err) == nil {
+		t.Errorf("expected ValidationError, got %v", err)
+	}
+}
+
+func TestSchedule_CreateShift_InvalidStartTime(t *testing.T) {
+	svc := newSchedSvc(&mockSchedRepo{})
+	_, err := svc.CreateShift(context.Background(), "company-1", "project-1", "user-1",
+		&dto.CreateShiftRequest{ProjectID: "project-1", ShiftDate: "2025-01-15", StartTime: "25:00", EndTime: "16:00"})
+	if AsValidationError(err) == nil {
+		t.Errorf("expected ValidationError, got %v", err)
+	}
+}
+
+func TestSchedule_CreateShift_EndBeforeStart(t *testing.T) {
+	svc := newSchedSvc(&mockSchedRepo{})
+	_, err := svc.CreateShift(context.Background(), "company-1", "project-1", "user-1",
+		&dto.CreateShiftRequest{ProjectID: "project-1", ShiftDate: "2025-01-15", StartTime: "16:00", EndTime: "08:00"})
+	if AsValidationError(err) == nil {
+		t.Errorf("expected ValidationError for end-before-start, got %v", err)
+	}
+}
+
+func TestSchedule_CreateShift_ProjectNotFound(t *testing.T) {
+	repo := &mockSchedRepo{
+		projectBelongsFn: func(_ context.Context, _, _ string) (bool, error) { return false, nil },
+	}
+	svc := newSchedSvc(repo)
+	_, err := svc.CreateShift(context.Background(), "company-1", "project-1", "user-1",
+		&dto.CreateShiftRequest{ProjectID: "project-1", ShiftDate: "2025-01-15", StartTime: "08:00", EndTime: "16:00"})
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+// ── GetShift ──────────────────────────────────────────────────────────────────
+
+func TestSchedule_GetShift_Success(t *testing.T) {
+	svc := newSchedSvc(&mockSchedRepo{})
+	shift, err := svc.GetShift(context.Background(), "company-1", "shift-abc")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if shift.ID != "shift-abc" {
+		t.Errorf("expected shift-abc, got %s", shift.ID)
+	}
+}
+
+func TestSchedule_GetShift_NotFound(t *testing.T) {
+	repo := &mockSchedRepo{
+		getShiftFn: func(_ context.Context, _, _ string) (*repositories.ShiftRow, error) {
+			return nil, repositories.ErrNotFound
+		},
+	}
+	svc := newSchedSvc(repo)
+	_, err := svc.GetShift(context.Background(), "company-1", "missing")
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+// ── ListShifts ────────────────────────────────────────────────────────────────
+
+func TestSchedule_ListShifts_Success(t *testing.T) {
+	repo := &mockSchedRepo{
+		listShiftsFn: func(_ context.Context, _, _, _ string, _ *string) ([]repositories.ShiftRow, error) {
+			return []repositories.ShiftRow{*testSchedShiftRow("s1"), *testSchedShiftRow("s2")}, nil
+		},
+	}
+	svc := newSchedSvc(repo)
+	shifts, err := svc.ListShifts(context.Background(), "company-1", "2025-01-13", "2025-01-19", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(shifts) != 2 {
+		t.Errorf("expected 2 shifts, got %d", len(shifts))
+	}
+}
+
+func TestSchedule_ListShifts_InvalidDateFrom(t *testing.T) {
+	svc := newSchedSvc(&mockSchedRepo{})
+	_, err := svc.ListShifts(context.Background(), "company-1", "bad", "2025-01-19", nil)
+	if AsValidationError(err) == nil {
+		t.Errorf("expected ValidationError, got %v", err)
+	}
+}
+
+// ── UpdateShift ───────────────────────────────────────────────────────────────
+
+func TestSchedule_UpdateShift_Success(t *testing.T) {
+	newEnd := "17:00"
+	svc := newSchedSvc(&mockSchedRepo{})
+	shift, err := svc.UpdateShift(context.Background(), "company-1", "shift-1",
+		&dto.UpdateShiftRequest{EndTime: &newEnd})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if shift == nil {
+		t.Fatal("expected non-nil shift")
+	}
+}
+
+func TestSchedule_UpdateShift_CancelledShift(t *testing.T) {
+	repo := &mockSchedRepo{
+		getShiftFn: func(_ context.Context, _, id string) (*repositories.ShiftRow, error) {
+			r := testSchedShiftRow(id)
+			r.Status = "cancelled"
+			return r, nil
+		},
+	}
+	svc := newSchedSvc(repo)
+	_, err := svc.UpdateShift(context.Background(), "company-1", "shift-1", &dto.UpdateShiftRequest{})
+	if !errors.Is(err, ErrShiftCancelled) {
+		t.Errorf("expected ErrShiftCancelled, got %v", err)
+	}
+}
+
+func TestSchedule_UpdateShift_NotFound(t *testing.T) {
+	repo := &mockSchedRepo{
+		getShiftFn: func(_ context.Context, _, _ string) (*repositories.ShiftRow, error) {
+			return nil, repositories.ErrNotFound
+		},
+	}
+	svc := newSchedSvc(repo)
+	_, err := svc.UpdateShift(context.Background(), "company-1", "missing", &dto.UpdateShiftRequest{})
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+// ── CancelShift ───────────────────────────────────────────────────────────────
+
+func TestSchedule_CancelShift_Success(t *testing.T) {
+	svc := newSchedSvc(&mockSchedRepo{})
+	if err := svc.CancelShift(context.Background(), "company-1", "shift-1", "user-1"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestSchedule_CancelShift_AlreadyCancelled(t *testing.T) {
+	repo := &mockSchedRepo{
+		getShiftFn: func(_ context.Context, _, id string) (*repositories.ShiftRow, error) {
+			r := testSchedShiftRow(id)
+			r.Status = "cancelled"
+			return r, nil
+		},
+	}
+	svc := newSchedSvc(repo)
+	if err := svc.CancelShift(context.Background(), "company-1", "shift-1", "user-1"); !errors.Is(err, ErrShiftCancelled) {
+		t.Errorf("expected ErrShiftCancelled, got %v", err)
+	}
+}
+
+func TestSchedule_CancelShift_NotFound(t *testing.T) {
+	repo := &mockSchedRepo{
+		getShiftFn: func(_ context.Context, _, _ string) (*repositories.ShiftRow, error) {
+			return nil, repositories.ErrNotFound
+		},
+	}
+	svc := newSchedSvc(repo)
+	if err := svc.CancelShift(context.Background(), "company-1", "missing", "user-1"); !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+// ── SyncAssignments ───────────────────────────────────────────────────────────
+
+func TestSchedule_SyncAssignments_NoOverlaps_Success(t *testing.T) {
+	svc := newSchedSvc(&mockSchedRepo{})
+	result, err := svc.SyncAssignments(context.Background(), "company-1", "shift-1", "user-1",
+		&dto.AssignEmployeesRequest{EmployeeIDs: []string{"emp-1", "emp-2"}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.RequiresOverride {
+		t.Error("should not require override when no overlaps")
+	}
+}
+
+func TestSchedule_SyncAssignments_HasOverlaps_ReturnsConflict(t *testing.T) {
+	repo := &mockSchedRepo{
+		findOverlapsFn: func(_ context.Context, _, _, _, _, _ string, _ []string) ([]repositories.ShiftOverlapRow, error) {
+			return []repositories.ShiftOverlapRow{{EmployeeID: "emp-1", EmployeeName: "Ana", ShiftID: "other"}}, nil
+		},
+	}
+	svc := newSchedSvc(repo)
+	_, err := svc.SyncAssignments(context.Background(), "company-1", "shift-1", "user-1",
+		&dto.AssignEmployeesRequest{EmployeeIDs: []string{"emp-1"}})
+	var overlapErr *ErrOverlapConflict
+	if !errors.As(err, &overlapErr) {
+		t.Fatalf("expected ErrOverlapConflict, got %v", err)
+	}
+	if len(overlapErr.Overlaps) != 1 {
+		t.Errorf("expected 1 overlap, got %d", len(overlapErr.Overlaps))
+	}
+}
+
+func TestSchedule_SyncAssignments_OverrideOverlaps_Success(t *testing.T) {
+	repo := &mockSchedRepo{
+		findOverlapsFn: func(_ context.Context, _, _, _, _, _ string, _ []string) ([]repositories.ShiftOverlapRow, error) {
+			return []repositories.ShiftOverlapRow{{EmployeeID: "emp-1", EmployeeName: "Ana", ShiftID: "other"}}, nil
+		},
+	}
+	svc := newSchedSvc(repo)
+	result, err := svc.SyncAssignments(context.Background(), "company-1", "shift-1", "user-1",
+		&dto.AssignEmployeesRequest{EmployeeIDs: []string{"emp-1"}, OverrideOverlaps: true})
+	if err != nil {
+		t.Fatalf("unexpected error with override: %v", err)
+	}
+	if result.RequiresOverride {
+		t.Error("RequiresOverride should be false after successful override")
+	}
+}
+
+func TestSchedule_SyncAssignments_CancelledShift(t *testing.T) {
+	repo := &mockSchedRepo{
+		getShiftFn: func(_ context.Context, _, id string) (*repositories.ShiftRow, error) {
+			r := testSchedShiftRow(id)
+			r.Status = "cancelled"
+			return r, nil
+		},
+	}
+	svc := newSchedSvc(repo)
+	_, err := svc.SyncAssignments(context.Background(), "company-1", "shift-1", "user-1",
+		&dto.AssignEmployeesRequest{EmployeeIDs: []string{"emp-1"}})
+	if !errors.Is(err, ErrShiftCancelled) {
+		t.Errorf("expected ErrShiftCancelled, got %v", err)
+	}
+}
+
+func TestSchedule_SyncAssignments_DeduplicatesEmployeeIDs(t *testing.T) {
+	var created []string
+	repo := &mockSchedRepo{
+		createAssignmentFn: func(_ context.Context, _ pgx.Tx, _, _, employeeID, _ string, _ bool, _ *string) error {
+			created = append(created, employeeID)
+			return nil
+		},
+	}
+	svc := newSchedSvc(repo)
+	_, err := svc.SyncAssignments(context.Background(), "company-1", "shift-1", "user-1",
+		&dto.AssignEmployeesRequest{EmployeeIDs: []string{"emp-1", "emp-1", "emp-2"}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(created) != 2 {
+		t.Errorf("expected 2 unique assignments, got %d: %v", len(created), created)
+	}
+}
+
+// ── DuplicateShift ────────────────────────────────────────────────────────────
+
+func TestSchedule_DuplicateShift_Success(t *testing.T) {
+	svc := newSchedSvc(&mockSchedRepo{})
+	shift, err := svc.DuplicateShift(context.Background(), "company-1", "shift-1", "user-1",
+		&dto.DuplicateShiftRequest{TargetDate: "2025-01-20"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if shift == nil {
+		t.Fatal("expected non-nil shift")
+	}
+}
+
+func TestSchedule_DuplicateShift_NotFound(t *testing.T) {
+	repo := &mockSchedRepo{
+		getShiftFn: func(_ context.Context, _, _ string) (*repositories.ShiftRow, error) {
+			return nil, repositories.ErrNotFound
+		},
+	}
+	svc := newSchedSvc(repo)
+	_, err := svc.DuplicateShift(context.Background(), "company-1", "missing", "user-1",
+		&dto.DuplicateShiftRequest{TargetDate: "2025-01-20"})
+	if !errors.Is(err, ErrNotFound) {
+		t.Errorf("expected ErrNotFound, got %v", err)
+	}
+}
+
+func TestSchedule_DuplicateShift_InvalidDate(t *testing.T) {
+	svc := newSchedSvc(&mockSchedRepo{})
+	_, err := svc.DuplicateShift(context.Background(), "company-1", "shift-1", "user-1",
+		&dto.DuplicateShiftRequest{TargetDate: "not-a-date"})
+	if AsValidationError(err) == nil {
+		t.Errorf("expected ValidationError, got %v", err)
+	}
+}
+
+// ── CopyDay ───────────────────────────────────────────────────────────────────
+
+func TestSchedule_CopyDay_Success(t *testing.T) {
+	repo := &mockSchedRepo{
+		listShiftsFn: func(_ context.Context, _, _, _ string, _ *string) ([]repositories.ShiftRow, error) {
+			return []repositories.ShiftRow{*testSchedShiftRow("s1")}, nil
+		},
+	}
+	svc := newSchedSvc(repo)
+	result, err := svc.CopyDay(context.Background(), "company-1", "user-1",
+		&dto.CopyDayRequest{SourceDate: "2025-01-15", TargetDate: "2025-01-16"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Created != 1 {
+		t.Errorf("expected 1 created shift, got %d", result.Created)
+	}
+}
+
+func TestSchedule_CopyDay_SameDateError(t *testing.T) {
+	svc := newSchedSvc(&mockSchedRepo{})
+	_, err := svc.CopyDay(context.Background(), "company-1", "user-1",
+		&dto.CopyDayRequest{SourceDate: "2025-01-15", TargetDate: "2025-01-15"})
+	if AsValidationError(err) == nil {
+		t.Errorf("expected ValidationError for same-date copy, got %v", err)
+	}
+}
+
+// ── CopyWeek ──────────────────────────────────────────────────────────────────
+
+func TestSchedule_CopyWeek_Success(t *testing.T) {
+	repo := &mockSchedRepo{
+		listShiftsFn: func(_ context.Context, _, _, _ string, _ *string) ([]repositories.ShiftRow, error) {
+			r := testSchedShiftRow("s1")
+			r.ShiftDate = "2025-01-13"
+			return []repositories.ShiftRow{*r}, nil
+		},
+	}
+	svc := newSchedSvc(repo)
+	result, err := svc.CopyWeek(context.Background(), "company-1", "user-1",
+		&dto.CopyWeekRequest{SourceWeekStart: "2025-01-13", TargetWeekStart: "2025-01-20"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Created != 1 {
+		t.Errorf("expected 1 created shift, got %d", result.Created)
+	}
+}
