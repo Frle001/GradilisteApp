@@ -45,7 +45,7 @@ export interface CreateEmployeePayload {
   supervisor_id?: string | null
 }
 
-export interface UpdateEmployeePayload extends CreateEmployeePayload {}
+export type UpdateEmployeePayload = CreateEmployeePayload
 
 export interface CreateAssetPayload {
   asset_type: string
@@ -56,7 +56,7 @@ export interface CreateAssetPayload {
   notes?: string | null
 }
 
-export interface UpdateAssetPayload extends CreateAssetPayload {}
+export type UpdateAssetPayload = CreateAssetPayload
 
 export const ROLE_LABELS: Record<string, string> = {
   direktor: 'Direktor',
