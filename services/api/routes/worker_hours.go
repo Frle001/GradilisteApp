@@ -11,9 +11,9 @@ func RegisterWorkerHoursRoutes(
 	authRequired gin.HandlerFunc,
 	requireRoles func(...string) gin.HandlerFunc,
 ) {
-	radnikOnly := requireRoles("radnik")
+	workerOrPoslovoda := requireRoles("radnik", "poslovoda")
 
-	wh := api.Group("/worker-hours", authRequired, radnikOnly)
+	wh := api.Group("/worker-hours", authRequired, workerOrPoslovoda)
 	{
 		wh.GET("/projects", h.ListProjects)
 		wh.GET("/my", h.ListMy)

@@ -45,9 +45,9 @@ const navByRole: Record<string, NavItem[]> = {
   poslovoda: [
     { href: '/dashboard', label: 'Početna', Icon: Home, exact: true },
     { href: '/dashboard/schedule', label: 'Raspored', Icon: CalendarDays },
-    { href: '/dashboard/projects', label: 'Projekti', Icon: FolderOpen },
+    { href: '/dashboard/my-hours', label: 'Moji sati', Icon: Clock },
     { href: '/dashboard/daily-reports', label: 'Izvještaji', Icon: FileText },
-    { href: '/dashboard/material-purchases', label: 'Materijal', Icon: ShoppingBag },
+    { href: '/dashboard/projects', label: 'Projekti', Icon: FolderOpen },
   ],
   radnik: [
     { href: '/dashboard', label: 'Početna', Icon: Home, exact: true },

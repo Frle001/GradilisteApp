@@ -78,6 +78,7 @@ func (w *reportWhere) clone() *reportWhere {
 // when a matching worker_daily_hours row exists for the same worker/project/date.
 const dnevnikCTE = `
 WITH combined AS (
+	-- Radnik self-submitted hours (role_on_project='worker')
 	SELECT
 		wdh.id::text                            AS report_id,
 		wdh.work_date::text                     AS report_date,
@@ -93,8 +94,42 @@ WITH combined AS (
 		'radnik_unos'::text                     AS status,
 		'Radnik unos'::text                     AS source
 	FROM worker_daily_hours wdh
-	JOIN projects p  ON p.id  = wdh.project_id
+	JOIN projects p   ON p.id  = wdh.project_id
 	JOIN employees we ON we.id = wdh.worker_id
+	WHERE wdh.company_id = $1::uuid
+	  AND NOT EXISTS (
+		  SELECT 1 FROM project_assignments wpa
+		  WHERE wpa.project_id      = wdh.project_id
+		    AND wpa.employee_id     = wdh.worker_id
+		    AND wpa.role_on_project = 'poslovoda'
+		    AND wpa.active          = true
+	  )
+
+	UNION ALL
+
+	-- Poslovoda self-submitted hours (role_on_project='poslovoda')
+	SELECT
+		wdh.id::text,
+		wdh.work_date::text,
+		wdh.project_id::text,
+		p.name,
+		p.address,
+		wdh.worker_id::text,                    -- poslovoda_id
+		(we.first_name||' '||we.last_name),     -- poslovoda_name
+		''::text,                               -- worker_id
+		'—'::text,                              -- worker_name
+		wdh.hours_worked,
+		wdh.notes,
+		'poslovoda_unos'::text,
+		'Poslovođa unos'::text
+	FROM worker_daily_hours wdh
+	JOIN projects p   ON p.id  = wdh.project_id
+	JOIN employees we ON we.id = wdh.worker_id
+	JOIN project_assignments wpa
+	    ON wpa.project_id      = wdh.project_id
+	   AND wpa.employee_id     = wdh.worker_id
+	   AND wpa.role_on_project = 'poslovoda'
+	   AND wpa.active          = true
 	WHERE wdh.company_id = $1::uuid
 
 	UNION ALL

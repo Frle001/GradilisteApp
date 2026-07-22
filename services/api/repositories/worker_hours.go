@@ -19,17 +19,23 @@ func NewWorkerHoursRepository(db *pgxpool.Pool) *WorkerHoursRepository {
 	return &WorkerHoursRepository{db: db}
 }
 
-// ListCompanyActiveProjects returns all active (non-archived) projects in the company.
-func (r *WorkerHoursRepository) ListCompanyActiveProjects(ctx context.Context, companyID string) ([]dto.WorkerProject, error) {
+// ListActiveProjectsByAssignment returns active projects where the employee has
+// an active project_assignment with the given role_on_project.
+func (r *WorkerHoursRepository) ListActiveProjectsByAssignment(ctx context.Context, companyID, empID, roleOnProject string) ([]dto.WorkerProject, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id::text, name
-		FROM projects
-		WHERE company_id = $1::uuid
-		  AND status     = 'active'
-		ORDER BY name
-	`, companyID)
+		SELECT p.id::text, p.name
+		FROM projects p
+		JOIN project_assignments pa
+		    ON pa.project_id   = p.id
+		   AND pa.employee_id  = $2::uuid
+		   AND pa.role_on_project = $3
+		   AND pa.active       = true
+		WHERE p.company_id = $1::uuid
+		  AND p.status     = 'active'
+		ORDER BY p.name
+	`, companyID, empID, roleOnProject)
 	if err != nil {
-		return nil, fmt.Errorf("worker_hours.ListCompanyActiveProjects: %w", err)
+		return nil, fmt.Errorf("worker_hours.ListActiveProjectsByAssignment: %w", err)
 	}
 	defer rows.Close()
 
@@ -37,7 +43,7 @@ func (r *WorkerHoursRepository) ListCompanyActiveProjects(ctx context.Context, c
 	for rows.Next() {
 		var p dto.WorkerProject
 		if err := rows.Scan(&p.ID, &p.Name); err != nil {
-			return nil, fmt.Errorf("worker_hours.ListCompanyActiveProjects scan: %w", err)
+			return nil, fmt.Errorf("worker_hours.ListActiveProjectsByAssignment scan: %w", err)
 		}
 		result = append(result, p)
 	}
@@ -45,6 +51,25 @@ func (r *WorkerHoursRepository) ListCompanyActiveProjects(ctx context.Context, c
 		result = []dto.WorkerProject{}
 	}
 	return result, rows.Err()
+}
+
+// HasActiveAssignment returns true when the employee has an active project_assignment
+// for the project with the given role_on_project.
+func (r *WorkerHoursRepository) HasActiveAssignment(ctx context.Context, empID, projectID, roleOnProject string) (bool, error) {
+	var exists bool
+	err := r.db.QueryRow(ctx, `
+		SELECT EXISTS (
+			SELECT 1 FROM project_assignments
+			WHERE project_id      = $1::uuid
+			  AND employee_id     = $2::uuid
+			  AND role_on_project = $3
+			  AND active          = true
+		)
+	`, projectID, empID, roleOnProject).Scan(&exists)
+	if err != nil {
+		return false, fmt.Errorf("worker_hours.HasActiveAssignment: %w", err)
+	}
+	return exists, nil
 }
 
 // GetOtherProjectsHoursForDate returns the sum of already-submitted hours for a worker

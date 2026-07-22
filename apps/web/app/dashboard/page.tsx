@@ -50,6 +50,7 @@ const roleCards: Record<string, DashboardCard[]> = {
     { title: 'Moj tim', description: 'Pregled vaših zaposlenika', icon: '👥', href: '/dashboard/employees' },
     { title: 'Raspored smjena', description: 'Tjedni raspored radnih smjena', icon: '📅', href: '/dashboard/schedule' },
     { title: 'Moja gradilišta', description: 'Aktivni projekti dodijeljeni vama', icon: '🏗️', href: '/dashboard/projects' },
+    { title: 'Moji sati', description: 'Unos vlastitih dnevnih radnih sati po projektu.', icon: '⏱️', href: '/dashboard/my-hours' },
     { title: 'Dnevni izvještaj', description: 'Unos dnevnog izvještaja', icon: '📋', href: '/dashboard/daily-reports' },
     { title: 'Upis materijala', description: 'Evidentiranje kupljenog materijala', icon: '📦', href: '/dashboard/material-purchases/new' },
     { title: 'Moji upisi', description: 'Pregled vaših upisa materijala', icon: '🛒', href: '/dashboard/material-purchases' },
