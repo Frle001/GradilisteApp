@@ -22,7 +22,7 @@ func NewWorkerHoursHandler(svc *services.WorkerHoursService) *WorkerHoursHandler
 // GET /api/worker-hours/projects
 func (h *WorkerHoursHandler) ListProjects(c *gin.Context) {
 	u := appctx.GetAuthUser(c)
-	projects, err := h.svc.ListCompanyProjects(c.Request.Context(), u.CompanyID, u.EmployeeID, u.Role)
+	projects, err := h.svc.ListCompanyProjects(c.Request.Context(), u.CompanyID, u.Role)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
 		return

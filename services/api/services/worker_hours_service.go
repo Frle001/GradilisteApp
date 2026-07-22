@@ -10,8 +10,7 @@ import (
 
 // workerHoursRepoIface is the repository surface used by WorkerHoursService.
 type workerHoursRepoIface interface {
-	ListActiveProjectsByAssignment(ctx context.Context, companyID, empID, roleOnProject string) ([]dto.WorkerProject, error)
-	HasActiveAssignment(ctx context.Context, empID, projectID, roleOnProject string) (bool, error)
+	ListCompanyActiveProjects(ctx context.Context, companyID string) ([]dto.WorkerProject, error)
 	GetProjectStatus(ctx context.Context, companyID, projectID string) (string, error)
 	GetOtherProjectsHoursForDate(ctx context.Context, companyID, workerEmpID, projectID, workDate string) (float64, error)
 	Upsert(ctx context.Context, companyID, workerEmpID, projectID, workDate string, hoursWorked float64, notes *string, submittedByUserID string) (*dto.WorkerHoursEntry, error)
@@ -27,28 +26,15 @@ func NewWorkerHoursService(repo workerHoursRepoIface) *WorkerHoursService {
 	return &WorkerHoursService{repo: repo}
 }
 
-// appRoleToProjectRole maps the application role to the role_on_project value
-// used in project_assignments. Returns "" for unrecognized roles.
-func appRoleToProjectRole(appRole string) string {
-	switch appRole {
-	case "radnik":
-		return "worker"
-	case "poslovoda":
-		return "poslovoda"
+// ListCompanyProjects returns all active projects in the company.
+// Both radnik and poslovoda may submit hours to any active company project.
+func (s *WorkerHoursService) ListCompanyProjects(ctx context.Context, companyID, callerRole string) ([]dto.WorkerProject, error) {
+	switch callerRole {
+	case "radnik", "poslovoda":
+		return s.repo.ListCompanyActiveProjects(ctx, companyID)
 	default:
-		return ""
-	}
-}
-
-// ListCompanyProjects returns active projects the caller is assigned to, filtered
-// by the caller's application role (radnik → role_on_project='worker';
-// poslovoda → role_on_project='poslovoda').
-func (s *WorkerHoursService) ListCompanyProjects(ctx context.Context, companyID, empID, callerRole string) ([]dto.WorkerProject, error) {
-	roleOnProject := appRoleToProjectRole(callerRole)
-	if roleOnProject == "" {
 		return nil, ErrForbidden
 	}
-	return s.repo.ListActiveProjectsByAssignment(ctx, companyID, empID, roleOnProject)
 }
 
 // ListForDate returns the employee's hour entries for a given date.
@@ -70,8 +56,14 @@ func (s *WorkerHoursService) ListHistory(ctx context.Context, companyID, workerE
 }
 
 // Submit validates and upserts the employee's hours for today.
-// callerRole determines which role_on_project assignment is required.
+// Both radnik and poslovoda use the same validation and upsert flow.
 func (s *WorkerHoursService) Submit(ctx context.Context, companyID, workerEmpID, callerUserID, callerRole string, req dto.SubmitWorkerHoursRequest) (*dto.WorkerHoursEntry, error) {
+	switch callerRole {
+	case "radnik", "poslovoda":
+	default:
+		return nil, ErrForbidden
+	}
+
 	// Enforce today-only in Europe/Zagreb timezone
 	loc, _ := time.LoadLocation("Europe/Zagreb")
 	today := time.Now().In(loc).Format("2006-01-02")
@@ -93,19 +85,6 @@ func (s *WorkerHoursService) Submit(ctx context.Context, companyID, workerEmpID,
 	}
 	if status != "active" {
 		return nil, validationErr("Sati se mogu unositi samo za aktivne projekte")
-	}
-
-	// Validate the employee has an active assignment with the matching role
-	roleOnProject := appRoleToProjectRole(callerRole)
-	if roleOnProject == "" {
-		return nil, ErrForbidden
-	}
-	ok, err := s.repo.HasActiveAssignment(ctx, workerEmpID, req.ProjectID, roleOnProject)
-	if err != nil {
-		return nil, fmt.Errorf("submit worker hours: %w", err)
-	}
-	if !ok {
-		return nil, ErrForbidden
 	}
 
 	// Enforce daily total ≤ 24 across all projects

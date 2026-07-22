@@ -12,8 +12,7 @@ import (
 // ── Mock repository ───────────────────────────────────────────────────────────
 
 type mockWorkerHoursRepo struct {
-	listProjectsFn     func(ctx context.Context, companyID, empID, roleOnProject string) ([]dto.WorkerProject, error)
-	hasAssignmentFn    func(ctx context.Context, empID, projectID, roleOnProject string) (bool, error)
+	listAllProjectsFn  func(ctx context.Context, companyID string) ([]dto.WorkerProject, error)
 	getProjectStatusFn func(ctx context.Context, companyID, projectID string) (string, error)
 	otherHoursFn       func(ctx context.Context, companyID, workerEmpID, projectID, workDate string) (float64, error)
 	upsertFn           func(ctx context.Context, companyID, workerEmpID, projectID, workDate string, hours float64, notes *string, submittedBy string) (*dto.WorkerHoursEntry, error)
@@ -21,18 +20,11 @@ type mockWorkerHoursRepo struct {
 	listBeforeDateFn   func(ctx context.Context, companyID, workerEmpID, beforeDate string) ([]dto.WorkerHoursEntry, error)
 }
 
-func (m *mockWorkerHoursRepo) ListActiveProjectsByAssignment(ctx context.Context, companyID, empID, roleOnProject string) ([]dto.WorkerProject, error) {
-	if m.listProjectsFn != nil {
-		return m.listProjectsFn(ctx, companyID, empID, roleOnProject)
+func (m *mockWorkerHoursRepo) ListCompanyActiveProjects(ctx context.Context, companyID string) ([]dto.WorkerProject, error) {
+	if m.listAllProjectsFn != nil {
+		return m.listAllProjectsFn(ctx, companyID)
 	}
-	return []dto.WorkerProject{}, nil
-}
-
-func (m *mockWorkerHoursRepo) HasActiveAssignment(ctx context.Context, empID, projectID, roleOnProject string) (bool, error) {
-	if m.hasAssignmentFn != nil {
-		return m.hasAssignmentFn(ctx, empID, projectID, roleOnProject)
-	}
-	return true, nil
+	return []dto.WorkerProject{{ID: "p1", Name: "Projekt A"}, {ID: "p2", Name: "Projekt B"}}, nil
 }
 
 func (m *mockWorkerHoursRepo) GetProjectStatus(ctx context.Context, companyID, projectID string) (string, error) {
@@ -74,69 +66,61 @@ func newWHSvc(repo *mockWorkerHoursRepo) *WorkerHoursService {
 	return &WorkerHoursService{repo: repo}
 }
 
-// ── appRoleToProjectRole ──────────────────────────────────────────────────────
+// ── ListCompanyProjects ───────────────────────────────────────────────────────
 
-func TestAppRoleToProjectRole(t *testing.T) {
-	cases := []struct{ in, want string }{
-		{"radnik", "worker"},
-		{"poslovoda", "poslovoda"},
-		{"direktor", ""},
-		{"", ""},
+// Both radnik and poslovoda see all active company projects — no assignment filter.
+func TestListProjects_RadnikSeesAllCompanyProjects(t *testing.T) {
+	svc := newWHSvc(&mockWorkerHoursRepo{})
+	projects, err := svc.ListCompanyProjects(context.Background(), "comp", "radnik")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	for _, tc := range cases {
-		got := appRoleToProjectRole(tc.in)
-		if got != tc.want {
-			t.Errorf("appRoleToProjectRole(%q) = %q, want %q", tc.in, got, tc.want)
+	if len(projects) != 2 {
+		t.Errorf("expected 2 projects, got %d", len(projects))
+	}
+}
+
+func TestListProjects_PoslovodaSeesAllCompanyProjects(t *testing.T) {
+	svc := newWHSvc(&mockWorkerHoursRepo{})
+	projects, err := svc.ListCompanyProjects(context.Background(), "comp", "poslovoda")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(projects) != 2 {
+		t.Errorf("expected 2 projects, got %d", len(projects))
+	}
+}
+
+func TestListProjects_BothRolesCallSameRepoMethod(t *testing.T) {
+	for _, role := range []string{"radnik", "poslovoda"} {
+		calls := 0
+		repo := &mockWorkerHoursRepo{
+			listAllProjectsFn: func(_ context.Context, companyID string) ([]dto.WorkerProject, error) {
+				calls++
+				if companyID != "comp" {
+					t.Errorf("role=%s: unexpected companyID %q", role, companyID)
+				}
+				return []dto.WorkerProject{}, nil
+			},
+		}
+		svc := newWHSvc(repo)
+		_, err := svc.ListCompanyProjects(context.Background(), "comp", role)
+		if err != nil {
+			t.Errorf("role=%s: unexpected error: %v", role, err)
+		}
+		if calls != 1 {
+			t.Errorf("role=%s: ListCompanyActiveProjects called %d times, want 1", role, calls)
 		}
 	}
 }
 
-// ── ListCompanyProjects ───────────────────────────────────────────────────────
-
-func TestListCompanyProjects_RadnikPassesWorkerRole(t *testing.T) {
-	var capturedRole string
-	repo := &mockWorkerHoursRepo{
-		listProjectsFn: func(_ context.Context, _, _, roleOnProject string) ([]dto.WorkerProject, error) {
-			capturedRole = roleOnProject
-			return []dto.WorkerProject{{ID: "p1", Name: "Projekt"}}, nil
-		},
-	}
-	svc := newWHSvc(repo)
-	projects, err := svc.ListCompanyProjects(context.Background(), "comp", "emp", "radnik")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(projects) != 1 {
-		t.Fatalf("expected 1 project, got %d", len(projects))
-	}
-	if capturedRole != "worker" {
-		t.Errorf("expected role_on_project='worker', got %q", capturedRole)
-	}
-}
-
-func TestListCompanyProjects_PoslovodaPassesPoslovodaRole(t *testing.T) {
-	var capturedRole string
-	repo := &mockWorkerHoursRepo{
-		listProjectsFn: func(_ context.Context, _, _, roleOnProject string) ([]dto.WorkerProject, error) {
-			capturedRole = roleOnProject
-			return []dto.WorkerProject{}, nil
-		},
-	}
-	svc := newWHSvc(repo)
-	_, err := svc.ListCompanyProjects(context.Background(), "comp", "emp", "poslovoda")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if capturedRole != "poslovoda" {
-		t.Errorf("expected role_on_project='poslovoda', got %q", capturedRole)
-	}
-}
-
-func TestListCompanyProjects_UnknownRoleForbidden(t *testing.T) {
-	svc := newWHSvc(&mockWorkerHoursRepo{})
-	_, err := svc.ListCompanyProjects(context.Background(), "comp", "emp", "direktor")
-	if !errors.Is(err, ErrForbidden) {
-		t.Errorf("expected ErrForbidden, got %v", err)
+func TestListProjects_UnknownRoleForbidden(t *testing.T) {
+	for _, role := range []string{"direktor", "inzenjer", "administracija", ""} {
+		svc := newWHSvc(&mockWorkerHoursRepo{})
+		_, err := svc.ListCompanyProjects(context.Background(), "comp", role)
+		if !errors.Is(err, ErrForbidden) {
+			t.Errorf("role=%q: expected ErrForbidden, got %v", role, err)
+		}
 	}
 }
 
@@ -155,12 +139,16 @@ func baseReq() dto.SubmitWorkerHoursRequest {
 	}
 }
 
-func TestSubmit_RadnikRequiresWorkerAssignment(t *testing.T) {
-	var capturedRole string
+// Both roles submit to any active company project without an assignment check.
+func TestSubmit_RadnikCanSubmitToAnyActiveProject(t *testing.T) {
+	upsertCalled := false
 	repo := &mockWorkerHoursRepo{
-		hasAssignmentFn: func(_ context.Context, _, _, roleOnProject string) (bool, error) {
-			capturedRole = roleOnProject
-			return true, nil
+		upsertFn: func(_ context.Context, companyID, workerEmpID, projectID, workDate string, hours float64, _ *string, submittedBy string) (*dto.WorkerHoursEntry, error) {
+			upsertCalled = true
+			if companyID != "comp" {
+				t.Errorf("unexpected companyID %q", companyID)
+			}
+			return &dto.WorkerHoursEntry{ID: "e1"}, nil
 		},
 	}
 	svc := newWHSvc(repo)
@@ -168,17 +156,17 @@ func TestSubmit_RadnikRequiresWorkerAssignment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if capturedRole != "worker" {
-		t.Errorf("expected assignment check for role='worker', got %q", capturedRole)
+	if !upsertCalled {
+		t.Error("Upsert was not called")
 	}
 }
 
-func TestSubmit_PoslovodaRequiresPoslovodaAssignment(t *testing.T) {
-	var capturedRole string
+func TestSubmit_PoslovodaCanSubmitToAnyActiveProject(t *testing.T) {
+	upsertCalled := false
 	repo := &mockWorkerHoursRepo{
-		hasAssignmentFn: func(_ context.Context, _, _, roleOnProject string) (bool, error) {
-			capturedRole = roleOnProject
-			return true, nil
+		upsertFn: func(_ context.Context, _, _, _, _ string, _ float64, _ *string, _ string) (*dto.WorkerHoursEntry, error) {
+			upsertCalled = true
+			return &dto.WorkerHoursEntry{ID: "e1"}, nil
 		},
 	}
 	svc := newWHSvc(repo)
@@ -186,55 +174,105 @@ func TestSubmit_PoslovodaRequiresPoslovodaAssignment(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if capturedRole != "poslovoda" {
-		t.Errorf("expected assignment check for role='poslovoda', got %q", capturedRole)
+	if !upsertCalled {
+		t.Error("Upsert was not called")
 	}
 }
 
-func TestSubmit_NoAssignmentReturnsForbidden(t *testing.T) {
+// Project from another company (GetProjectStatus returns "") is rejected.
+func TestSubmit_ProjectFromOtherCompanyRejected(t *testing.T) {
 	repo := &mockWorkerHoursRepo{
-		hasAssignmentFn: func(_ context.Context, _, _, _ string) (bool, error) {
-			return false, nil
+		getProjectStatusFn: func(_ context.Context, _, _ string) (string, error) {
+			return "", nil // not found in this company
 		},
 	}
-	svc := newWHSvc(repo)
-	_, err := svc.Submit(context.Background(), "comp", "emp", "user", "radnik", baseReq())
-	if !errors.Is(err, ErrForbidden) {
-		t.Errorf("expected ErrForbidden, got %v", err)
+	for _, role := range []string{"radnik", "poslovoda"} {
+		svc := newWHSvc(repo)
+		_, err := svc.Submit(context.Background(), "comp", "emp", "user", role, baseReq())
+		var ve *ValidationError
+		if !errors.As(err, &ve) {
+			t.Errorf("role=%s: expected ValidationError for foreign project, got %v", role, err)
+		}
 	}
 }
 
-func TestSubmit_UnknownRoleForbidden(t *testing.T) {
-	svc := newWHSvc(&mockWorkerHoursRepo{})
-	_, err := svc.Submit(context.Background(), "comp", "emp", "user", "direktor", baseReq())
-	if !errors.Is(err, ErrForbidden) {
-		t.Errorf("expected ErrForbidden, got %v", err)
+// Inactive or archived projects are rejected.
+func TestSubmit_InactiveProjectRejected(t *testing.T) {
+	for _, status := range []string{"archived", "completed", "draft"} {
+		repo := &mockWorkerHoursRepo{
+			getProjectStatusFn: func(_ context.Context, _, _ string) (string, error) {
+				return status, nil
+			},
+		}
+		for _, role := range []string{"radnik", "poslovoda"} {
+			svc := newWHSvc(repo)
+			_, err := svc.Submit(context.Background(), "comp", "emp", "user", role, baseReq())
+			var ve *ValidationError
+			if !errors.As(err, &ve) {
+				t.Errorf("status=%s role=%s: expected ValidationError, got %v", status, role, err)
+			}
+		}
 	}
 }
 
-func TestSubmit_FutureDateRejected(t *testing.T) {
-	req := baseReq()
-	req.WorkDate = "2099-01-01"
-	svc := newWHSvc(&mockWorkerHoursRepo{})
-	_, err := svc.Submit(context.Background(), "comp", "emp", "user", "radnik", req)
-	var ve *ValidationError
-	if !errors.As(err, &ve) {
-		t.Errorf("expected ValidationError for future date, got %v", err)
+// Future or past dates are rejected.
+func TestSubmit_WrongDateRejected(t *testing.T) {
+	for _, date := range []string{"2099-01-01", "2020-01-01"} {
+		req := baseReq()
+		req.WorkDate = date
+		for _, role := range []string{"radnik", "poslovoda"} {
+			svc := newWHSvc(&mockWorkerHoursRepo{})
+			_, err := svc.Submit(context.Background(), "comp", "emp", "user", role, req)
+			var ve *ValidationError
+			if !errors.As(err, &ve) {
+				t.Errorf("date=%s role=%s: expected ValidationError, got %v", date, role, err)
+			}
+		}
 	}
 }
 
-func TestSubmit_HoursExceed24Rejected(t *testing.T) {
+// Hours outside [0, 24] are rejected.
+func TestSubmit_InvalidHoursRejected(t *testing.T) {
+	for _, h := range []float64{-1, 25, 100} {
+		req := baseReq()
+		req.HoursWorked = h
+		for _, role := range []string{"radnik", "poslovoda"} {
+			svc := newWHSvc(&mockWorkerHoursRepo{})
+			_, err := svc.Submit(context.Background(), "comp", "emp", "user", role, req)
+			var ve *ValidationError
+			if !errors.As(err, &ve) {
+				t.Errorf("hours=%.0f role=%s: expected ValidationError, got %v", h, role, err)
+			}
+		}
+	}
+}
+
+// Daily total exceeding 24 h is rejected.
+func TestSubmit_DailyCapExceeded(t *testing.T) {
 	repo := &mockWorkerHoursRepo{
 		otherHoursFn: func(_ context.Context, _, _, _, _ string) (float64, error) {
 			return 20, nil
 		},
 	}
-	svc := newWHSvc(repo)
 	req := baseReq()
 	req.HoursWorked = 5 // 20 + 5 > 24
-	_, err := svc.Submit(context.Background(), "comp", "emp", "user", "radnik", req)
-	var ve *ValidationError
-	if !errors.As(err, &ve) {
-		t.Errorf("expected ValidationError for exceeding 24h, got %v", err)
+	for _, role := range []string{"radnik", "poslovoda"} {
+		svc := newWHSvc(repo)
+		_, err := svc.Submit(context.Background(), "comp", "emp", "user", role, req)
+		var ve *ValidationError
+		if !errors.As(err, &ve) {
+			t.Errorf("role=%s: expected ValidationError for daily cap, got %v", role, err)
+		}
+	}
+}
+
+// Unsupported roles are forbidden.
+func TestSubmit_UnknownRoleForbidden(t *testing.T) {
+	for _, role := range []string{"direktor", "inzenjer", "administracija", ""} {
+		svc := newWHSvc(&mockWorkerHoursRepo{})
+		_, err := svc.Submit(context.Background(), "comp", "emp", "user", role, baseReq())
+		if !errors.Is(err, ErrForbidden) {
+			t.Errorf("role=%q: expected ErrForbidden, got %v", role, err)
+		}
 	}
 }
