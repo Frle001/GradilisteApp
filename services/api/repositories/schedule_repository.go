@@ -60,7 +60,8 @@ func (r *ScheduleRepository) ProjectBelongsToCompany(ctx context.Context, compan
 	err := r.db.QueryRow(ctx, `
 		SELECT EXISTS(
 			SELECT 1 FROM projects
-			WHERE id = $1::uuid AND company_id = $2::uuid AND deleted_at IS NULL
+			WHERE id = $1::uuid
+  				AND company_id = $2::uuid
 		)
 	`, projectID, companyID).Scan(&exists)
 	return exists, err
@@ -211,14 +212,14 @@ func (r *ScheduleRepository) ListAssignments(
 			psa.id::text,
 			psa.shift_id::text,
 			psa.employee_id::text,
-			e.full_name  AS employee_name,
+			CONCAT_WS(' ', e.first_name, e.last_name) AS employee_name,
 			psa.assigned_by::text,
 			psa.overlap_overridden,
 			psa.created_at
 		FROM project_shift_assignments psa
 		JOIN employees e ON e.id = psa.employee_id
 		WHERE psa.shift_id = $1::uuid AND psa.company_id = $2::uuid
-		ORDER BY e.full_name
+		ORDER BY e.last_name, e.first_name
 	`, shiftID, companyID)
 	if err != nil {
 		return nil, err
@@ -251,22 +252,24 @@ func (r *ScheduleRepository) FindOverlaps(
 	rows, err := r.db.Query(ctx, `
 		SELECT
 			psa.employee_id::text,
-			e.full_name    AS employee_name,
-			ps.id::text    AS shift_id,
+			CONCAT_WS(' ', e.first_name, e.last_name) AS employee_name,
+			ps.id::text AS shift_id,
 			ps.shift_date::text,
 			to_char(ps.start_time, 'HH24:MI') AS start_time,
-			to_char(ps.end_time,   'HH24:MI') AS end_time
+			to_char(ps.end_time, 'HH24:MI') AS end_time
 		FROM project_shift_assignments psa
 		JOIN project_shifts ps ON ps.id = psa.shift_id
-		JOIN employees      e  ON e.id  = psa.employee_id
-		WHERE psa.company_id  = $1::uuid
-		  AND ps.shift_date   = $2::date
-		  AND ps.status       = 'active'
-		  AND ps.id          != $3::uuid
-		  AND ps.start_time   < $5::time
-		  AND ps.end_time     > $4::time
-		  AND psa.employee_id IN (SELECT unnest($6::text[])::uuid)
-		ORDER BY e.full_name
+		JOIN employees e ON e.id = psa.employee_id
+		WHERE psa.company_id = $1::uuid
+		AND ps.shift_date = $2::date
+		AND ps.status = 'active'
+		AND ps.id != $3::uuid
+		AND ps.start_time < $5::time
+		AND ps.end_time > $4::time
+		AND psa.employee_id IN (
+			SELECT unnest($6::text[])::uuid
+		)
+		ORDER BY e.last_name, e.first_name
 	`, companyID, shiftDate, excludeShiftID, startTime, endTime, employeeIDs)
 	if err != nil {
 		return nil, err
