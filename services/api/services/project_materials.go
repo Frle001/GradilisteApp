@@ -362,8 +362,8 @@ func validateConfirmRow(row dto.WizardConfirmRow) []string {
 	if strings.TrimSpace(row.MaterialName) == "" {
 		errs = append(errs, "Naziv materijala je obavezan")
 	}
-	if row.Quantity <= 0 {
-		errs = append(errs, "Količina mora biti > 0")
+	if row.Quantity < 0 {
+		errs = append(errs, "Količina ne može biti negativna")
 	}
 	if strings.TrimSpace(row.Unit) == "" {
 		errs = append(errs, "Jedinica mjere je obavezna")

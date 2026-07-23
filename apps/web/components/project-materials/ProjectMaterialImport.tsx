@@ -45,7 +45,7 @@ function cx(...parts: (string | false | null | undefined)[]): string {
 function validateRow(row: EditablePreviewRow): string[] {
   const errs: string[] = []
   if (!row.material_name.trim()) errs.push('Naziv je obavezan')
-  if (!(row.quantity > 0)) errs.push('Količina mora biti > 0')
+  if (row.quantity < 0) errs.push('Količina ne može biti negativna')
   if (!row.unit.trim()) errs.push('JM je obavezna')
   if (row.unit_price != null && row.unit_price < 0) errs.push('Jed. cijena ne može biti negativna')
   if (row.total_price != null && row.total_price < 0) errs.push('Ukupna cijena ne može biti negativna')
@@ -86,7 +86,7 @@ export default function ProjectMaterialImport({ projectId, onConfirmed }: Props)
       const merged = { ...r, ...updates }
       // Auto-calc total_price when qty or unit_price changes and total was previously null
       if (('quantity' in updates || 'unit_price' in updates) && r.total_price == null) {
-        if (merged.unit_price != null && merged.unit_price >= 0 && merged.quantity > 0) {
+        if (merged.unit_price != null && merged.unit_price >= 0 && merged.quantity >= 0) {
           merged.total_price = Math.round(merged.quantity * merged.unit_price * 100) / 100
         }
       }
@@ -666,7 +666,7 @@ export default function ProjectMaterialImport({ projectId, onConfirmed }: Props)
                                 onChange={ev => { const q = parseFloat(ev.target.value); updateRow(row.row_number, { quantity: isNaN(q) ? 0 : q }) }}
                                 disabled={!isIncluded || step === 'confirming'}
                                 min="0" step="any"
-                                className={cx(inp, 'text-right', isIncluded && !(row.quantity > 0) && inpErr)}
+                                className={cx(inp, 'text-right', isIncluded && row.quantity < 0 && inpErr)}
                                 placeholder="0"
                               />
                             </label>
@@ -858,7 +858,7 @@ export default function ProjectMaterialImport({ projectId, onConfirmed }: Props)
                             <input type="number" value={row.quantity === 0 ? '' : row.quantity}
                               onChange={ev => { const q = parseFloat(ev.target.value); updateRow(row.row_number, { quantity: isNaN(q) ? 0 : q }) }}
                               disabled={!isIncluded} min="0" step="any"
-                              className={cx(inp, 'text-right', isIncluded && !(row.quantity > 0) && inpErr)}
+                              className={cx(inp, 'text-right', isIncluded && row.quantity < 0 && inpErr)}
                               placeholder="0" />
                           </td>
                           <td className="px-2 py-2">

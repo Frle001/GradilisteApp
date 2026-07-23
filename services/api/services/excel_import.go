@@ -156,7 +156,7 @@ func detectHeaderRow(rows [][]string) int {
 			norm := normalizeHeader(cell)
 			for _, f := range allKnownFields {
 				for _, a := range fieldAliases[f] {
-					if norm == a || strings.Contains(norm, a) || strings.Contains(a, norm) {
+					if norm == a || strings.Contains(norm, a) {
 						score += 3
 						break
 					}
@@ -464,10 +464,7 @@ func classifyRow(name, qtyStr, unit string, prevWasItem bool) string {
 		if isCategoryLike(name) {
 			return RowTypeCategory
 		}
-		if prevWasItem {
-			return RowTypeContinuation
-		}
-		return RowTypeCategory
+		return RowTypeItem
 	}
 
 	return RowTypeBlank
@@ -853,7 +850,7 @@ func parseRowsWithMapping(rows []rawMappingRow, mapping map[string]string) ([]dt
 
 		var qty float64
 		if qtyStr == "" {
-			errs = append(errs, "Količina je obavezna")
+			warnings = append(warnings, fmt.Sprintf("Redak %d: planirana količina je prazna; koristit će se 0.", r.RowNumber))
 		} else if q, err := parseNumber(qtyStr); err != nil {
 			errs = append(errs, "Količina nije valjana: "+qtyStr)
 		} else if q < 0 {
