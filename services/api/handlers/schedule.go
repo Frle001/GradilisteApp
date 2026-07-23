@@ -194,15 +194,6 @@ func (h *ScheduleHandler) SyncAssignments(c *gin.Context) {
 			c.JSON(http.StatusConflict, gin.H{"error": "smjena je otkazana"})
 			return
 		}
-		var overlapErr *services.ErrOverlapConflict
-		if errors.As(err, &overlapErr) {
-			c.JSON(http.StatusConflict, gin.H{
-				"error":             "preklapanje rasporeda zaposlenika",
-				"overlaps":          overlapErr.Overlaps,
-				"requires_override": true,
-			})
-			return
-		}
 		log.Printf("[schedule] SyncAssignments error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "greška pri raspoređivanju"})
 		return
@@ -297,4 +288,37 @@ func (h *ScheduleHandler) CopyWeek(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, result)
+}
+
+// GET /api/schedule/employees-for-date?date=YYYY-MM-DD&exclude_shift_id=UUID
+func (h *ScheduleHandler) EmployeesForDate(c *gin.Context) {
+	u := appctx.GetAuthUser(c)
+	if u == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "unauthenticated"})
+		return
+	}
+
+	date := c.Query("date")
+	if date == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "parametar 'date' je obavezan"})
+		return
+	}
+
+	excludeShiftID := c.Query("exclude_shift_id")
+	if excludeShiftID == "" {
+		excludeShiftID = "00000000-0000-0000-0000-000000000000"
+	}
+
+	employees, err := h.svc.EmployeesForDate(c.Request.Context(), u.CompanyID, date, excludeShiftID)
+	if err != nil {
+		if ve := services.AsValidationError(err); ve != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": ve.Error()})
+			return
+		}
+		log.Printf("[schedule] EmployeesForDate error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "greška pri dohvatu zaposlenika"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"employees": employees})
 }

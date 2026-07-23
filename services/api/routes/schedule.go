@@ -19,6 +19,7 @@ func RegisterScheduleRoutes(
 		// Read — all authenticated roles
 		schedule.GET("/shifts", viewRoles, h.ListShifts)
 		schedule.GET("/shifts/:shiftId", viewRoles, h.GetShift)
+		schedule.GET("/employees-for-date", viewRoles, h.EmployeesForDate)
 
 		// Management — direktor / inženjer only
 		schedule.POST("/shifts", manageRoles, h.CreateShift)

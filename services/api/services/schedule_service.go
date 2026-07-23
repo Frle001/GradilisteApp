@@ -13,27 +13,19 @@ import (
 	"github.com/gradiliste/api/repositories"
 )
 
-// ErrOverlapConflict is returned by SyncAssignments when one or more employees
-// have overlapping shifts and override_overlaps is false.
-type ErrOverlapConflict struct {
-	Overlaps []dto.ShiftOverlapItem
-}
-
-func (e *ErrOverlapConflict) Error() string { return "employee schedule overlap" }
-
 // scheduleRepoIface is the repository surface used by ScheduleService.
 type scheduleRepoIface interface {
 	ProjectBelongsToCompany(ctx context.Context, companyID, projectID string) (bool, error)
-	CreateShift(ctx context.Context, tx pgx.Tx, companyID, projectID, shiftDate, startTime, endTime string, notes *string, createdBy string) (string, error)
+	CreateShift(ctx context.Context, tx pgx.Tx, companyID, projectID, shiftDate string, startTime, endTime *string, notes *string, createdBy string) (string, error)
 	GetShift(ctx context.Context, companyID, shiftID string) (*repositories.ShiftRow, error)
 	GetShiftForUpdate(ctx context.Context, tx pgx.Tx, companyID, shiftID string) (*repositories.ShiftRow, error)
 	ListShifts(ctx context.Context, companyID, dateFrom, dateTo string, projectID *string) ([]repositories.ShiftRow, error)
-	UpdateShift(ctx context.Context, tx pgx.Tx, shiftID, shiftDate, startTime, endTime string, notes *string) error
+	UpdateShift(ctx context.Context, tx pgx.Tx, shiftID, shiftDate string, startTime, endTime *string, notes *string) error
 	CancelShift(ctx context.Context, tx pgx.Tx, companyID, shiftID, cancelledBy string) error
 	ListAssignments(ctx context.Context, companyID, shiftID string) ([]repositories.ShiftAssignmentRow, error)
-	FindOverlaps(ctx context.Context, companyID, shiftDate, startTime, endTime, excludeShiftID string, employeeIDs []string) ([]repositories.ShiftOverlapRow, error)
 	DeleteAssignments(ctx context.Context, tx pgx.Tx, shiftID string) error
 	CreateAssignment(ctx context.Context, tx pgx.Tx, companyID, shiftID, employeeID, assignedBy string, overlapOverridden bool, overriddenBy *string) error
+	EmployeesForDate(ctx context.Context, companyID, shiftDate, excludeShiftID string) ([]repositories.EmployeeForDateRow, error)
 }
 
 // ScheduleService handles company shift scheduling.
@@ -48,20 +40,9 @@ func NewScheduleService(db *pgxpool.Pool, repo *repositories.ScheduleRepository)
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-func validateShiftTimes(date, startTime, endTime string) error {
+func validateShiftDate(date string) error {
 	if _, err := time.Parse("2006-01-02", date); err != nil {
 		return validationErr("neispravan datum (format YYYY-MM-DD)")
-	}
-	startT, err := time.Parse("15:04", startTime)
-	if err != nil {
-		return validationErr("neispravno vrijeme početka (format HH:MM)")
-	}
-	endT, err := time.Parse("15:04", endTime)
-	if err != nil {
-		return validationErr("neispravno vrijeme završetka (format HH:MM)")
-	}
-	if !endT.After(startT) {
-		return validationErr("završetak mora biti nakon početka")
 	}
 	return nil
 }
@@ -94,21 +75,6 @@ func toShiftDTO(s repositories.ShiftRow, assignments []repositories.ShiftAssignm
 	return item
 }
 
-func toOverlapDTOs(rows []repositories.ShiftOverlapRow) []dto.ShiftOverlapItem {
-	items := make([]dto.ShiftOverlapItem, len(rows))
-	for i, r := range rows {
-		items[i] = dto.ShiftOverlapItem{
-			EmployeeID:   r.EmployeeID,
-			EmployeeName: r.EmployeeName,
-			ShiftID:      r.ShiftID,
-			ShiftDate:    r.ShiftDate,
-			StartTime:    r.StartTime,
-			EndTime:      r.EndTime,
-		}
-	}
-	return items
-}
-
 func dedupeStrings(ss []string) []string {
 	seen := make(map[string]bool, len(ss))
 	out := make([]string, 0, len(ss))
@@ -128,7 +94,7 @@ func (s *ScheduleService) CreateShift(
 	companyID, projectID, userID string,
 	req *dto.CreateShiftRequest,
 ) (*dto.ShiftItem, error) {
-	if err := validateShiftTimes(req.ShiftDate, req.StartTime, req.EndTime); err != nil {
+	if err := validateShiftDate(req.ShiftDate); err != nil {
 		return nil, err
 	}
 
@@ -141,25 +107,6 @@ func (s *ScheduleService) CreateShift(
 	}
 
 	empIDs := dedupeStrings(req.EmployeeIDs)
-
-	// Detect overlaps before opening the transaction to keep lock duration short.
-	var overlapRows []repositories.ShiftOverlapRow
-	if len(empIDs) > 0 {
-		const noExclude = "00000000-0000-0000-0000-000000000000"
-		overlapRows, err = s.repo.FindOverlaps(ctx, companyID,
-			req.ShiftDate, req.StartTime, req.EndTime, noExclude, empIDs)
-		if err != nil {
-			return nil, fmt.Errorf("find overlaps: %w", err)
-		}
-		if len(overlapRows) > 0 && !req.OverrideOverlaps {
-			return nil, &ErrOverlapConflict{Overlaps: toOverlapDTOs(overlapRows)}
-		}
-	}
-
-	overriddenSet := make(map[string]bool, len(overlapRows))
-	for _, o := range overlapRows {
-		overriddenSet[o.EmployeeID] = true
-	}
 
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
@@ -174,13 +121,8 @@ func (s *ScheduleService) CreateShift(
 	}
 
 	for _, empID := range empIDs {
-		overridden := req.OverrideOverlaps && overriddenSet[empID]
-		var overriddenBy *string
-		if overridden {
-			overriddenBy = &userID
-		}
 		if err := s.repo.CreateAssignment(ctx, tx, companyID, shiftID, empID, userID,
-			overridden, overriddenBy); err != nil {
+			false, nil); err != nil {
 			tx.Rollback(ctx)
 			return nil, fmt.Errorf("create assignment for employee %s: %w", empID, err)
 		}
@@ -259,20 +201,20 @@ func (s *ScheduleService) UpdateShift(
 	if req.ShiftDate != nil {
 		newDate = *req.ShiftDate
 	}
-	newStart := current.StartTime
+	newStart := current.StartTime // *string
 	if req.StartTime != nil {
-		newStart = *req.StartTime
+		newStart = req.StartTime
 	}
-	newEnd := current.EndTime
+	newEnd := current.EndTime // *string
 	if req.EndTime != nil {
-		newEnd = *req.EndTime
+		newEnd = req.EndTime
 	}
 	newNotes := current.Notes
 	if req.Notes != nil {
 		newNotes = req.Notes
 	}
 
-	if err := validateShiftTimes(newDate, newStart, newEnd); err != nil {
+	if err := validateShiftDate(newDate); err != nil {
 		return nil, err
 	}
 
@@ -367,22 +309,6 @@ func (s *ScheduleService) SyncAssignments(
 
 	empIDs := dedupeStrings(req.EmployeeIDs)
 
-	overlaps, err := s.repo.FindOverlaps(ctx, companyID,
-		shift.ShiftDate, shift.StartTime, shift.EndTime,
-		shiftID, empIDs)
-	if err != nil {
-		return nil, fmt.Errorf("find overlaps: %w", err)
-	}
-
-	if len(overlaps) > 0 && !req.OverrideOverlaps {
-		return nil, &ErrOverlapConflict{Overlaps: toOverlapDTOs(overlaps)}
-	}
-
-	overriddenSet := make(map[string]bool, len(overlaps))
-	for _, o := range overlaps {
-		overriddenSet[o.EmployeeID] = true
-	}
-
 	tx, err := s.db.Begin(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("begin tx: %w", err)
@@ -408,13 +334,8 @@ func (s *ScheduleService) SyncAssignments(
 	}
 
 	for _, empID := range empIDs {
-		overridden := req.OverrideOverlaps && overriddenSet[empID]
-		var overriddenBy *string
-		if overridden {
-			overriddenBy = &userID
-		}
 		if err := s.repo.CreateAssignment(ctx, tx, companyID, shiftID, empID, userID,
-			overridden, overriddenBy); err != nil {
+			false, nil); err != nil {
 			tx.Rollback(ctx)
 			return nil, fmt.Errorf("create assignment for employee %s: %w", empID, err)
 		}
@@ -431,7 +352,6 @@ func (s *ScheduleService) SyncAssignments(
 
 	result := &dto.AssignResponse{
 		Assignments:      make([]dto.ShiftAssignmentItem, 0, len(assignments)),
-		Overlaps:         toOverlapDTOs(overlaps),
 		RequiresOverride: false,
 	}
 	for _, a := range assignments {
@@ -569,34 +489,16 @@ func (s *ScheduleService) CopyWeek(
 	return resp, nil
 }
 
-// copyShiftToDate creates a copy of src on targetDate, assigning employees that
-// do not conflict. Conflicts are silently skipped (not an error).
+// copyShiftToDate creates a copy of src on targetDate, including all assignments.
 func (s *ScheduleService) copyShiftToDate(
 	ctx context.Context,
 	companyID, userID string,
 	src repositories.ShiftRow,
 	targetDate string,
 ) (*dto.ShiftItem, error) {
-	const noExclude = "00000000-0000-0000-0000-000000000000"
-
 	srcAssignments, err := s.repo.ListAssignments(ctx, companyID, src.ID)
 	if err != nil {
 		return nil, fmt.Errorf("load source assignments: %w", err)
-	}
-
-	empIDs := make([]string, len(srcAssignments))
-	for i, a := range srcAssignments {
-		empIDs[i] = a.EmployeeID
-	}
-
-	overlapRows, err := s.repo.FindOverlaps(ctx, companyID,
-		targetDate, src.StartTime, src.EndTime, noExclude, empIDs)
-	if err != nil {
-		return nil, fmt.Errorf("find overlaps: %w", err)
-	}
-	conflictSet := make(map[string]bool, len(overlapRows))
-	for _, o := range overlapRows {
-		conflictSet[o.EmployeeID] = true
 	}
 
 	tx, err := s.db.Begin(ctx)
@@ -612,9 +514,6 @@ func (s *ScheduleService) copyShiftToDate(
 	}
 
 	for _, a := range srcAssignments {
-		if conflictSet[a.EmployeeID] {
-			continue
-		}
 		if err := s.repo.CreateAssignment(ctx, tx, companyID, newID,
 			a.EmployeeID, userID, false, nil); err != nil {
 			tx.Rollback(ctx)
@@ -627,4 +526,34 @@ func (s *ScheduleService) copyShiftToDate(
 	}
 
 	return s.GetShift(ctx, companyID, newID)
+}
+
+// EmployeesForDate returns all active company employees annotated with whether
+// they already have an active shift on shiftDate. excludeShiftID identifies the
+// shift being edited so its own assignments are not counted as conflicts.
+func (s *ScheduleService) EmployeesForDate(
+	ctx context.Context,
+	companyID, shiftDate, excludeShiftID string,
+) ([]dto.EmployeeForDateItem, error) {
+	if err := validateShiftDate(shiftDate); err != nil {
+		return nil, err
+	}
+
+	rows, err := s.repo.EmployeesForDate(ctx, companyID, shiftDate, excludeShiftID)
+	if err != nil {
+		return nil, fmt.Errorf("employees for date: %w", err)
+	}
+
+	items := make([]dto.EmployeeForDateItem, len(rows))
+	for i, r := range rows {
+		items[i] = dto.EmployeeForDateItem{
+			ID:          r.ID,
+			Name:        r.Name,
+			Role:        r.Role,
+			Assigned:    r.Assigned,
+			ShiftID:     r.ShiftID,
+			ProjectName: r.ProjectName,
+		}
+	}
+	return items, nil
 }

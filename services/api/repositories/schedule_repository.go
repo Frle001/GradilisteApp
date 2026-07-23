@@ -15,9 +15,9 @@ type ShiftRow struct {
 	CompanyID   string
 	ProjectID   string
 	ProjectName string
-	ShiftDate   string // "YYYY-MM-DD"
-	StartTime   string // "HH:MM"
-	EndTime     string // "HH:MM"
+	ShiftDate   string  // "YYYY-MM-DD"
+	StartTime   *string // "HH:MM" or nil
+	EndTime     *string // "HH:MM" or nil
 	Notes       *string
 	Status      string
 	CancelledAt *time.Time
@@ -36,13 +36,23 @@ type ShiftAssignmentRow struct {
 	CreatedAt         time.Time
 }
 
-type ShiftOverlapRow struct {
+// ShiftConflictRow is returned by FindDailyConflicts: employees who already have
+// an active shift on the given date (excluding the current shift).
+type ShiftConflictRow struct {
 	EmployeeID   string
 	EmployeeName string
 	ShiftID      string
-	ShiftDate    string
-	StartTime    string
-	EndTime      string
+	ProjectName  string
+}
+
+// EmployeeForDateRow is returned by EmployeesForDate.
+type EmployeeForDateRow struct {
+	ID          string
+	Name        string
+	Role        string
+	Assigned    bool
+	ShiftID     *string
+	ProjectName *string
 }
 
 // ── Repository ────────────────────────────────────────────────────────────────
@@ -95,7 +105,8 @@ const shiftSelectCols = `
 
 func (r *ScheduleRepository) CreateShift(
 	ctx context.Context, tx pgx.Tx,
-	companyID, projectID, shiftDate, startTime, endTime string,
+	companyID, projectID, shiftDate string,
+	startTime, endTime *string,
 	notes *string, createdBy string,
 ) (string, error) {
 	var id string
@@ -155,7 +166,7 @@ func (r *ScheduleRepository) ListShifts(
 		WHERE ps.company_id = $1::uuid
 		  AND ps.shift_date BETWEEN $2::date AND $3::date
 		  AND ($4::uuid IS NULL OR ps.project_id = $4::uuid)
-		ORDER BY ps.shift_date, ps.start_time
+		ORDER BY ps.shift_date, ps.created_at
 	`
 	rows, err := r.db.Query(ctx, query, companyID, dateFrom, dateTo, projectID)
 	if err != nil {
@@ -176,7 +187,8 @@ func (r *ScheduleRepository) ListShifts(
 
 func (r *ScheduleRepository) UpdateShift(
 	ctx context.Context, tx pgx.Tx,
-	shiftID, shiftDate, startTime, endTime string,
+	shiftID, shiftDate string,
+	startTime, endTime *string,
 	notes *string,
 ) error {
 	_, err := tx.Exec(ctx, `
@@ -238,14 +250,14 @@ func (r *ScheduleRepository) ListAssignments(
 	return result, rows.Err()
 }
 
-// FindOverlaps returns assignments in OTHER active shifts (excluding excludeShiftID)
-// on shiftDate whose time window overlaps [startTime, endTime) for the given employees.
-// Pass excludeShiftID = "00000000-0000-0000-0000-000000000000" when there is no shift to exclude.
-func (r *ScheduleRepository) FindOverlaps(
+// FindDailyConflicts returns employees from employeeIDs who already have an
+// active shift on shiftDate in this company, excluding excludeShiftID (use
+// "00000000-0000-0000-0000-000000000000" when there is no shift to exclude).
+func (r *ScheduleRepository) FindDailyConflicts(
 	ctx context.Context,
-	companyID, shiftDate, startTime, endTime, excludeShiftID string,
+	companyID, shiftDate, excludeShiftID string,
 	employeeIDs []string,
-) ([]ShiftOverlapRow, error) {
+) ([]ShiftConflictRow, error) {
 	if len(employeeIDs) == 0 {
 		return nil, nil
 	}
@@ -254,33 +266,27 @@ func (r *ScheduleRepository) FindOverlaps(
 			psa.employee_id::text,
 			CONCAT_WS(' ', e.first_name, e.last_name) AS employee_name,
 			ps.id::text AS shift_id,
-			ps.shift_date::text,
-			to_char(ps.start_time, 'HH24:MI') AS start_time,
-			to_char(ps.end_time, 'HH24:MI') AS end_time
+			p.name      AS project_name
 		FROM project_shift_assignments psa
 		JOIN project_shifts ps ON ps.id = psa.shift_id
-		JOIN employees e ON e.id = psa.employee_id
-		WHERE psa.company_id = $1::uuid
-		AND ps.shift_date = $2::date
-		AND ps.status = 'active'
-		AND ps.id != $3::uuid
-		AND ps.start_time < $5::time
-		AND ps.end_time > $4::time
-		AND psa.employee_id IN (
-			SELECT unnest($6::text[])::uuid
-		)
+		JOIN employees      e  ON e.id  = psa.employee_id
+		JOIN projects       p  ON p.id  = ps.project_id
+		WHERE psa.company_id    = $1::uuid
+		  AND ps.shift_date     = $2::date
+		  AND ps.status         = 'active'
+		  AND ps.id            != $3::uuid
+		  AND psa.employee_id IN (SELECT unnest($4::text[])::uuid)
 		ORDER BY e.last_name, e.first_name
-	`, companyID, shiftDate, excludeShiftID, startTime, endTime, employeeIDs)
+	`, companyID, shiftDate, excludeShiftID, employeeIDs)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 
-	var result []ShiftOverlapRow
+	var result []ShiftConflictRow
 	for rows.Next() {
-		var o ShiftOverlapRow
-		if err := rows.Scan(&o.EmployeeID, &o.EmployeeName, &o.ShiftID,
-			&o.ShiftDate, &o.StartTime, &o.EndTime); err != nil {
+		var o ShiftConflictRow
+		if err := rows.Scan(&o.EmployeeID, &o.EmployeeName, &o.ShiftID, &o.ProjectName); err != nil {
 			return nil, err
 		}
 		result = append(result, o)
@@ -313,4 +319,54 @@ func (r *ScheduleRepository) CreateAssignment(
 		        CASE WHEN $5 THEN NOW() ELSE NULL END)
 	`, companyID, shiftID, employeeID, assignedBy, overlapOverridden, overriddenBy)
 	return err
+}
+
+// EmployeesForDate returns all active company employees with their assignment
+// status on shiftDate. excludeShiftID is the shift being edited (those
+// assignments are not counted as conflicts). Pass the nil-UUID when not editing.
+func (r *ScheduleRepository) EmployeesForDate(
+	ctx context.Context,
+	companyID, shiftDate, excludeShiftID string,
+) ([]EmployeeForDateRow, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT
+			e.id::text,
+			CONCAT_WS(' ', e.first_name, e.last_name) AS name,
+			e.role,
+			(asgn.shift_id IS NOT NULL)               AS assigned,
+			asgn.shift_id::text,
+			p.name AS project_name
+		FROM employees e
+		LEFT JOIN LATERAL (
+			SELECT psa.shift_id
+			FROM project_shift_assignments psa
+			JOIN project_shifts ps2 ON ps2.id = psa.shift_id
+			WHERE psa.employee_id   = e.id
+			  AND psa.company_id    = $1::uuid
+			  AND ps2.shift_date    = $2::date
+			  AND ps2.status        = 'active'
+			  AND ps2.id           != $3::uuid
+			LIMIT 1
+		) asgn ON true
+		LEFT JOIN project_shifts ps ON ps.id = asgn.shift_id
+		LEFT JOIN projects        p  ON p.id  = ps.project_id
+		WHERE e.company_id = $1::uuid
+		  AND e.active     = true
+		ORDER BY e.last_name, e.first_name
+	`, companyID, shiftDate, excludeShiftID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []EmployeeForDateRow
+	for rows.Next() {
+		var row EmployeeForDateRow
+		if err := rows.Scan(&row.ID, &row.Name, &row.Role, &row.Assigned,
+			&row.ShiftID, &row.ProjectName); err != nil {
+			return nil, err
+		}
+		result = append(result, row)
+	}
+	return result, rows.Err()
 }

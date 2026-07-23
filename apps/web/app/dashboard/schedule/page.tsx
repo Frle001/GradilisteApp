@@ -1,14 +1,14 @@
 'use client'
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
-import { ChevronLeft, ChevronRight, Plus, X, Users, Pencil, Ban, Copy, CalendarDays } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, X, Users, Pencil, Ban, Copy, CalendarDays, Search } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import type { MeEmployee } from '@/hooks/useAuth'
 import DashboardShell from '@/components/layout/DashboardShell'
 import LoadingScreen from '@/components/ui/LoadingScreen'
 import apiClient from '@/lib/api-client'
-import { type Shift, type ShiftOverlap } from '@/lib/types/schedule'
-import { type ProjectListItem, type ProjectAssignment } from '@/lib/types/projects'
+import { type Shift, type ShiftConflict, type EmployeeForDate } from '@/lib/types/schedule'
+import { type ProjectListItem } from '@/lib/types/projects'
 import { type Employee, ROLE_LABELS } from '@/lib/types/employees'
 
 // ── Date helpers ─────────────────────────────────────────────────────────
@@ -71,13 +71,106 @@ interface EmpRow { id: string; name: string; role: string; rawRole: string }
 interface ShiftForm {
   project_id: string
   shift_date: string
-  start_time: string
-  end_time: string
   notes: string
 }
 
 const DEFAULT_FORM: ShiftForm = {
-  project_id: '', shift_date: '', start_time: '07:00', end_time: '15:00', notes: '',
+  project_id: '', shift_date: '', notes: '',
+}
+
+// ── Employee picker (searchable, shows Dodijeljen badge) ──────────────────
+
+function EmployeePicker({
+  employees,
+  availability,
+  selected,
+  onChange,
+}: {
+  employees: Employee[]
+  availability: Map<string, EmployeeForDate>
+  selected: Set<string>
+  onChange: (next: Set<string>) => void
+}) {
+  const [search, setSearch] = useState('')
+
+  const filtered = useMemo(() => {
+    const q = search.trim().toLowerCase()
+    if (!q) return employees
+    return employees.filter(e =>
+      `${e.first_name} ${e.last_name}`.toLowerCase().includes(q)
+    )
+  }, [employees, search])
+
+  function toggle(id: string) {
+    const next = new Set(selected)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    onChange(next)
+  }
+
+  return (
+    <div>
+      <div className="relative mb-2">
+        <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+        <input
+          type="text"
+          placeholder="Pretraži zaposlenike..."
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:outline-none focus:border-blue-500"
+        />
+      </div>
+
+      <div className="rounded-lg border border-slate-700 bg-slate-800 overflow-y-auto max-h-52 divide-y divide-slate-700/50">
+        {filtered.length === 0 && (
+          <div className="px-3 py-4 text-xs text-slate-500 text-center">Nema rezultata.</div>
+        )}
+        {filtered.map(emp => {
+          const info = availability.get(emp.id)
+          const isAssigned = !!info?.assigned
+          const isChecked = selected.has(emp.id)
+          return (
+            <label
+              key={emp.id}
+              className={`flex items-start gap-3 px-3 py-2 transition-colors cursor-pointer ${
+                isAssigned
+                  ? 'bg-red-950/40 border-l-2 border-red-800/60 hover:bg-red-950/60'
+                  : 'hover:bg-slate-700/50'
+              }`}
+            >
+              <input
+                type="checkbox"
+                checked={isChecked}
+                onChange={() => toggle(emp.id)}
+                className="w-4 h-4 rounded text-blue-500 bg-slate-700 border-slate-600 flex-shrink-0 mt-0.5"
+              />
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`text-sm flex-1 truncate ${isAssigned ? 'text-red-300' : 'text-white'}`}>
+                    {emp.first_name} {emp.last_name}
+                  </span>
+                  <span className="text-[11px] text-slate-500 flex-shrink-0">{ROLE_LABELS[emp.role] ?? emp.role}</span>
+                  {isAssigned && (
+                    <span className="flex-shrink-0 text-[10px] bg-red-900/60 text-red-300 border border-red-700/50 px-1.5 py-0.5 rounded-full font-semibold">
+                      Dodijeljen
+                    </span>
+                  )}
+                </div>
+                {isAssigned && (
+                  <div className="mt-0.5">
+                    <p className="text-[11px] text-red-400/80">Već ima smjenu za ovaj datum</p>
+                    {info?.project_name && (
+                      <p className="text-[11px] text-red-400/60">Raspoređen na: {info.project_name}</p>
+                    )}
+                  </div>
+                )}
+              </div>
+            </label>
+          )
+        })}
+      </div>
+    </div>
+  )
 }
 
 // ── Shift card (compact, used in grid cells) ──────────────────────────────
@@ -109,9 +202,6 @@ function ShiftCard({
       {address && !isCancelled && (
         <div className="text-slate-400 truncate text-[10px]">{address}</div>
       )}
-      <div className={`tabular-nums text-[10px] mt-0.5 ${isCancelled ? 'text-slate-600' : 'text-slate-400'}`}>
-        {shift.start_time}–{shift.end_time}
-      </div>
       {(isMine && !isCancelled) && (
         <div className="mt-0.5">
           <span className="rounded-full bg-blue-600/40 text-blue-300 px-1 py-px text-[9px] font-medium">Moja</span>
@@ -148,7 +238,6 @@ function ScheduleGrid({
       <table style={{ minWidth: 860, width: '100%', borderCollapse: 'collapse' }}>
         <thead>
           <tr style={{ position: 'sticky', top: 0, zIndex: 20 }}>
-            {/* Employee column header */}
             <th
               className="bg-slate-900 px-4 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-r border-slate-800"
               style={{ position: 'sticky', left: 0, zIndex: 30, minWidth: 175, width: 175 }}
@@ -194,7 +283,6 @@ function ScheduleGrid({
               const initials = row.name.split(' ').map((p: string) => p[0]).slice(0,2).join('').toUpperCase()
               return (
                 <tr key={row.id} className="hover:bg-white/[0.015] transition-colors group">
-                  {/* Employee column */}
                   <td
                     className="bg-slate-950 px-3 py-2 align-middle border-b border-r border-slate-800/70 group-hover:bg-slate-900/50"
                     style={{ position: 'sticky', left: 0, zIndex: 10 }}
@@ -209,7 +297,6 @@ function ScheduleGrid({
                       </div>
                     </div>
                   </td>
-                  {/* Day cells */}
                   {weekDays.map(day => {
                     const dayShifts = empShifts?.get(day) ?? []
                     const isToday = day === today
@@ -332,7 +419,6 @@ function MobileAgenda({
                   <div className="min-w-0 flex-1">
                     <div className={`font-semibold text-sm ${isCancelled ? 'line-through text-slate-500' : 'text-white'}`}>{shift.project_name}</div>
                     {addr && <div className="text-xs text-slate-400 mt-0.5">{addr}</div>}
-                    <div className="text-xs text-slate-400 mt-1 tabular-nums">{shift.start_time} – {shift.end_time}</div>
                     {shift.assignments.length > 0 && (
                       <div className="text-xs text-slate-500 mt-1.5 flex items-center gap-1">
                         <Users className="w-3 h-3 flex-shrink-0" />
@@ -387,14 +473,10 @@ function ShiftDetailPanel({
           </button>
         </div>
 
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-6 gap-y-3 mb-4 text-sm">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-6 gap-y-3 mb-4 text-sm">
           <div>
-            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Datum</p>
+            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Datum smjene</p>
             <p className="text-white">{shift.shift_date}</p>
-          </div>
-          <div>
-            <p className="text-[10px] text-slate-500 uppercase tracking-wider mb-0.5">Vrijeme</p>
-            <p className="text-white tabular-nums">{shift.start_time} – {shift.end_time}</p>
           </div>
           {projectAddress && (
             <div>
@@ -451,17 +533,14 @@ export default function SchedulePage() {
   const { user, employee, isLoading, logout } = useAuth()
   const canManage = user?.role === 'direktor' || user?.role === 'inzenjer'
 
-  // Week navigation
   const [weekStart, setWeekStart] = useState<Date>(() => getMonday(new Date()))
 
-  // Data
   const [shifts, setShifts] = useState<Shift[]>([])
   const [allEmployees, setAllEmployees] = useState<Employee[]>([])
   const [projects, setProjects] = useState<ProjectListItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Filters
   const [projectFilter, setProjectFilter] = useState('')
   const [employeeFilter, setEmployeeFilter] = useState('')
   const [roleFilter, setRoleFilter] = useState('')
@@ -474,22 +553,22 @@ export default function SchedulePage() {
   const [form, setForm] = useState<ShiftForm>(DEFAULT_FORM)
   const [formEmployees, setFormEmployees] = useState<Set<string>>(new Set())
   const [formError, setFormError] = useState<string | null>(null)
-  const [formConflicts, setFormConflicts] = useState<ShiftOverlap[]>([])
+  const [formConflicts, setFormConflicts] = useState<ShiftConflict[]>([])
   const [saving, setSaving] = useState(false)
-  // Project assignments for grouping employee picker
-  const [projAssignedIds, setProjAssignedIds] = useState<Set<string>>(new Set())
+  // Availability data for the create-form employee picker
+  const [formAvailability, setFormAvailability] = useState<Map<string, EmployeeForDate>>(new Map())
+  const [formAvailLoading, setFormAvailLoading] = useState(false)
 
-  // Selection & actions
   const [selectedShift, setSelectedShift] = useState<Shift | null>(null)
   const [cancellingId, setCancellingId] = useState<string | null>(null)
 
-  // Assignment modal (edit shift employees)
+  // Assignment modal
   const [assignShift, setAssignShift] = useState<Shift | null>(null)
   const [selEmployees, setSelEmployees] = useState<Set<string>>(new Set())
-  const [assignConflicts, setAssignConflicts] = useState<ShiftOverlap[]>([])
+  const [assignConflicts, setAssignConflicts] = useState<ShiftConflict[]>([])
   const [assigning, setAssigning] = useState(false)
+  const [assignAvailability, setAssignAvailability] = useState<Map<string, EmployeeForDate>>(new Map())
 
-  // Mobile day selection
   const [mobileDay, setMobileDay] = useState<string>(() => toDateStr(new Date()))
 
   const weekDays = useMemo(() =>
@@ -526,36 +605,53 @@ export default function SchedulePage() {
     apiClient.get('/employees?active=true').then(r => setAllEmployees(r.data.employees ?? [])).catch(() => {})
   }, [user])
 
-  // Sync mobile day with week change
   useEffect(() => {
     if (!weekDays.includes(mobileDay)) {
       setMobileDay(weekDays.includes(today) ? today : weekDays[0])
     }
   }, [weekDays, mobileDay, today])
 
-  // Keep selectedShift in sync after refetch
   useEffect(() => {
     if (!selectedShift) return
     const fresh = shifts.find(s => s.id === selectedShift.id)
     setSelectedShift(fresh ?? null)
   }, [shifts]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Fetch project assignments when project changes in form
+  // Load availability when the create modal opens or the date changes.
+  // showForm in deps ensures we re-fetch after the modal was closed (e.g. after
+  // a successful shift creation that made one employee unavailable).
   useEffect(() => {
-    if (!form.project_id || editId) { setProjAssignedIds(new Set()); return }
-    apiClient.get(`/projects/${form.project_id}/assignments`)
+    if (!showForm || !form.shift_date || editId) {
+      setFormAvailability(new Map())
+      return
+    }
+    setFormAvailLoading(true)
+    apiClient.get(`/schedule/employees-for-date?date=${form.shift_date}`)
       .then(r => {
-        const ids = new Set<string>((r.data.assignments ?? []).map((a: ProjectAssignment) => a.employee_id))
-        setProjAssignedIds(ids)
+        const map = new Map<string, EmployeeForDate>()
+        for (const e of (r.data.employees ?? []) as EmployeeForDate[]) map.set(e.id, e)
+        setFormAvailability(map)
       })
-      .catch(() => setProjAssignedIds(new Set()))
-  }, [form.project_id, editId])
+      .catch(() => setFormAvailability(new Map()))
+      .finally(() => setFormAvailLoading(false))
+  }, [form.shift_date, editId, showForm])
+
+  // Load availability when assignment modal opens
+  useEffect(() => {
+    if (!assignShift) { setAssignAvailability(new Map()); return }
+    apiClient.get(`/schedule/employees-for-date?date=${assignShift.shift_date}&exclude_shift_id=${assignShift.id}`)
+      .then(r => {
+        const map = new Map<string, EmployeeForDate>()
+        for (const e of (r.data.employees ?? []) as EmployeeForDate[]) map.set(e.id, e)
+        setAssignAvailability(map)
+      })
+      .catch(() => setAssignAvailability(new Map()))
+  }, [assignShift])
 
   // ── Derived data ──────────────────────────────────────────────────────────
 
   const projectById = useMemo(() => new Map(projects.map(p => [p.id, p])), [projects])
 
-  // Matrix rows: sourced from ALL active employees (not from shift assignments)
   const empRows = useMemo<EmpRow[]>(() => {
     return [...allEmployees]
       .sort((a, b) => {
@@ -572,7 +668,6 @@ export default function SchedulePage() {
       }))
   }, [allEmployees])
 
-  // Filtered rows (apply employee/role/myShifts filters)
   const filteredRows = useMemo(() => {
     let rows = empRows
     if (myShiftsOnly && employee) rows = rows.filter(r => r.id === employee.id)
@@ -581,13 +676,11 @@ export default function SchedulePage() {
     return rows
   }, [empRows, myShiftsOnly, employee, employeeFilter, roleFilter])
 
-  // Shifts to display (apply cancelled filter)
   const visibleShifts = useMemo(
     () => shifts.filter(s => showCancelled || s.status !== 'cancelled'),
     [shifts, showCancelled],
   )
 
-  // Map: employeeId → shiftDate → Shift[] (for matrix cells)
   const shiftsByEmpDate = useMemo(() => {
     const map = new Map<string, Map<string, Shift[]>>()
     for (const shift of visibleShifts) {
@@ -602,7 +695,6 @@ export default function SchedulePage() {
     return map
   }, [visibleShifts])
 
-  // Map: shiftDate → Shift[] (for mobile agenda, deduped)
   const shiftsByDate = useMemo(() => {
     const map = new Map<string, Shift[]>()
     weekDays.forEach(d => map.set(d, []))
@@ -624,10 +716,10 @@ export default function SchedulePage() {
 
   // ── Form ──────────────────────────────────────────────────────────────────
 
-  function openCreate(date?: string, empId?: string) {
+  function openCreate(date?: string, _empId?: string) {
     setEditId(null)
     setForm({ ...DEFAULT_FORM, shift_date: date ?? dateFrom })
-    setFormEmployees(empId ? new Set([empId]) : new Set())
+    setFormEmployees(new Set())
     setFormError(null)
     setFormConflicts([])
     setShowForm(true)
@@ -639,8 +731,6 @@ export default function SchedulePage() {
     setForm({
       project_id: shift.project_id,
       shift_date: shift.shift_date,
-      start_time: shift.start_time,
-      end_time: shift.end_time,
       notes: shift.notes ?? '',
     })
     setFormEmployees(new Set())
@@ -649,7 +739,7 @@ export default function SchedulePage() {
     setShowForm(true)
   }
 
-  async function submitCreate(overrideOverlaps = false) {
+  async function submitCreate() {
     setSaving(true)
     setFormError(null)
     setFormConflicts([])
@@ -657,18 +747,21 @@ export default function SchedulePage() {
       await apiClient.post('/schedule/shifts', {
         project_id: form.project_id,
         shift_date: form.shift_date,
-        start_time: form.start_time,
-        end_time: form.end_time,
         notes: form.notes || null,
         employee_ids: [...formEmployees],
-        override_overlaps: overrideOverlaps,
+        override_overlaps: false,
       })
       setShowForm(false)
       fetchShifts()
     } catch (err: unknown) {
-      const e = err as { response?: { status?: number; data?: { error?: string; overlaps?: ShiftOverlap[] } } }
-      if (e?.response?.status === 409 && (e?.response?.data?.overlaps?.length ?? 0) > 0) {
-        setFormConflicts(e.response!.data!.overlaps!)
+      const e = err as { response?: { status?: number; data?: { error?: string; conflicts?: ShiftConflict[] } } }
+      if (e?.response?.status === 409) {
+        const conflicts = e?.response?.data?.conflicts
+        if (conflicts && conflicts.length > 0) {
+          setFormConflicts(conflicts)
+        } else {
+          setFormError(e?.response?.data?.error ?? 'Greška: konflikt pri kreiranju smjene.')
+        }
       } else {
         setFormError(e?.response?.data?.error ?? 'Greška pri kreiranju smjene.')
       }
@@ -683,8 +776,6 @@ export default function SchedulePage() {
     try {
       await apiClient.patch(`/schedule/shifts/${editId}`, {
         shift_date: form.shift_date,
-        start_time: form.start_time,
-        end_time: form.end_time,
         notes: form.notes || null,
       })
       setShowForm(false)
@@ -704,13 +795,13 @@ export default function SchedulePage() {
       return
     }
     if (editId) await submitEdit()
-    else await submitCreate(false)
+    else await submitCreate()
   }
 
   // ── Cancel & Duplicate ────────────────────────────────────────────────────
 
   async function handleCancel(shift: Shift) {
-    if (!confirm(`Otkazati smjenu na projektu "${shift.project_name}" (${shift.shift_date}, ${shift.start_time}–${shift.end_time})?`)) return
+    if (!confirm(`Otkazati smjenu na projektu "${shift.project_name}" za datum ${shift.shift_date}?`)) return
     setCancellingId(shift.id)
     try {
       await apiClient.post(`/schedule/shifts/${shift.id}/cancel`)
@@ -744,20 +835,26 @@ export default function SchedulePage() {
     setAssignConflicts([])
   }
 
-  async function handleSaveAssignments(overrideOverlaps = false) {
+  async function handleSaveAssignments() {
     if (!assignShift) return
     setAssigning(true)
     try {
       await apiClient.put(`/schedule/shifts/${assignShift.id}/assignments`, {
-        employee_ids: [...selEmployees], override_overlaps: overrideOverlaps,
+        employee_ids: [...selEmployees],
+        override_overlaps: false,
       })
       setAssignShift(null)
       setAssignConflicts([])
       fetchShifts()
     } catch (err: unknown) {
-      const e = err as { response?: { status?: number; data?: { overlaps?: ShiftOverlap[]; error?: string } } }
-      if (e?.response?.status === 409 && (e?.response?.data?.overlaps?.length ?? 0) > 0) {
-        setAssignConflicts(e.response!.data!.overlaps!)
+      const e = err as { response?: { status?: number; data?: { conflicts?: ShiftConflict[]; error?: string } } }
+      if (e?.response?.status === 409) {
+        const conflicts = e?.response?.data?.conflicts
+        if (conflicts && conflicts.length > 0) {
+          setAssignConflicts(conflicts)
+        } else {
+          alert(e?.response?.data?.error ?? 'Greška: konflikt pri raspoređivanju.')
+        }
       } else {
         alert(e?.response?.data?.error ?? 'Greška pri raspoređivanju.')
       }
@@ -772,11 +869,6 @@ export default function SchedulePage() {
   if (!user) return null
 
   const hasActiveFilters = !!(projectFilter || employeeFilter || roleFilter || myShiftsOnly)
-
-  // For the create form: split employees into project-assigned and others
-  const assignedEmps = allEmployees.filter(e => projAssignedIds.has(e.id))
-  const otherEmps = allEmployees.filter(e => !projAssignedIds.has(e.id))
-  const selectedHasOutsider = [...formEmployees].some(id => !projAssignedIds.has(id)) && projAssignedIds.size > 0
 
   return (
     <DashboardShell user={user} employee={employee} title="Raspored radova" backHref="/dashboard" onLogout={logout} wide>
@@ -864,7 +956,6 @@ export default function SchedulePage() {
         </div>
       ) : (
         <>
-          {/* Desktop matrix */}
           <div className="hidden sm:block">
             <ScheduleGrid
               weekDays={weekDays}
@@ -880,7 +971,6 @@ export default function SchedulePage() {
             />
           </div>
 
-          {/* Mobile agenda */}
           <div className="sm:hidden">
             <MobileAgenda
               weekDays={weekDays}
@@ -897,7 +987,6 @@ export default function SchedulePage() {
             />
           </div>
 
-          {/* Detail panel */}
           {selectedShift && (
             <ShiftDetailPanel
               shift={selectedShift}
@@ -913,13 +1002,11 @@ export default function SchedulePage() {
             />
           )}
 
-          {/* Legend */}
           <div className="mt-4 flex flex-wrap items-center gap-4 text-xs text-slate-500">
             <span className="font-medium text-slate-400">Legenda:</span>
             <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-blue-500 inline-block" />Aktivna smjena</span>
             <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-slate-600 inline-block" />Otkazana smjena</span>
             <span className="flex items-center gap-1.5"><span className="w-2 h-3 rounded-sm bg-blue-500/30 border-l-2 border-blue-500 inline-block" />Moja smjena</span>
-            {canManage && <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-amber-500 inline-block" />Preklopljeno (override)</span>}
           </div>
         </>
       )}
@@ -937,7 +1024,7 @@ export default function SchedulePage() {
 
             <form onSubmit={handleFormSubmit} className="flex flex-col overflow-hidden flex-1">
               <div className="overflow-y-auto flex-1 p-4 space-y-4">
-                {/* Project */}
+                {/* Project (create only) */}
                 {!editId && (
                   <div>
                     <label className="block text-xs text-slate-400 mb-1">Projekt *</label>
@@ -950,26 +1037,12 @@ export default function SchedulePage() {
                   </div>
                 )}
 
-                {/* Date & times */}
+                {/* Date */}
                 <div>
-                  <label className="block text-xs text-slate-400 mb-1">Datum *</label>
+                  <label className="block text-xs text-slate-400 mb-1">Datum smjene *</label>
                   <input required type="date" value={form.shift_date}
                     onChange={e => setForm(f => ({ ...f, shift_date: e.target.value }))}
                     className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:outline-none focus:border-blue-500" />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1">Početak *</label>
-                    <input required type="time" value={form.start_time}
-                      onChange={e => setForm(f => ({ ...f, start_time: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:outline-none focus:border-blue-500" />
-                  </div>
-                  <div>
-                    <label className="block text-xs text-slate-400 mb-1">Završetak *</label>
-                    <input required type="time" value={form.end_time}
-                      onChange={e => setForm(f => ({ ...f, end_time: e.target.value }))}
-                      className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:outline-none focus:border-blue-500" />
-                  </div>
                 </div>
 
                 {/* Notes */}
@@ -980,97 +1053,39 @@ export default function SchedulePage() {
                     placeholder="Opcionalno..." className="w-full px-3 py-2 rounded-lg bg-slate-800 border border-slate-700 text-white text-sm focus:outline-none focus:border-blue-500 resize-none" />
                 </div>
 
-                {/* Employee multi-select (create only) */}
+                {/* Employee picker (create only) */}
                 {!editId && (
                   <div>
                     <div className="flex items-center justify-between mb-1.5">
-                      <label className="text-xs text-slate-400">Zaposlenici * <span className="text-slate-500">({formEmployees.size} odabrano)</span></label>
+                      <label className="text-xs text-slate-400">
+                        Pretraži zaposlenike *{' '}
+                        <span className="text-slate-500">({formEmployees.size} odabrano)</span>
+                      </label>
+                      {formAvailLoading && <span className="text-[10px] text-slate-500 animate-pulse">Učitavanje...</span>}
                     </div>
-
-                    {selectedHasOutsider && (
-                      <div className="mb-2 px-3 py-2 rounded-lg bg-amber-900/30 border border-amber-700/40 text-xs text-amber-300">
-                        Jedan ili više zaposlenika nije trajno dodijeljen ovom projektu. Raspored je ipak moguće kreirati.
-                      </div>
-                    )}
-
-                    <div className="rounded-lg border border-slate-700 bg-slate-800 overflow-y-auto max-h-52 divide-y divide-slate-700/50">
-                      {/* Project-assigned employees */}
-                      {assignedEmps.length > 0 && (
-                        <>
-                          <div className="px-3 py-1.5 text-[10px] text-slate-500 uppercase tracking-wider bg-slate-800/80">
-                            Dodijeljeni ovom projektu
-                          </div>
-                          {assignedEmps.map(emp => (
-                            <label key={emp.id} className="flex items-center gap-3 px-3 py-2 hover:bg-slate-700/50 cursor-pointer">
-                              <input type="checkbox" checked={formEmployees.has(emp.id)}
-                                onChange={ev => {
-                                  const next = new Set(formEmployees)
-                                  if (ev.target.checked) next.add(emp.id)
-                                  else next.delete(emp.id)
-                                  setFormEmployees(next)
-                                }}
-                                className="w-4 h-4 rounded text-blue-500 bg-slate-700 border-slate-600 flex-shrink-0" />
-                              <span className="text-sm text-white flex-1">{emp.first_name} {emp.last_name}</span>
-                              <span className="text-[11px] text-slate-500">{ROLE_LABELS[emp.role] ?? emp.role}</span>
-                            </label>
-                          ))}
-                        </>
-                      )}
-
-                      {/* Other employees */}
-                      {otherEmps.length > 0 && (
-                        <>
-                          <div className="px-3 py-1.5 text-[10px] text-slate-500 uppercase tracking-wider bg-slate-800/80">
-                            {assignedEmps.length > 0 ? 'Ostali aktivni zaposlenici' : 'Aktivni zaposlenici'}
-                          </div>
-                          {otherEmps.map(emp => (
-                            <label key={emp.id} className="flex items-center gap-3 px-3 py-2 hover:bg-slate-700/50 cursor-pointer">
-                              <input type="checkbox" checked={formEmployees.has(emp.id)}
-                                onChange={ev => {
-                                  const next = new Set(formEmployees)
-                                  if (ev.target.checked) next.add(emp.id)
-                                  else next.delete(emp.id)
-                                  setFormEmployees(next)
-                                }}
-                                className="w-4 h-4 rounded text-blue-500 bg-slate-700 border-slate-600 flex-shrink-0" />
-                              <span className="text-sm text-white flex-1">{emp.first_name} {emp.last_name}</span>
-                              <span className="text-[11px] text-slate-500">{ROLE_LABELS[emp.role] ?? emp.role}</span>
-                            </label>
-                          ))}
-                        </>
-                      )}
-
-                      {allEmployees.length === 0 && (
-                        <div className="px-3 py-4 text-xs text-slate-500 text-center">Nema aktivnih zaposlenika.</div>
-                      )}
-                    </div>
+                    <EmployeePicker
+                      employees={allEmployees}
+                      availability={formAvailability}
+                      selected={formEmployees}
+                      onChange={setFormEmployees}
+                    />
                   </div>
                 )}
 
-                {/* Conflict warning in form */}
+                {/* Conflict error (409 from server) */}
                 {formConflicts.length > 0 && (
-                  <div className="p-3 rounded-lg bg-amber-900/30 border border-amber-700/50 text-xs text-amber-300 space-y-1">
-                    <p className="font-semibold">Preklapanje rasporeda za {formConflicts.length} zaposlenika:</p>
+                  <div className="p-3 rounded-lg bg-red-900/30 border border-red-700/50 text-xs text-red-300 space-y-1">
+                    <p className="font-semibold">Zaposlenici su već raspoređeni za taj datum:</p>
                     {formConflicts.map((c, i) => (
-                      <p key={i}>{c.employee_name} — raspoređen/a {c.shift_date} {c.start_time}–{c.end_time}</p>
+                      <p key={i}>{c.employee_name} — raspoređen/a na: {c.project_name}</p>
                     ))}
-                    <div className="flex gap-2 pt-1">
-                      <button type="button" onClick={() => submitCreate(true)} disabled={saving}
-                        className="text-xs px-3 py-1.5 rounded-md bg-amber-700 hover:bg-amber-600 text-white transition disabled:opacity-50">
-                        Svejedno kreiraj
-                      </button>
-                      <button type="button" onClick={() => setFormConflicts([])}
-                        className="text-xs px-3 py-1.5 rounded-md bg-slate-700 hover:bg-slate-600 text-slate-300 transition">
-                        Ispravi odabir
-                      </button>
-                    </div>
+                    <p className="text-red-400/70 mt-1">Uklonite te zaposlenike iz odabira ili odaberite drugi datum.</p>
                   </div>
                 )}
 
                 {formError && <p className="text-sm text-red-400">{formError}</p>}
               </div>
 
-              {/* Form footer */}
               <div className="flex gap-2 p-4 border-t border-slate-800 flex-shrink-0">
                 <button type="submit" disabled={saving}
                   className="flex-1 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium transition">
@@ -1086,7 +1101,7 @@ export default function SchedulePage() {
         </div>
       )}
 
-      {/* ── Assignment modal (edit employees on existing shift) ── */}
+      {/* ── Assignment modal ── */}
       {assignShift && (
         <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-4 bg-black/70">
           <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md max-h-[85vh] flex flex-col shadow-2xl">
@@ -1094,7 +1109,7 @@ export default function SchedulePage() {
               <div>
                 <p className="text-sm font-semibold text-white">Uredi raspoređene radnike</p>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  {assignShift.project_name} · {assignShift.shift_date} · {assignShift.start_time}–{assignShift.end_time}
+                  {assignShift.project_name} · {assignShift.shift_date}
                 </p>
               </div>
               <button type="button" onClick={() => { setAssignShift(null); setAssignConflicts([]) }}
@@ -1104,43 +1119,26 @@ export default function SchedulePage() {
             </div>
 
             {assignConflicts.length > 0 && (
-              <div className="mx-4 mt-3 p-3 rounded-lg bg-amber-900/30 border border-amber-700/50 text-xs text-amber-300 space-y-1">
-                <p className="font-semibold">Preklapanje rasporeda za {assignConflicts.length} zaposlenika:</p>
+              <div className="mx-4 mt-3 p-3 rounded-lg bg-red-900/30 border border-red-700/50 text-xs text-red-300 space-y-1">
+                <p className="font-semibold">Zaposlenici su već raspoređeni za taj datum:</p>
                 {assignConflicts.map((c, i) => (
-                  <p key={i}>{c.employee_name} — raspoređen/a {c.start_time}–{c.end_time}</p>
+                  <p key={i}>{c.employee_name} — raspoređen/a na: {c.project_name}</p>
                 ))}
-                <div className="flex gap-2 pt-1">
-                  <button type="button" onClick={() => handleSaveAssignments(true)} disabled={assigning}
-                    className="text-xs px-3 py-1.5 rounded-md bg-amber-700 hover:bg-amber-600 text-white transition disabled:opacity-50">
-                    Svejedno dodaj
-                  </button>
-                  <button type="button" onClick={() => setAssignConflicts([])}
-                    className="text-xs px-3 py-1.5 rounded-md bg-slate-700 hover:bg-slate-600 text-slate-300 transition">
-                    Odustani
-                  </button>
-                </div>
+                <p className="text-red-400/70 mt-1">Uklonite te zaposlenike iz odabira.</p>
               </div>
             )}
 
-            <div className="overflow-y-auto flex-1 p-3 space-y-0.5">
-              {allEmployees.map(emp => (
-                <label key={emp.id} className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-slate-800 cursor-pointer">
-                  <input type="checkbox" checked={selEmployees.has(emp.id)}
-                    onChange={e => {
-                      const next = new Set(selEmployees)
-                      if (e.target.checked) next.add(emp.id)
-                      else next.delete(emp.id)
-                      setSelEmployees(next)
-                    }}
-                    className="w-4 h-4 rounded text-blue-500 bg-slate-700 border-slate-600" />
-                  <span className="text-sm text-white">{emp.first_name} {emp.last_name}</span>
-                  <span className="text-xs text-slate-500 ml-auto">{ROLE_LABELS[emp.role] ?? emp.role}</span>
-                </label>
-              ))}
+            <div className="overflow-y-auto flex-1 p-3">
+              <EmployeePicker
+                employees={allEmployees}
+                availability={assignAvailability}
+                selected={selEmployees}
+                onChange={setSelEmployees}
+              />
             </div>
 
             <div className="p-4 border-t border-slate-800 flex gap-2">
-              <button type="button" onClick={() => handleSaveAssignments(false)} disabled={assigning}
+              <button type="button" onClick={() => handleSaveAssignments()} disabled={assigning}
                 className="flex-1 py-2 rounded-lg bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium transition">
                 {assigning ? 'Sprema...' : `Spremi (${selEmployees.size})`}
               </button>
