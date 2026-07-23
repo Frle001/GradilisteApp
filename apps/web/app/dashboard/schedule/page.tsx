@@ -716,7 +716,7 @@ export default function SchedulePage() {
 
   // ── Form ──────────────────────────────────────────────────────────────────
 
-  function openCreate(date?: string, _empId?: string) {
+  function openCreate(date?: string) {
     setEditId(null)
     setForm({ ...DEFAULT_FORM, shift_date: date ?? dateFrom })
     setFormEmployees(new Set())
