@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/gradiliste/api/dto"
@@ -17,10 +18,31 @@ var ErrDailyReportForbidden = errors.New("access denied to this daily report")
 var ErrDailyReportNotEditable = errors.New("report cannot be edited in its current status")
 var ErrDailyReportInvalidStatus = errors.New("report is not in a state that allows this action")
 
+type drRepoIface interface {
+	List(ctx context.Context, companyID string, f dto.DailyReportFilter) ([]dto.DailyReportListItem, error)
+	GetByID(ctx context.Context, id, companyID string) (*dto.DailyReportDetail, error)
+	GetByIDForEdit(ctx context.Context, id, companyID string) (string, string, string, error)
+	GetActivitiesForApproval(ctx context.Context, reportID, companyID string) ([]repositories.ActivityForApproval, error)
+	Create(ctx context.Context, tx pgx.Tx, companyID, projectID, poslovodaEmpID, userID string, req dto.CreateDailyReportRequest) (string, error)
+	Update(ctx context.Context, tx pgx.Tx, id, companyID string, req dto.CreateDailyReportRequest) error
+	SetStatus(ctx context.Context, tx pgx.Tx, id, companyID, status string, notes *string) error
+	GetProjectStatus(ctx context.Context, projectID, companyID string) (string, error)
+	GetWorkerInfo(ctx context.Context, workerID, companyID string) (string, *string, error)
+	IsMaterialInProject(ctx context.Context, materialID, projectID, companyID string) (bool, error)
+	GetActiveProjects(ctx context.Context, companyID string) ([]dto.FormDataProject, error)
+	GetWorkersForPoslovoda(ctx context.Context, poslovodaEmpID, companyID string) ([]dto.FormDataWorker, error)
+	GetAllActiveWorkers(ctx context.Context, companyID string) ([]dto.FormDataWorker, error)
+	GetMaterialsForProject(ctx context.Context, projectID, companyID string) ([]dto.FormDataMaterial, error)
+}
+
+type auditLogRepoIface interface {
+	Log(ctx context.Context, p repositories.AuditParams)
+}
+
 type DailyReportService struct {
-	db                  *pgxpool.Pool
-	drRepo              *repositories.DailyReportRepository
-	auditRepo           *repositories.AuditRepository
+	db                  txBeginner
+	drRepo              drRepoIface
+	auditRepo           auditLogRepoIface
 	materialEffectsRepo *repositories.ReportMaterialEffectsRepository
 }
 
@@ -254,24 +276,20 @@ func (s *DailyReportService) GetFormData(ctx context.Context, companyID, callerE
 		err       error
 	)
 
+	projects, err = s.drRepo.GetActiveProjects(ctx, companyID)
+	if err != nil {
+		return nil, err
+	}
 	switch callerRole {
 	case "poslovoda":
 		if callerEmpID == "" {
 			return nil, errors.New("poslovoda must have a linked employee record")
-		}
-		projects, err = s.drRepo.GetProjectsForPoslovoda(ctx, callerEmpID, companyID)
-		if err != nil {
-			return nil, err
 		}
 		workers, err = s.drRepo.GetWorkersForPoslovoda(ctx, callerEmpID, companyID)
 		if err != nil {
 			return nil, err
 		}
 	default:
-		projects, err = s.drRepo.GetActiveProjects(ctx, companyID)
-		if err != nil {
-			return nil, err
-		}
 		workers, err = s.drRepo.GetAllActiveWorkers(ctx, companyID)
 		if err != nil {
 			return nil, err
@@ -311,17 +329,6 @@ func (s *DailyReportService) validateReport(ctx context.Context, companyID, proj
 	}
 	if projStatus != "active" {
 		return fmt.Errorf("dnevni izvještaj se može unijeti samo za aktivne projekte")
-	}
-
-	// Poslovoda must be assigned to the project
-	if callerRole == "poslovoda" {
-		assigned, err := s.drRepo.IsProjectAssignedToPoslovoda(ctx, projectID, poslovodaEmpID, companyID)
-		if err != nil {
-			return err
-		}
-		if !assigned {
-			return fmt.Errorf("poslovođa nije dodijeljen ovom projektu")
-		}
 	}
 
 	// At least one activity required (worker hours are now entered by radnici independently)

@@ -18,6 +18,8 @@ interface Props {
   formData: DailyReportFormData
   /** When provided, the form is in edit mode and pre-fills from this report. */
   existing?: DailyReportDetail
+  /** Pre-select a project when entering the form from a project context. */
+  initialProjectId?: string
   onSubmit: (payload: CreateDailyReportPayload) => Promise<{ id: string } | void>
   submitLabel?: string
 }
@@ -26,7 +28,7 @@ function localTodayStr(): string {
   return new Date().toLocaleDateString('sv') // YYYY-MM-DD in browser local time
 }
 
-export default function DailyReportForm({ formData, existing, onSubmit, submitLabel = 'Spremi izvještaj' }: Props) {
+export default function DailyReportForm({ formData, existing, initialProjectId, onSubmit, submitLabel = 'Spremi izvještaj' }: Props) {
   const router = useRouter()
   const isEditMode = !!existing
 
@@ -37,7 +39,7 @@ export default function DailyReportForm({ formData, existing, onSubmit, submitLa
   )
 
   const [projectId, setProjectId] = useState(
-    isEditMode ? existing!.project.id : draftFields.projectId
+    isEditMode ? existing!.project.id : (initialProjectId || draftFields.projectId)
   )
   const [reportDate] = useState(
     isEditMode ? existing!.report_date : localTodayStr()
@@ -163,7 +165,7 @@ export default function DailyReportForm({ formData, existing, onSubmit, submitLa
               disabled={submitting || !!existing}
               className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
             >
-              <option value="">— Odaberi projekt —</option>
+              <option value="">Odaberite projekt</option>
               {formData.projects.map(p => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import LoadingScreen from '@/components/ui/LoadingScreen'
 import DashboardShell from '@/components/layout/DashboardShell'
@@ -12,6 +12,8 @@ import apiClient from '@/lib/api-client'
 export default function NewDailyReportPage() {
   const { user, employee, isLoading, logout } = useAuth()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const initialProjectId = searchParams.get('project_id') ?? ''
 
   const [formData, setFormData] = useState<DailyReportFormData | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -56,6 +58,7 @@ export default function NewDailyReportPage() {
         {formData && (
           <DailyReportForm
             formData={formData}
+            initialProjectId={initialProjectId}
             onSubmit={handleSubmit}
             submitLabel="Kreiraj izvještaj"
           />

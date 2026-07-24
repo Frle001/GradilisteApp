@@ -39,22 +39,6 @@ func (r *DailyReportRepository) GetProjectStatus(ctx context.Context, projectID,
 	return status, err
 }
 
-// IsProjectAssignedToPoslovoda checks if poslovoda has an active assignment on the project.
-func (r *DailyReportRepository) IsProjectAssignedToPoslovoda(ctx context.Context, projectID, poslovodaEmpID, companyID string) (bool, error) {
-	var exists bool
-	err := r.db.QueryRow(ctx, `
-		SELECT EXISTS(
-			SELECT 1 FROM project_assignments
-			WHERE project_id = $1::uuid
-			  AND employee_id = $2::uuid
-			  AND company_id = $3::uuid
-			  AND role_on_project = 'poslovoda'
-			  AND active = true
-		)
-	`, projectID, poslovodaEmpID, companyID).Scan(&exists)
-	return exists, err
-}
-
 // GetWorkerInfo returns (role, supervisorID) for a worker. supervisorID is nil if unset.
 func (r *DailyReportRepository) GetWorkerInfo(ctx context.Context, workerID, companyID string) (role string, supervisorID *string, err error) {
 	err = r.db.QueryRow(ctx,
@@ -413,25 +397,6 @@ func (r *DailyReportRepository) SetStatus(ctx context.Context, tx pgx.Tx, id, co
 }
 
 // ── Form data ─────────────────────────────────────────────────────────────────
-
-func (r *DailyReportRepository) GetProjectsForPoslovoda(ctx context.Context, poslovodaEmpID, companyID string) ([]dto.FormDataProject, error) {
-	rows, err := r.db.Query(ctx, `
-		SELECT p.id::text, p.name
-		FROM projects p
-		JOIN project_assignments pa ON pa.project_id = p.id
-		WHERE pa.employee_id = $1::uuid
-		  AND pa.role_on_project = 'poslovoda'
-		  AND pa.active = true
-		  AND p.company_id = $2::uuid
-		  AND p.status = 'active'
-		ORDER BY p.name
-	`, poslovodaEmpID, companyID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	return scanFormDataProjects(rows)
-}
 
 func (r *DailyReportRepository) GetActiveProjects(ctx context.Context, companyID string) ([]dto.FormDataProject, error) {
 	rows, err := r.db.Query(ctx, `
