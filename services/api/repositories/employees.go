@@ -38,10 +38,9 @@ type Employee struct {
 }
 
 type EmployeeListFilter struct {
-	Search     string  // substring match on first_name, last_name, email
-	Role       *string // nil = no filter
-	Active     *bool   // nil = no filter
-	ScopeEmpID *string // nil = no filter; set to poslovoda's employee_id to scope their team
+	Search string  // substring match on first_name, last_name, email
+	Role   *string // nil = no filter
+	Active *bool   // nil = no filter
 }
 
 type EmployeeRepository struct {
@@ -73,15 +72,6 @@ func (r *EmployeeRepository) List(ctx context.Context, companyID string, f Emplo
 	if f.Active != nil {
 		args = append(args, *f.Active)
 		conditions = append(conditions, fmt.Sprintf("e.active = $%d", len(args)))
-	}
-
-	if f.ScopeEmpID != nil {
-		args = append(args, *f.ScopeEmpID)
-		n := len(args)
-		conditions = append(conditions, fmt.Sprintf(
-			"(e.id = $%d::uuid OR e.supervisor_id = $%d::uuid)",
-			n, n,
-		))
 	}
 
 	query := `

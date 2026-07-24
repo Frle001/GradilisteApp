@@ -10,6 +10,7 @@ import (
 
 	"github.com/gradiliste/api/dto"
 	"github.com/gradiliste/api/repositories"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -59,9 +60,23 @@ var validAssetTypes = map[string]bool{
 
 // ── Service ───────────────────────────────────────────────────────────────────
 
+type empRepoIface interface {
+	List(ctx context.Context, companyID string, f repositories.EmployeeListFilter) ([]repositories.Employee, error)
+	GetByID(ctx context.Context, companyID, id string) (*repositories.Employee, error)
+	CreateWithTx(ctx context.Context, tx pgx.Tx, companyID, firstName, lastName, role string, email, phone, supervisorID *string) (*repositories.Employee, error)
+	Create(ctx context.Context, companyID, firstName, lastName, role string, email, phone, supervisorID *string) (*repositories.Employee, error)
+	Update(ctx context.Context, companyID, id, firstName, lastName, role string, email, phone, supervisorID *string) (*repositories.Employee, error)
+	SetActive(ctx context.Context, companyID, id string, active bool) error
+	GetRoleByID(ctx context.Context, companyID, id string) (string, error)
+	GetLinkedUserID(ctx context.Context, companyID, employeeID string) (string, bool, error)
+	CountActiveDirectors(ctx context.Context, companyID string) (int64, error)
+	HardDeleteCheck(ctx context.Context, companyID, employeeID string) error
+	HardDeleteWithTx(ctx context.Context, tx pgx.Tx, companyID, employeeID string) error
+}
+
 type EmployeeService struct {
 	db           *pgxpool.Pool
-	empRepo      *repositories.EmployeeRepository
+	empRepo      empRepoIface
 	assetRepo    *repositories.EmployeeAssetRepository
 	auditRepo    *repositories.AuditRepository
 	userRepo     *repositories.UserRepository
@@ -109,9 +124,6 @@ func (s *EmployeeService) List(ctx context.Context, companyID, callerRole, calle
 		Search: f.Search,
 		Role:   f.Role,
 		Active: f.Active,
-	}
-	if callerRole == "poslovoda" && callerEmpID != "" {
-		repoFilter.ScopeEmpID = &callerEmpID
 	}
 
 	rows, err := s.empRepo.List(ctx, companyID, repoFilter)

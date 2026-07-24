@@ -577,3 +577,54 @@ func TestSchedule_EmployeesForDate_ExcludeShiftIDForwarded(t *testing.T) {
 		t.Errorf("expected excludeShiftID=shift-abc forwarded to repo, got %q", capturedExclude)
 	}
 }
+
+// ── Schedule visibility: no role-based filtering ──────────────────────────────
+
+// TestSchedule_ListShifts_CompanyIDForwardedToRepo verifies that ListShifts
+// forwards the caller's companyID to the repository unchanged, providing
+// company isolation without any additional role-based scoping.
+func TestSchedule_ListShifts_CompanyIDForwardedToRepo(t *testing.T) {
+	var capturedCompanyID string
+	repo := &mockSchedRepo{
+		listShiftsFn: func(_ context.Context, companyID, _, _ string, _ *string) ([]repositories.ShiftRow, error) {
+			capturedCompanyID = companyID
+			return nil, nil
+		},
+	}
+	if _, err := newSchedSvc(repo).ListShifts(context.Background(), "co-42", "2025-01-13", "2025-01-19", nil); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if capturedCompanyID != "co-42" {
+		t.Errorf("expected repo to receive companyID='co-42', got %q", capturedCompanyID)
+	}
+}
+
+// TestSchedule_ListShifts_AllProjectShiftsReturned verifies that ListShifts
+// returns shifts from every project in the company, not only projects managed
+// by the requesting user. The service performs no project-ownership filtering.
+func TestSchedule_ListShifts_AllProjectShiftsReturned(t *testing.T) {
+	row1 := testSchedShiftRow("s-proj-A")
+	row1.ProjectID = "project-A"
+	row2 := testSchedShiftRow("s-proj-B")
+	row2.ProjectID = "project-B"
+
+	repo := &mockSchedRepo{
+		listShiftsFn: func(_ context.Context, _, _, _ string, _ *string) ([]repositories.ShiftRow, error) {
+			return []repositories.ShiftRow{*row1, *row2}, nil
+		},
+	}
+	shifts, err := newSchedSvc(repo).ListShifts(context.Background(), "company-1", "2025-01-13", "2025-01-19", nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(shifts) != 2 {
+		t.Errorf("expected 2 shifts from different projects, got %d", len(shifts))
+	}
+	projects := map[string]bool{}
+	for _, s := range shifts {
+		projects[s.ProjectID] = true
+	}
+	if !projects["project-A"] || !projects["project-B"] {
+		t.Errorf("expected shifts from both projects, got IDs: %v", projects)
+	}
+}
