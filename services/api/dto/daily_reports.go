@@ -85,6 +85,14 @@ type DailyReportActivity struct {
 	Notes              *string `json:"notes"`
 }
 
+type DailyReportAttachment struct {
+	ID           string    `json:"id"`
+	OriginalName string    `json:"original_name"`
+	ContentType  string    `json:"content_type"`
+	FileSize     int64     `json:"file_size"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
 type DailyReportDetail struct {
 	ID          string                   `json:"id"`
 	Project     DailyReportProject       `json:"project"`
@@ -97,6 +105,7 @@ type DailyReportDetail struct {
 	UpdatedAt   time.Time                `json:"updated_at"`
 	WorkerHours []DailyReportWorkerHours `json:"worker_hours"`
 	Activities  []DailyReportActivity    `json:"activities"`
+	Attachments []DailyReportAttachment  `json:"attachments"`
 }
 
 // ── Form-data response ────────────────────────────────────────────────────────

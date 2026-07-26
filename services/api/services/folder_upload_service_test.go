@@ -164,6 +164,9 @@ func (m *mockStorage) SaveReceiptFile(_ context.Context, _ multipart.File, _ *mu
 func (m *mockStorage) ReadReceiptFile(_ context.Context, _ string) (io.ReadCloser, string, error) {
 	return nil, "", errors.New("not implemented")
 }
+func (m *mockStorage) SaveReportPhotoFile(_ context.Context, _ multipart.File, _ *multipart.FileHeader, _, _ string) (string, string, int64, error) {
+	return "", "", 0, errors.New("not implemented")
+}
 func (m *mockStorage) CheckHealth(_ context.Context) error { return nil }
 
 // mockFile is a minimal multipart.File that returns empty reads.

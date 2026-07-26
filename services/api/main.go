@@ -78,6 +78,10 @@ func main() {
 	drSvc := services.NewDailyReportService(db, drRepo, auditRepo, rmeRepo)
 	drHandler := handlers.NewDailyReportHandler(drSvc)
 
+	attachRepo := repositories.NewDailyReportAttachmentsRepository(db)
+	attachSvc := services.NewDailyReportAttachmentsService(attachRepo, storageSvc)
+	attachHandler := handlers.NewDailyReportAttachmentsHandler(attachSvc)
+
 	reportsRepo := repositories.NewReportsRepository(db)
 	reportsSvc := services.NewReportsService(reportsRepo)
 	reportsHandler := handlers.NewReportsHandler(reportsSvc)
@@ -186,7 +190,7 @@ func main() {
 	routes.RegisterEmployeeRoutes(api, empHandler, AuthRequired(), RequireRoles)
 	projectsGroup := routes.RegisterProjectRoutes(api, projHandler, AuthRequired(), RequireRoles)
 	routes.RegisterProjectMaterialRoutes(projectsGroup, matHandler, RequireRoles)
-	routes.RegisterDailyReportRoutes(api, drHandler, AuthRequired(), RequireRoles)
+	routes.RegisterDailyReportRoutes(api, drHandler, attachHandler, AuthRequired(), RequireRoles)
 	routes.RegisterReportsRoutes(api, reportsHandler, AuthRequired(), RequireRoles)
 	routes.RegisterMaterialPurchasesRoutes(api, mpHandler, AuthRequired(), RequireRoles)
 	routes.RegisterInventoryRoutes(api, invHandler, AuthRequired(), RequireRoles)

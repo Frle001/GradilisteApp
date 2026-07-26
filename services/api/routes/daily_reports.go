@@ -8,6 +8,7 @@ import (
 func RegisterDailyReportRoutes(
 	api *gin.RouterGroup,
 	h *handlers.DailyReportHandler,
+	attachH *handlers.DailyReportAttachmentsHandler,
 	authRequired gin.HandlerFunc,
 	requireRoles func(...string) gin.HandlerFunc,
 ) {
@@ -29,5 +30,11 @@ func RegisterDailyReportRoutes(
 		dr.DELETE("/:id", h.Delete)
 		dr.PATCH("/:id/approve", manageRoles, h.Approve)
 		dr.PATCH("/:id/reject", manageRoles, h.Reject)
+
+		// Attachments (photos)
+		dr.GET("/:id/attachments", allRoles, attachH.List)
+		dr.POST("/:id/attachments", writeRoles, attachH.Upload)
+		dr.GET("/:id/attachments/:attachId/download", allRoles, attachH.Download)
+		dr.DELETE("/:id/attachments/:attachId", writeRoles, attachH.Delete)
 	}
 }

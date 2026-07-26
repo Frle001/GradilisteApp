@@ -24,6 +24,7 @@ type StorageService interface {
 	ReadReceiptFile(ctx context.Context, fileKey string) (reader io.ReadCloser, contentType string, err error)
 	DeleteReceiptFile(ctx context.Context, fileKey string) error
 	SaveDocumentFile(ctx context.Context, file multipart.File, header *multipart.FileHeader, companyID, projectID string) (fileKey, contentType string, fileSize int64, err error)
+	SaveReportPhotoFile(ctx context.Context, file multipart.File, header *multipart.FileHeader, companyID, reportID string) (fileKey, contentType string, fileSize int64, err error)
 	CheckHealth(ctx context.Context) error
 }
 
@@ -109,6 +110,33 @@ func ValidateDocumentFile(header *multipart.FileHeader) error {
 
 	if _, ok := AllowedDocumentMIMEs[ct]; !ok {
 		return fmt.Errorf("nepodržani tip datoteke %q; dopušteni su: PDF, Word, Excel, PowerPoint, slike, CSV, TXT, ZIP, DWG", ct)
+	}
+	return nil
+}
+
+// AllowedReportPhotoMIMEs maps accepted image MIME types for daily-report attachments.
+var AllowedReportPhotoMIMEs = map[string]string{
+	"image/jpeg": ".jpg",
+	"image/png":  ".png",
+	"image/webp": ".webp",
+}
+
+// ValidateReportPhotoFile checks MIME type and file size for daily-report photo attachments.
+// HEIC/HEIF files are explicitly rejected with a user-facing Croatian message.
+func ValidateReportPhotoFile(header *multipart.FileHeader) error {
+	if header.Size > MaxReceiptFileSize {
+		return fmt.Errorf("slika je prevelika (maksimalno 10 MB, primljeno %d bajtova)", header.Size)
+	}
+	ct := header.Header.Get("Content-Type")
+	if idx := strings.Index(ct, ";"); idx != -1 {
+		ct = strings.TrimSpace(ct[:idx])
+	}
+	lower := strings.ToLower(ct)
+	if lower == "image/heic" || lower == "image/heif" {
+		return fmt.Errorf("HEIC/HEIF format nije podržan; koristite JPEG, PNG ili WebP")
+	}
+	if _, ok := AllowedReportPhotoMIMEs[ct]; !ok {
+		return fmt.Errorf("nepodržani tip datoteke %q; dopušteni su: JPEG, PNG, WebP", ct)
 	}
 	return nil
 }
@@ -227,6 +255,50 @@ func (s *LocalStorageService) SaveDocumentFile(
 	}
 
 	relPath := filepath.Join("documents", companyID, projectID, id+ext)
+	absPath := filepath.Join(s.basePath, relPath)
+
+	if err := os.MkdirAll(filepath.Dir(absPath), 0755); err != nil {
+		return "", "", 0, fmt.Errorf("create upload dir: %w", err)
+	}
+
+	dst, err := os.Create(absPath)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("create file: %w", err)
+	}
+	defer dst.Close()
+
+	n, err := io.Copy(dst, file)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("write file: %w", err)
+	}
+
+	return relPath, ct, n, nil
+}
+
+func (s *LocalStorageService) SaveReportPhotoFile(
+	ctx context.Context,
+	file multipart.File,
+	header *multipart.FileHeader,
+	companyID, reportID string,
+) (string, string, int64, error) {
+	ct := header.Header.Get("Content-Type")
+	if idx := strings.Index(ct, ";"); idx != -1 {
+		ct = strings.TrimSpace(ct[:idx])
+	}
+	ext := AllowedReportPhotoMIMEs[ct]
+	if ext == "" {
+		ext = strings.ToLower(filepath.Ext(header.Filename))
+		if ext == "" {
+			ext = ".jpg"
+		}
+	}
+
+	id, err := randomHex(16)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("generate file id: %w", err)
+	}
+
+	relPath := filepath.Join("report-photos", companyID, reportID, id+ext)
 	absPath := filepath.Join(s.basePath, relPath)
 
 	if err := os.MkdirAll(filepath.Dir(absPath), 0755); err != nil {
@@ -391,6 +463,51 @@ func (s *S3StorageService) SaveDocumentFile(
 	}
 
 	key := "documents/" + companyID + "/" + projectID + "/" + id + ext
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("read upload: %w", err)
+	}
+
+	size := int64(len(data))
+	_, err = s.client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:        aws.String(s.bucket),
+		Key:           aws.String(key),
+		Body:          bytes.NewReader(data),
+		ContentType:   aws.String(ct),
+		ContentLength: &size,
+	})
+	if err != nil {
+		return "", "", 0, fmt.Errorf("upload to S3: %w", err)
+	}
+
+	return key, ct, size, nil
+}
+
+func (s *S3StorageService) SaveReportPhotoFile(
+	ctx context.Context,
+	file multipart.File,
+	header *multipart.FileHeader,
+	companyID, reportID string,
+) (string, string, int64, error) {
+	ct := header.Header.Get("Content-Type")
+	if idx := strings.Index(ct, ";"); idx != -1 {
+		ct = strings.TrimSpace(ct[:idx])
+	}
+	ext := AllowedReportPhotoMIMEs[ct]
+	if ext == "" {
+		ext = strings.ToLower(filepath.Ext(header.Filename))
+		if ext == "" {
+			ext = ".jpg"
+		}
+	}
+
+	id, err := randomHex(16)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("generate file id: %w", err)
+	}
+
+	key := "report-photos/" + companyID + "/" + reportID + "/" + id + ext
 
 	data, err := io.ReadAll(file)
 	if err != nil {

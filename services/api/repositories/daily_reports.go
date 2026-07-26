@@ -315,6 +315,29 @@ func (r *DailyReportRepository) GetByID(ctx context.Context, id, companyID strin
 		return nil, err
 	}
 
+	// Attachments
+	attRows, err := r.db.Query(ctx, `
+		SELECT id::text, original_name, content_type, file_size, created_at
+		FROM daily_report_attachments
+		WHERE daily_report_id = $1::uuid AND company_id = $2::uuid AND deleted_at IS NULL
+		ORDER BY created_at
+	`, id, companyID)
+	if err != nil {
+		return nil, err
+	}
+	defer attRows.Close()
+	d.Attachments = make([]dto.DailyReportAttachment, 0)
+	for attRows.Next() {
+		var a dto.DailyReportAttachment
+		if err := attRows.Scan(&a.ID, &a.OriginalName, &a.ContentType, &a.FileSize, &a.CreatedAt); err != nil {
+			return nil, err
+		}
+		d.Attachments = append(d.Attachments, a)
+	}
+	if err := attRows.Err(); err != nil {
+		return nil, err
+	}
+
 	return &d, nil
 }
 

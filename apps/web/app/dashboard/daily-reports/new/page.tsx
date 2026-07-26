@@ -18,6 +18,10 @@ export default function NewDailyReportPage() {
   const [formData, setFormData] = useState<DailyReportFormData | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
 
+  // Lifted photo state — the form reads and updates this via props.
+  // Files are never serialised to JSON or localStorage.
+  const [pendingPhotos, setPendingPhotos] = useState<File[]>([])
+
   useEffect(() => {
     if (!user) return
     apiClient
@@ -61,6 +65,8 @@ export default function NewDailyReportPage() {
             initialProjectId={initialProjectId}
             onSubmit={handleSubmit}
             submitLabel="Kreiraj izvještaj"
+            pendingPhotos={pendingPhotos}
+            onPendingPhotosChange={setPendingPhotos}
           />
         )}
       </div>

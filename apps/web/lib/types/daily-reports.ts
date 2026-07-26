@@ -67,6 +67,14 @@ export interface DailyReportActivity {
   notes: string | null
 }
 
+export interface DailyReportAttachment {
+  id: string
+  original_name: string
+  content_type: string
+  file_size: number
+  created_at: string
+}
+
 export interface DailyReportDetail {
   id: string
   project: DailyReportProject
@@ -79,6 +87,7 @@ export interface DailyReportDetail {
   updated_at: string
   worker_hours: DailyReportWorkerHours[]
   activities: DailyReportActivity[]
+  attachments: DailyReportAttachment[]
 }
 
 // ── Form data types ───────────────────────────────────────────────────────────

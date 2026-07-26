@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useParams, useRouter } from 'next/navigation'
+import { useParams, useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { useAuth } from '@/hooks/useAuth'
 import LoadingScreen from '@/components/ui/LoadingScreen'
@@ -14,6 +14,7 @@ import {
   canApproveReject,
 } from '@/lib/types/daily-reports'
 import apiClient from '@/lib/api-client'
+import ReportPhotoGallery from '@/components/daily-reports/ReportPhotoGallery'
 
 function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString('hr-HR', {
@@ -32,6 +33,8 @@ export default function DailyReportDetailPage() {
   const { user, employee, isLoading, logout } = useAuth()
   const params = useParams<{ id: string }>()
   const router = useRouter()
+  const searchParams = useSearchParams()
+  const uploadErrors = Number(searchParams.get('upload_errors') ?? 0)
 
   const [report, setReport] = useState<DailyReportDetail | null>(null)
   const [loadError, setLoadError] = useState<string | null>(null)
@@ -114,6 +117,20 @@ export default function DailyReportDetailPage() {
 
         {report && (
           <>
+            {/* ── Partial photo-upload failure banner ─────────────────── */}
+            {uploadErrors > 0 && (
+              <div className="flex items-start gap-3 bg-amber-950/50 border border-amber-700/60 rounded-xl px-4 py-3">
+                <svg className="w-4 h-4 text-amber-400 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
+                </svg>
+                <p className="text-sm text-amber-300">
+                  Izvještaj je uspješno kreiran, ali{' '}
+                  <span className="font-semibold">{uploadErrors} {uploadErrors === 1 ? 'fotografija nije prenesena' : 'fotografija nije preneseno'}</span>.
+                  Možete ih dodati ovdje u odjeljku <span className="font-medium text-amber-200">Fotografije</span>.
+                </p>
+              </div>
+            )}
+
             {/* ── Header ─────────────────────────────────────────────── */}
             <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
               <div className="flex flex-wrap items-start gap-3 justify-between">
@@ -213,6 +230,13 @@ export default function DailyReportDetailPage() {
                 </div>
               )}
             </div>
+
+            {/* ── Photo attachments ───────────────────────────────────── */}
+            <ReportPhotoGallery
+              reportId={report.id}
+              initialAttachments={report.attachments ?? []}
+              canEdit={canEdit}
+            />
 
             {/* ── Approve / Reject actions ────────────────────────────── */}
             {canManage && report.status === 'submitted' && (
