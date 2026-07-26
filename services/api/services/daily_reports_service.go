@@ -39,11 +39,16 @@ type auditLogRepoIface interface {
 	Log(ctx context.Context, p repositories.AuditParams)
 }
 
+type materialEffectsRepoIface interface {
+	EffectsAlreadyApplied(ctx context.Context, tx pgx.Tx, reportID string) (bool, error)
+	ValidateAndApply(ctx context.Context, tx pgx.Tx, companyID, reportID, projectID, poslovodaEmpID, appliedByUserID string, acts []repositories.ActivityForApproval) error
+}
+
 type DailyReportService struct {
 	db                  txBeginner
 	drRepo              drRepoIface
 	auditRepo           auditLogRepoIface
-	materialEffectsRepo *repositories.ReportMaterialEffectsRepository
+	materialEffectsRepo materialEffectsRepoIface
 }
 
 func NewDailyReportService(
@@ -177,7 +182,7 @@ func (s *DailyReportService) Update(ctx context.Context, id, companyID, callerUs
 // ── Approve ───────────────────────────────────────────────────────────────────
 
 func (s *DailyReportService) Approve(ctx context.Context, id, companyID, callerUserID, callerEmpID string) error {
-	status, _, projectID, err := s.drRepo.GetByIDForEdit(ctx, id, companyID)
+	status, poslovodaID, projectID, err := s.drRepo.GetByIDForEdit(ctx, id, companyID)
 	if err != nil {
 		return err
 	}
@@ -202,7 +207,7 @@ func (s *DailyReportService) Approve(ctx context.Context, id, companyID, callerU
 		return err
 	}
 	if !applied {
-		if err := s.materialEffectsRepo.ValidateAndApply(ctx, tx, companyID, id, projectID, callerUserID, acts); err != nil {
+		if err := s.materialEffectsRepo.ValidateAndApply(ctx, tx, companyID, id, projectID, poslovodaID, callerUserID, acts); err != nil {
 			return err
 		}
 	}

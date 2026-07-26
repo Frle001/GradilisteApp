@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/gradiliste/api/dto"
@@ -16,6 +17,7 @@ var (
 	ErrInventoryEmployeeNotFound     = errors.New("employee not found")
 	ErrAssetNotFound                 = errors.New("asset not found or not assigned to you")
 	ErrInsufficientMaterial          = errors.New("Nedovoljna dostupna količina za prijenos.")
+	ErrStaleTransferQuantity         = errors.New("Dostupna količina materijala se promijenila. Osvježite podatke i pokušajte ponovno.")
 	ErrNoMaterialResponsibility      = errors.New("no active material responsibility found")
 	ErrCannotTransferToSelf          = errors.New("cannot transfer to yourself")
 	ErrTransferTargetNotAllowed      = errors.New("you are not allowed to transfer to this employee")
@@ -26,9 +28,29 @@ var (
 	ErrInvalidDestinationProject     = errors.New("odaberite odredišni projekt za prijenos materijala")
 )
 
+type inventoryRepoIface interface {
+	GetEmployee(ctx context.Context, companyID, employeeID string) (*dto.InventoryEmployeeSummary, error)
+	GetAssets(ctx context.Context, companyID, employeeID string) ([]dto.InventoryAssetItem, error)
+	GetMaterials(ctx context.Context, companyID, employeeID string) ([]dto.InventoryMaterialItem, error)
+	GetTransferTargets(ctx context.Context, companyID, callerEmployeeID, callerRole, transferType string) ([]dto.TransferTarget, error)
+	GetEmployeeActiveProjects(ctx context.Context, companyID, employeeID string) ([]dto.InventoryProject, error)
+	GetProjectMaterialInfo(ctx context.Context, tx pgx.Tx, companyID, projectMaterialID string) (*repositories.ProjectMaterialInfo, error)
+	FindOrCreateDestProjectMaterial(ctx context.Context, tx pgx.Tx, companyID, destProjectID, materialName string, materialCode *string, unit string) (string, error)
+	DeductProjectMaterialAvailable(ctx context.Context, tx pgx.Tx, companyID, projectMaterialID string, qty float64) error
+	AddProjectMaterialAvailable(ctx context.Context, tx pgx.Tx, companyID, projectMaterialID string, qty float64) error
+	LockAsset(ctx context.Context, tx pgx.Tx, companyID, assetID, fromEmployeeID string) (string, error)
+	AssignAsset(ctx context.Context, tx pgx.Tx, assetID, toEmployeeID string) error
+	LockMaterialRows(ctx context.Context, tx pgx.Tx, companyID, employeeID, projectMaterialID string) ([]repositories.MaterialResponsibilityRow, float64, error)
+	DeductMaterialRow(ctx context.Context, tx pgx.Tx, rowID string, remaining float64) error
+	UpsertDestMaterialRow(ctx context.Context, tx pgx.Tx, companyID, toEmployeeID, projectID, projectMaterialID, unit string, addQty float64) (string, error)
+	InsertTransferRecord(ctx context.Context, tx pgx.Tx, companyID, fromEmployeeID, toEmployeeID, assetType string, employeeAssetID *string, responsibilityID *string, quantity float64, projectID *string, transferredBy, notes string) (string, error)
+	CountTransfers(ctx context.Context, companyID string, scopeEmployeeID *string) (int, error)
+	ListTransfers(ctx context.Context, companyID string, scopeEmployeeID *string, limit, offset int) ([]dto.TransferListItem, error)
+}
+
 type InventoryService struct {
-	db   *pgxpool.Pool
-	repo *repositories.InventoryRepository
+	db   txBeginner
+	repo inventoryRepoIface
 }
 
 func NewInventoryService(db *pgxpool.Pool, repo *repositories.InventoryRepository) *InventoryService {
@@ -274,9 +296,11 @@ func (s *InventoryService) createMaterialTransfer(
 
 	// Deduct transferred quantity from source project_materials.available_quantity.
 	// The guarded UPDATE prevents negative dostupno on the source project.
+	// If this fails after the responsibility check passed, the project quantity changed
+	// since the UI loaded — return a 409-mapped sentinel so the frontend can refetch.
 	if err := s.repo.DeductProjectMaterialAvailable(ctx, tx, companyID, *req.ProjectMaterialID, transferQty); err != nil {
 		if errors.Is(err, repositories.ErrInsufficientQuantity) {
-			return "", ErrInsufficientMaterial
+			return "", ErrStaleTransferQuantity
 		}
 		return "", fmt.Errorf("deduct source available quantity: %w", err)
 	}
@@ -299,7 +323,7 @@ func (s *InventoryService) createMaterialTransfer(
 		newQty := row.Quantity - deduct
 		if err := s.repo.DeductMaterialRow(ctx, tx, row.ID, newQty); err != nil {
 			if errors.Is(err, repositories.ErrInsufficientQuantity) {
-				return "", ErrInsufficientMaterial
+				return "", ErrStaleTransferQuantity
 			}
 			return "", fmt.Errorf("deduct material row: %w", err)
 		}

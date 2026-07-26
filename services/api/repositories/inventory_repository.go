@@ -186,16 +186,16 @@ func (r *InventoryRepository) GetEmployeeActiveProjects(ctx context.Context, com
 
 // ── Internal transfer helpers ─────────────────────────────────────────────────
 
-// materialResponsibilityRow holds a single row from employee_material_responsibility.
-type materialResponsibilityRow struct {
+// MaterialResponsibilityRow holds a single row from employee_material_responsibility.
+type MaterialResponsibilityRow struct {
 	ID        string
 	ProjectID string
 	Unit      string
 	Quantity  float64
 }
 
-// projectMaterialInfo holds identifying metadata from a project_materials row.
-type projectMaterialInfo struct {
+// ProjectMaterialInfo holds identifying metadata from a project_materials row.
+type ProjectMaterialInfo struct {
 	ID           string
 	ProjectID    string
 	MaterialName string
@@ -204,8 +204,8 @@ type projectMaterialInfo struct {
 }
 
 // GetProjectMaterialInfo fetches name/code/unit for a project_material within a transaction.
-func (r *InventoryRepository) GetProjectMaterialInfo(ctx context.Context, tx pgx.Tx, companyID, projectMaterialID string) (*projectMaterialInfo, error) {
-	var m projectMaterialInfo
+func (r *InventoryRepository) GetProjectMaterialInfo(ctx context.Context, tx pgx.Tx, companyID, projectMaterialID string) (*ProjectMaterialInfo, error) {
+	var m ProjectMaterialInfo
 	err := tx.QueryRow(ctx,
 		`SELECT id, project_id, material_name, material_code, unit
 		 FROM project_materials
@@ -342,7 +342,7 @@ func (r *InventoryRepository) AssignAsset(ctx context.Context, tx pgx.Tx, assetI
 
 // LockMaterialRows selects all active responsibility rows for a given employee+material FOR UPDATE.
 // Returns the rows and total available quantity.
-func (r *InventoryRepository) LockMaterialRows(ctx context.Context, tx pgx.Tx, companyID, employeeID, projectMaterialID string) ([]materialResponsibilityRow, float64, error) {
+func (r *InventoryRepository) LockMaterialRows(ctx context.Context, tx pgx.Tx, companyID, employeeID, projectMaterialID string) ([]MaterialResponsibilityRow, float64, error) {
 	rows, err := tx.Query(ctx,
 		`SELECT id, project_id, unit, quantity
 		 FROM employee_material_responsibility
@@ -356,10 +356,10 @@ func (r *InventoryRepository) LockMaterialRows(ctx context.Context, tx pgx.Tx, c
 	}
 	defer rows.Close()
 
-	var result []materialResponsibilityRow
+	var result []MaterialResponsibilityRow
 	var total float64
 	for rows.Next() {
-		var row materialResponsibilityRow
+		var row MaterialResponsibilityRow
 		if err := rows.Scan(&row.ID, &row.ProjectID, &row.Unit, &row.Quantity); err != nil {
 			return nil, 0, fmt.Errorf("scan responsibility row: %w", err)
 		}
@@ -543,6 +543,58 @@ func (r *InventoryRepository) ListTransfers(ctx context.Context, companyID strin
 		items = append(items, t)
 	}
 	return items, rows.Err()
+}
+
+// ── Reconciliation ────────────────────────────────────────────────────────────
+
+// ReconciliationViolation describes one project_material row where the invariant
+// SUM(emr.quantity WHERE active) == pm.available_quantity is broken.
+type ReconciliationViolation struct {
+	ProjectMaterialID   string
+	MaterialName        string
+	ProjectID           string
+	PMAvailableQuantity float64
+	EMRTotalQuantity    float64
+	Delta               float64 // EMRTotal - PMAvailable (positive = EMR exceeds project stock)
+}
+
+// ReconciliationCheck returns all project_material rows for the given company
+// where the sum of active employee_material_responsibility quantities does not
+// equal the project_materials.available_quantity, or where any quantity is negative.
+// This is a read-only diagnostic — it never modifies data.
+func (r *InventoryRepository) ReconciliationCheck(ctx context.Context, companyID string) ([]ReconciliationViolation, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT
+			pm.id::text,
+			pm.material_name,
+			pm.project_id::text,
+			pm.available_quantity,
+			COALESCE(SUM(emr.quantity) FILTER (WHERE emr.active = true), 0) AS emr_total
+		FROM project_materials pm
+		LEFT JOIN employee_material_responsibility emr
+			ON emr.project_material_id = pm.id AND emr.company_id = pm.company_id
+		WHERE pm.company_id = $1::uuid AND pm.active = true
+		GROUP BY pm.id, pm.material_name, pm.project_id, pm.available_quantity
+		HAVING
+			ABS(COALESCE(SUM(emr.quantity) FILTER (WHERE emr.active = true), 0) - pm.available_quantity) > 0.0001
+			OR pm.available_quantity < 0
+		ORDER BY ABS(COALESCE(SUM(emr.quantity) FILTER (WHERE emr.active = true), 0) - pm.available_quantity) DESC
+	`, companyID)
+	if err != nil {
+		return nil, fmt.Errorf("reconciliation check: %w", err)
+	}
+	defer rows.Close()
+
+	var violations []ReconciliationViolation
+	for rows.Next() {
+		var v ReconciliationViolation
+		if err := rows.Scan(&v.ProjectMaterialID, &v.MaterialName, &v.ProjectID, &v.PMAvailableQuantity, &v.EMRTotalQuantity); err != nil {
+			return nil, fmt.Errorf("scan reconciliation row: %w", err)
+		}
+		v.Delta = v.EMRTotalQuantity - v.PMAvailableQuantity
+		violations = append(violations, v)
+	}
+	return violations, rows.Err()
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────

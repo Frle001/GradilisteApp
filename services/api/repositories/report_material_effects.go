@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 	"fmt"
+	"log"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -26,34 +27,35 @@ func (r *ReportMaterialEffectsRepository) EffectsAlreadyApplied(ctx context.Cont
 	return count > 0, err
 }
 
-// ValidateAndApply applies material quantity changes for each activity, within the given transaction.
+// ValidateAndApply applies material quantity changes for each activity within the given transaction.
+// poslovodaEmpID is the employee ID of the report's poslovoda (used for demontaža responsibility rows).
 //
-// montaža (non-VTR): subtracts quantity from available_quantity; returns error if insufficient.
-// demontaža (non-VTR): adds quantity to available_quantity.
-// montaža (VTR): looks up material by name+unit, subtracts; returns error if not found or insufficient.
-// demontaža (VTR): upserts project_material by (project_id, name, unit), then adds quantity.
+// montaža (non-VTK): subtracts qty from project available_quantity and from responsibility rows.
+// demontaža (non-VTK): adds qty to project available_quantity and upserts poslovoda responsibility.
+// montaža (VTK): looks up material by name+unit, same dual update.
+// demontaža (VTK): upserts project_material by (project_id, name, unit), same dual update.
 func (r *ReportMaterialEffectsRepository) ValidateAndApply(
 	ctx context.Context,
 	tx pgx.Tx,
-	companyID, reportID, projectID, appliedByUserID string,
+	companyID, reportID, projectID, poslovodaEmpID, appliedByUserID string,
 	acts []ActivityForApproval,
 ) error {
 	for _, a := range acts {
 		switch {
 		case a.ActivityType == "montaza" && !a.IsVTK:
-			if err := r.applyMontaza(ctx, tx, companyID, reportID, projectID, appliedByUserID, a); err != nil {
+			if err := r.applyMontaza(ctx, tx, companyID, reportID, projectID, poslovodaEmpID, appliedByUserID, a); err != nil {
 				return err
 			}
 		case a.ActivityType == "montaza" && a.IsVTK:
-			if err := r.applyMontazaVTK(ctx, tx, companyID, reportID, projectID, appliedByUserID, a); err != nil {
+			if err := r.applyMontazaVTK(ctx, tx, companyID, reportID, projectID, poslovodaEmpID, appliedByUserID, a); err != nil {
 				return err
 			}
 		case a.ActivityType == "demontaza" && !a.IsVTK:
-			if err := r.applyDemontaza(ctx, tx, companyID, reportID, projectID, appliedByUserID, a); err != nil {
+			if err := r.applyDemontaza(ctx, tx, companyID, reportID, projectID, poslovodaEmpID, appliedByUserID, a); err != nil {
 				return err
 			}
 		case a.ActivityType == "demontaza" && a.IsVTK:
-			if err := r.applyDemontazaVTK(ctx, tx, companyID, reportID, projectID, appliedByUserID, a); err != nil {
+			if err := r.applyDemontazaVTK(ctx, tx, companyID, reportID, projectID, poslovodaEmpID, appliedByUserID, a); err != nil {
 				return err
 			}
 		}
@@ -63,7 +65,7 @@ func (r *ReportMaterialEffectsRepository) ValidateAndApply(
 
 func (r *ReportMaterialEffectsRepository) applyMontaza(
 	ctx context.Context, tx pgx.Tx,
-	companyID, reportID, projectID, appliedByUserID string,
+	companyID, reportID, projectID, poslovodaEmpID, appliedByUserID string,
 	a ActivityForApproval,
 ) error {
 	// Atomic subtract: only succeeds if available_quantity >= quantity.
@@ -79,7 +81,6 @@ func (r *ReportMaterialEffectsRepository) applyMontaza(
 	`, a.Quantity, *a.ProjectMaterialID, companyID).Scan(&updatedID)
 
 	if err == pgx.ErrNoRows {
-		// Distinguish "not found" from "insufficient stock"
 		var exists bool
 		_ = tx.QueryRow(ctx,
 			`SELECT EXISTS(SELECT 1 FROM project_materials WHERE id = $1::uuid AND company_id = $2::uuid)`,
@@ -94,19 +95,21 @@ func (r *ReportMaterialEffectsRepository) applyMontaza(
 		return fmt.Errorf("greška pri umanjenju stanja materijala: %w", err)
 	}
 
+	// Keep responsibility in sync: deduct the same quantity from active EMR rows.
+	r.deductResponsibility(ctx, tx, companyID, *a.ProjectMaterialID, a.Quantity)
+
 	return r.insertEffect(ctx, tx, companyID, reportID, projectID, appliedByUserID, a, a.ProjectMaterialID)
 }
 
 func (r *ReportMaterialEffectsRepository) applyMontazaVTK(
 	ctx context.Context, tx pgx.Tx,
-	companyID, reportID, projectID, appliedByUserID string,
+	companyID, reportID, projectID, poslovodaEmpID, appliedByUserID string,
 	a ActivityForApproval,
 ) error {
 	if a.CustomMaterialName == nil {
 		return fmt.Errorf("VTR montaža aktivnost nema naziv materijala")
 	}
 
-	// Atomic subtract by name+unit: only succeeds if material exists and available_quantity >= quantity.
 	var updatedID string
 	err := tx.QueryRow(ctx, `
 		UPDATE project_materials
@@ -121,7 +124,6 @@ func (r *ReportMaterialEffectsRepository) applyMontazaVTK(
 	`, a.Quantity, projectID, companyID, *a.CustomMaterialName, a.Unit).Scan(&updatedID)
 
 	if err == pgx.ErrNoRows {
-		// Distinguish "not found" from "insufficient stock"
 		var exists bool
 		_ = tx.QueryRow(ctx, `
 			SELECT EXISTS(
@@ -141,12 +143,14 @@ func (r *ReportMaterialEffectsRepository) applyMontazaVTK(
 		return fmt.Errorf("greška pri umanjenju stanja VTR materijala: %w", err)
 	}
 
+	r.deductResponsibility(ctx, tx, companyID, updatedID, a.Quantity)
+
 	return r.insertEffect(ctx, tx, companyID, reportID, projectID, appliedByUserID, a, &updatedID)
 }
 
 func (r *ReportMaterialEffectsRepository) applyDemontaza(
 	ctx context.Context, tx pgx.Tx,
-	companyID, reportID, projectID, appliedByUserID string,
+	companyID, reportID, projectID, poslovodaEmpID, appliedByUserID string,
 	a ActivityForApproval,
 ) error {
 	_, err := tx.Exec(ctx, `
@@ -159,12 +163,18 @@ func (r *ReportMaterialEffectsRepository) applyDemontaza(
 	if err != nil {
 		return fmt.Errorf("greška pri povećanju stanja materijala: %w", err)
 	}
+
+	// Keep responsibility in sync: add the returned quantity to the poslovoda's EMR row.
+	if err := r.upsertResponsibility(ctx, tx, companyID, poslovodaEmpID, projectID, *a.ProjectMaterialID, a.Unit, a.Quantity); err != nil {
+		return fmt.Errorf("greška pri ažuriranju odgovornosti za materijal: %w", err)
+	}
+
 	return r.insertEffect(ctx, tx, companyID, reportID, projectID, appliedByUserID, a, a.ProjectMaterialID)
 }
 
 func (r *ReportMaterialEffectsRepository) applyDemontazaVTK(
 	ctx context.Context, tx pgx.Tx,
-	companyID, reportID, projectID, appliedByUserID string,
+	companyID, reportID, projectID, poslovodaEmpID, appliedByUserID string,
 	a ActivityForApproval,
 ) error {
 	if a.CustomMaterialName == nil {
@@ -172,7 +182,6 @@ func (r *ReportMaterialEffectsRepository) applyDemontazaVTK(
 	}
 
 	// Upsert by (project_id, company_id, LOWER(material_name), unit) — the unique index on project_materials.
-	// On insert: sets available_quantity = delta. On conflict: adds delta to existing available_quantity.
 	var materialID string
 	err := tx.QueryRow(ctx, `
 		INSERT INTO project_materials
@@ -189,7 +198,134 @@ func (r *ReportMaterialEffectsRepository) applyDemontazaVTK(
 		return fmt.Errorf("greška pri upsertu materijala za demontažu: %w", err)
 	}
 
+	if err := r.upsertResponsibility(ctx, tx, companyID, poslovodaEmpID, projectID, materialID, a.Unit, a.Quantity); err != nil {
+		return fmt.Errorf("greška pri ažuriranju odgovornosti za VTK materijal: %w", err)
+	}
+
 	return r.insertEffect(ctx, tx, companyID, reportID, projectID, appliedByUserID, a, &materialID)
+}
+
+// deductResponsibility greedily deducts qty from all active EMR rows for the given
+// project_material_id, oldest first, within the current transaction.
+// The rows are locked with FOR UPDATE to prevent concurrent modification.
+// If the total responsibility is less than qty (pre-existing data inconsistency),
+// all available responsibility is deducted and the remainder is logged but not returned as an error,
+// so the approval itself is not blocked.
+func (r *ReportMaterialEffectsRepository) deductResponsibility(
+	ctx context.Context, tx pgx.Tx,
+	companyID, projectMaterialID string,
+	qty float64,
+) {
+	rows, err := tx.Query(ctx, `
+		SELECT id, quantity
+		FROM employee_material_responsibility
+		WHERE company_id = $1::uuid
+		  AND project_material_id = $2::uuid
+		  AND active = true
+		ORDER BY created_at ASC
+		FOR UPDATE
+	`, companyID, projectMaterialID)
+	if err != nil {
+		log.Printf("[report_effects] deductResponsibility: query error for material %s: %v", projectMaterialID, err)
+		return
+	}
+	defer rows.Close()
+
+	type emrRow struct {
+		ID       string
+		Quantity float64
+	}
+	var candidates []emrRow
+	for rows.Next() {
+		var row emrRow
+		if err := rows.Scan(&row.ID, &row.Quantity); err != nil {
+			log.Printf("[report_effects] deductResponsibility: scan error: %v", err)
+			return
+		}
+		candidates = append(candidates, row)
+	}
+	if err := rows.Err(); err != nil {
+		log.Printf("[report_effects] deductResponsibility: rows error: %v", err)
+		return
+	}
+
+	remaining := qty
+	for _, row := range candidates {
+		if remaining <= 0 {
+			break
+		}
+		deduct := remaining
+		if deduct > row.Quantity {
+			deduct = row.Quantity
+		}
+		newQty := row.Quantity - deduct
+
+		var execErr error
+		if newQty <= 0 {
+			// CHECK (quantity > 0) disallows 0; set active=false to retire the row.
+			_, execErr = tx.Exec(ctx,
+				`UPDATE employee_material_responsibility SET active = false WHERE id = $1::uuid`,
+				row.ID,
+			)
+		} else {
+			_, execErr = tx.Exec(ctx,
+				`UPDATE employee_material_responsibility SET quantity = $1 WHERE id = $2::uuid`,
+				newQty, row.ID,
+			)
+		}
+		if execErr != nil {
+			log.Printf("[report_effects] deductResponsibility: update error for row %s: %v", row.ID, execErr)
+			return
+		}
+		remaining -= deduct
+	}
+
+	if remaining > 0 {
+		// The total responsibility was less than the quantity consumed.
+		// This indicates a pre-existing data inconsistency — log it for investigation.
+		log.Printf("[report_effects] deductResponsibility: responsibility underflow %.4f for material %s — pre-existing inconsistency", remaining, projectMaterialID)
+	}
+}
+
+// upsertResponsibility adds qty to the poslovoda's active EMR row for the given material,
+// creating a new row if none exists. The row is locked with FOR UPDATE.
+func (r *ReportMaterialEffectsRepository) upsertResponsibility(
+	ctx context.Context, tx pgx.Tx,
+	companyID, employeeID, projectID, projectMaterialID, unit string,
+	qty float64,
+) error {
+	// Try to find an existing active row for this (employee, project, material) triple.
+	var existingID string
+	err := tx.QueryRow(ctx, `
+		SELECT id FROM employee_material_responsibility
+		WHERE company_id      = $1::uuid
+		  AND employee_id     = $2::uuid
+		  AND project_id      = $3::uuid
+		  AND project_material_id = $4::uuid
+		  AND active = true
+		LIMIT 1
+		FOR UPDATE
+	`, companyID, employeeID, projectID, projectMaterialID).Scan(&existingID)
+
+	if err != nil && err != pgx.ErrNoRows {
+		return fmt.Errorf("find responsibility row: %w", err)
+	}
+
+	if existingID != "" {
+		_, err = tx.Exec(ctx,
+			`UPDATE employee_material_responsibility SET quantity = quantity + $1 WHERE id = $2::uuid`,
+			qty, existingID,
+		)
+		return err
+	}
+
+	// Insert a new responsibility row for this poslovoda.
+	_, err = tx.Exec(ctx, `
+		INSERT INTO employee_material_responsibility
+		    (company_id, employee_id, project_id, project_material_id, quantity, unit, active)
+		VALUES ($1::uuid, $2::uuid, $3::uuid, $4::uuid, $5, $6, true)
+	`, companyID, employeeID, projectID, projectMaterialID, qty, unit)
+	return err
 }
 
 func (r *ReportMaterialEffectsRepository) insertEffect(

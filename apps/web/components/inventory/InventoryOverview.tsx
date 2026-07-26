@@ -64,6 +64,7 @@ export default function InventoryOverview({ inventory, canInitiateTransfer, onTr
         subject={transferSubject}
         onClose={() => setTransferSubject(null)}
         onSuccess={onTransferSuccess}
+        onNeedsRefresh={onTransferSuccess}
       />
     </>
   )

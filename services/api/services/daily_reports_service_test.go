@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -135,6 +136,45 @@ type mockAuditLog struct{}
 
 func (m *mockAuditLog) Log(_ context.Context, _ repositories.AuditParams) {}
 
+// ── Mock materialEffectsRepoIface ─────────────────────────────────────────────
+
+type mockMaterialEffectsRepo struct {
+	alreadyAppliedFn   func(context.Context, pgx.Tx, string) (bool, error)
+	validateAndApplyFn func(context.Context, pgx.Tx, string, string, string, string, string, []repositories.ActivityForApproval) error
+	applyCallArgs      struct {
+		companyID     string
+		reportID      string
+		projectID     string
+		poslovodaID   string
+		appliedByID   string
+		activityCount int
+	}
+}
+
+func (m *mockMaterialEffectsRepo) EffectsAlreadyApplied(ctx context.Context, tx pgx.Tx, reportID string) (bool, error) {
+	if m.alreadyAppliedFn != nil {
+		return m.alreadyAppliedFn(ctx, tx, reportID)
+	}
+	return false, nil
+}
+
+func (m *mockMaterialEffectsRepo) ValidateAndApply(
+	ctx context.Context, tx pgx.Tx,
+	companyID, reportID, projectID, poslovodaEmpID, appliedByUserID string,
+	acts []repositories.ActivityForApproval,
+) error {
+	m.applyCallArgs.companyID = companyID
+	m.applyCallArgs.reportID = reportID
+	m.applyCallArgs.projectID = projectID
+	m.applyCallArgs.poslovodaID = poslovodaEmpID
+	m.applyCallArgs.appliedByID = appliedByUserID
+	m.applyCallArgs.activityCount = len(acts)
+	if m.validateAndApplyFn != nil {
+		return m.validateAndApplyFn(ctx, tx, companyID, reportID, projectID, poslovodaEmpID, appliedByUserID, acts)
+	}
+	return nil
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 func newDrSvc(repo *mockDrRepo) *DailyReportService {
@@ -142,7 +182,16 @@ func newDrSvc(repo *mockDrRepo) *DailyReportService {
 		db:        &schedTxBeginner{tx: &schedMockTx{}},
 		drRepo:    repo,
 		auditRepo: &mockAuditLog{},
-		// materialEffectsRepo is nil — none of the 7 tests exercise Approve
+		// materialEffectsRepo is nil — none of the Create/Update tests exercise Approve
+	}
+}
+
+func newDrSvcWithEffects(repo *mockDrRepo, fx *mockMaterialEffectsRepo) *DailyReportService {
+	return &DailyReportService{
+		db:                  &schedTxBeginner{tx: &schedMockTx{}},
+		drRepo:              repo,
+		auditRepo:           &mockAuditLog{},
+		materialEffectsRepo: fx,
 	}
 }
 
@@ -328,4 +377,133 @@ func TestDailyReport_Create_DoesNotCreateProjectAssignment(t *testing.T) {
 	}
 	// drRepoIface exposes no CreateProjectAssignment or similar method, so no
 	// assignment row can be written by this service during report creation.
+}
+
+// ── Tests: Approve ────────────────────────────────────────────────────────────
+
+// TestDailyReport_Approve_PassesPoslovodaIDToEffects verifies that the poslovodaID
+// from GetByIDForEdit is forwarded to ValidateAndApply, so responsibility rows
+// are updated for the correct employee during montaža/demontaža approval.
+func TestDailyReport_Approve_PassesPoslovodaIDToEffects(t *testing.T) {
+	fx := &mockMaterialEffectsRepo{}
+	repo := &mockDrRepo{
+		getByIDForEditFn: func(_ context.Context, _, _ string) (string, string, string, error) {
+			return "submitted", "emp-poslovoda-123", "project-456", nil
+		},
+		getActivitiesForApprovalFn: func(_ context.Context, _, _ string) ([]repositories.ActivityForApproval, error) {
+			return []repositories.ActivityForApproval{}, nil
+		},
+	}
+	svc := newDrSvcWithEffects(repo, fx)
+	if err := svc.Approve(context.Background(), "report-1", "co-1", "user-1", "emp-direktor"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fx.applyCallArgs.poslovodaID != "emp-poslovoda-123" {
+		t.Errorf("expected poslovodaID='emp-poslovoda-123' forwarded to ValidateAndApply, got %q", fx.applyCallArgs.poslovodaID)
+	}
+	if fx.applyCallArgs.projectID != "project-456" {
+		t.Errorf("expected projectID='project-456', got %q", fx.applyCallArgs.projectID)
+	}
+}
+
+// TestDailyReport_Approve_RejectsNonSubmittedStatus verifies that an already-approved
+// or rejected report cannot be approved again.
+func TestDailyReport_Approve_RejectsNonSubmittedStatus(t *testing.T) {
+	for _, status := range []string{"approved", "rejected"} {
+		status := status
+		repo := &mockDrRepo{
+			getByIDForEditFn: func(_ context.Context, _, _ string) (string, string, string, error) {
+				return status, "emp-poslovoda", "project-1", nil
+			},
+		}
+		err := newDrSvcWithEffects(repo, &mockMaterialEffectsRepo{}).
+			Approve(context.Background(), "report-1", "co-1", "user-1", "emp-direktor")
+		if err == nil {
+			t.Errorf("status=%s: expected error, got nil", status)
+		}
+		if !errors.Is(err, ErrDailyReportInvalidStatus) {
+			t.Errorf("status=%s: expected ErrDailyReportInvalidStatus, got %v", status, err)
+		}
+	}
+}
+
+// TestDailyReport_Approve_IdempotentWhenEffectsAlreadyApplied verifies that if
+// effects were already recorded (e.g. a crash after apply but before status update),
+// ValidateAndApply is NOT called again.
+func TestDailyReport_Approve_IdempotentWhenEffectsAlreadyApplied(t *testing.T) {
+	secondApplyCalled := false
+	fx := &mockMaterialEffectsRepo{
+		alreadyAppliedFn: func(_ context.Context, _ pgx.Tx, _ string) (bool, error) { return true, nil },
+		validateAndApplyFn: func(_ context.Context, _ pgx.Tx, _, _, _, _, _ string, _ []repositories.ActivityForApproval) error {
+			secondApplyCalled = true
+			return nil
+		},
+	}
+	repo := &mockDrRepo{
+		getByIDForEditFn: func(_ context.Context, _, _ string) (string, string, string, error) {
+			return "submitted", "emp-poslovoda", "project-1", nil
+		},
+		getActivitiesForApprovalFn: func(_ context.Context, _, _ string) ([]repositories.ActivityForApproval, error) {
+			return []repositories.ActivityForApproval{}, nil
+		},
+	}
+	if err := newDrSvcWithEffects(repo, fx).Approve(context.Background(), "report-1", "co-1", "user-1", "emp-d"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if secondApplyCalled {
+		t.Error("ValidateAndApply should not be called when effects are already applied")
+	}
+}
+
+// TestDailyReport_Approve_PropagatesEffectsError verifies that a validation error
+// from ValidateAndApply (e.g. insufficient stock) bubbles up from Approve.
+func TestDailyReport_Approve_PropagatesEffectsError(t *testing.T) {
+	insufficientErr := errors.New("nedovoljno dostupnih zaliha za materijal")
+	fx := &mockMaterialEffectsRepo{
+		validateAndApplyFn: func(_ context.Context, _ pgx.Tx, _, _, _, _, _ string, _ []repositories.ActivityForApproval) error {
+			return insufficientErr
+		},
+	}
+	repo := &mockDrRepo{
+		getByIDForEditFn: func(_ context.Context, _, _ string) (string, string, string, error) {
+			return "submitted", "emp-poslovoda", "project-1", nil
+		},
+		getActivitiesForApprovalFn: func(_ context.Context, _, _ string) ([]repositories.ActivityForApproval, error) {
+			mat := "mat-1"
+			return []repositories.ActivityForApproval{
+				{ID: "act-1", ProjectMaterialID: &mat, Quantity: 999, Unit: "kom", ActivityType: "montaza"},
+			}, nil
+		},
+	}
+	err := newDrSvcWithEffects(repo, fx).Approve(context.Background(), "report-1", "co-1", "user-1", "emp-d")
+	if !errors.Is(err, insufficientErr) {
+		t.Errorf("expected insufficient-stock error to propagate, got %v", err)
+	}
+}
+
+// TestDailyReport_Approve_StatusNotChangedOnEffectsFailure verifies that SetStatus
+// is not called when ValidateAndApply fails (transaction will be rolled back).
+func TestDailyReport_Approve_StatusNotChangedOnEffectsFailure(t *testing.T) {
+	setStatusCalled := false
+	fx := &mockMaterialEffectsRepo{
+		validateAndApplyFn: func(_ context.Context, _ pgx.Tx, _, _, _, _, _ string, _ []repositories.ActivityForApproval) error {
+			return errors.New("stock error")
+		},
+	}
+	repo := &mockDrRepo{
+		getByIDForEditFn: func(_ context.Context, _, _ string) (string, string, string, error) {
+			return "submitted", "emp-poslovoda", "project-1", nil
+		},
+		getActivitiesForApprovalFn: func(_ context.Context, _, _ string) ([]repositories.ActivityForApproval, error) {
+			return []repositories.ActivityForApproval{}, nil
+		},
+		setStatusFn: func(_ context.Context, _ pgx.Tx, _, _, _ string, _ *string) error {
+			setStatusCalled = true
+			return nil
+		},
+	}
+	_ = newDrSvcWithEffects(repo, fx).Approve(context.Background(), "report-1", "co-1", "user-1", "emp-d")
+	if setStatusCalled {
+		t.Error("SetStatus must not be called when ValidateAndApply fails")
+	}
 }

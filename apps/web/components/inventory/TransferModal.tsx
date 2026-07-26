@@ -18,6 +18,7 @@ interface Props {
   subject: TransferSubject | null
   onClose: () => void
   onSuccess: () => void
+  onNeedsRefresh?: () => void
 }
 
 const inputCls = `
@@ -27,7 +28,7 @@ const inputCls = `
   disabled:opacity-40 disabled:cursor-not-allowed transition-colors
 `.replace(/\s+/g, ' ').trim()
 
-export default function TransferModal({ subject, onClose, onSuccess }: Props) {
+export default function TransferModal({ subject, onClose, onSuccess, onNeedsRefresh }: Props) {
   const [targets, setTargets] = useState<TransferTarget[]>([])
   const [loadingTargets, setLoadingTargets] = useState(false)
   const [toEmployeeID, setToEmployeeID] = useState('')
@@ -115,8 +116,14 @@ export default function TransferModal({ subject, onClose, onSuccess }: Props) {
       onSuccess()
       onClose()
     } catch (err: unknown) {
-      const e = err as { response?: { data?: { error?: string } } }
-      setError(e?.response?.data?.error ?? 'Greška pri prijenosu.')
+      const e = err as { response?: { status?: number; data?: { error?: string } } }
+      const msg = e?.response?.data?.error ?? 'Greška pri prijenosu.'
+      setError(msg)
+      // 409 Conflict means project quantities changed since the form loaded.
+      // Trigger a refetch so the displayed available quantity reflects reality.
+      if (e?.response?.status === 409) {
+        onNeedsRefresh?.()
+      }
     } finally {
       setSubmitting(false)
     }
