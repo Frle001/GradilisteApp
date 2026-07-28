@@ -8,6 +8,7 @@ import DashboardShell from '@/components/layout/DashboardShell'
 import PurchaseItemsPreview from '@/components/material-purchases/PurchaseItemsPreview'
 import ReceiptUploadInput from '@/components/material-purchases/ReceiptUploadInput'
 import MaterialPicker from '@/components/daily-reports/MaterialPicker'
+import CreateMaterialModal from '@/components/daily-reports/CreateMaterialModal'
 import apiClient from '@/lib/api-client'
 import {
   type PurchaseFormProject,
@@ -52,6 +53,7 @@ export default function MaterialPurchasesNewPage() {
   const [submitting, setSubmitting] = useState(false)
   const [loadingMaterials, setLoadingMaterials] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [createModalName, setCreateModalName] = useState<string | null>(null)
 
   // ── Load materials when project changes (unchanged) ─────────────────────────
   const loadMaterials = useCallback(async (pid: string) => {
@@ -256,6 +258,7 @@ export default function MaterialPurchasesNewPage() {
                       onChange={handleMaterialChange}
                       disabled={submitting}
                       placeholder="Pretraži materijal..."
+                      onCreateNew={name => setCreateModalName(name)}
                     />
                     {selectedMaterial && (
                       <p className="text-xs text-slate-500 mt-1">
@@ -367,6 +370,18 @@ export default function MaterialPurchasesNewPage() {
 
         </form>
       </div>
+      {createModalName !== null && projectID && (
+        <CreateMaterialModal
+          projectId={projectID}
+          initialName={createModalName}
+          onCreated={m => {
+            setMaterials(prev => [...prev, m as PurchaseFormMaterial])
+            handleMaterialChange(m.id, m.unit)
+            setCreateModalName(null)
+          }}
+          onClose={() => setCreateModalName(null)}
+        />
+      )}
     </DashboardShell>
   )
 }

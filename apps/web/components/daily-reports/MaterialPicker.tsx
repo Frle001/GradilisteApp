@@ -50,10 +50,15 @@ export default function MaterialPicker({
   })()
 
   const trimmedQuery = query.trim()
+  const normalizedQuery = trimmedQuery.toLocaleLowerCase('hr-HR')
+  const exactMatch = materials.some(
+    m => m.material_name.trim().toLocaleLowerCase('hr-HR') === normalizedQuery
+  )
   const showCreate =
-    !!onCreateNew &&
-    trimmedQuery.length > 0 &&
-    !materials.some(m => m.material_name.toLowerCase() === trimmedQuery.toLowerCase())
+    Boolean(onCreateNew) &&
+    !disabled &&
+    normalizedQuery.length > 0 &&
+    !exactMatch
 
   // Close when user clicks outside the component
   useEffect(() => {
