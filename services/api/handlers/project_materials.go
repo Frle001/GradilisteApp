@@ -89,6 +89,31 @@ func (h *ProjectMaterialHandler) Deactivate(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Material deactivated"})
 }
 
+// POST /api/projects/:id/materials/resolve-or-create
+// Returns an existing project material matching (name, unit) or creates one with
+// available_quantity=0. Accessible to poslovoda and above so they can add new
+// materials directly from the daily-report entry form.
+func (h *ProjectMaterialHandler) ResolveOrCreate(c *gin.Context) {
+	u := appctx.GetAuthUser(c)
+	projectID := c.Param("id")
+
+	var req struct {
+		MaterialName string `json:"material_name" binding:"required"`
+		Unit         string `json:"unit" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	m, err := h.svc.ResolveOrCreate(c.Request.Context(), projectID, u.CompanyID, req.MaterialName, req.Unit)
+	if err != nil {
+		respondMaterialError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"material": m})
+}
+
 // POST /api/projects/:id/materials/import/analyze
 // Accepts a multipart Excel file, detects headers, returns mapping suggestions + sample rows.
 func (h *ProjectMaterialHandler) ImportAnalyze(c *gin.Context) {

@@ -108,6 +108,30 @@ func (s *ProjectMaterialService) Update(ctx context.Context, id, projectID, comp
 	return m, nil
 }
 
+func (s *ProjectMaterialService) ResolveOrCreate(ctx context.Context, projectID, companyID, materialName, unit string) (*dto.FormDataMaterial, error) {
+	materialName = strings.TrimSpace(materialName)
+	unit = strings.TrimSpace(unit)
+	if materialName == "" {
+		return nil, errors.New("naziv materijala je obavezan")
+	}
+	if unit == "" {
+		return nil, errors.New("jedinica mjere je obavezna")
+	}
+
+	status, err := s.projRepo.GetStatus(ctx, companyID, projectID)
+	if errors.Is(err, repositories.ErrNotFound) {
+		return nil, repositories.ErrNotFound
+	}
+	if err != nil {
+		return nil, err
+	}
+	if status != "active" {
+		return nil, ErrProjectNotActive
+	}
+
+	return s.matRepo.ResolveOrCreate(ctx, companyID, projectID, materialName, unit)
+}
+
 func (s *ProjectMaterialService) Deactivate(ctx context.Context, id, projectID, companyID, callerUserID string) error {
 	status, err := s.projRepo.GetStatus(ctx, companyID, projectID)
 	if errors.Is(err, repositories.ErrNotFound) {

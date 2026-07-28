@@ -14,9 +14,11 @@ func RegisterProjectMaterialRoutes(
 	requireRoles func(...string) gin.HandlerFunc,
 ) {
 	manageRoles := requireRoles("direktor", "inzenjer")
+	reportRoles := requireRoles("poslovoda", "direktor", "inzenjer")
 
 	// authRequired is already on the parent group — no need to add it again.
 	projects.GET("/:id/materials", h.List)
+	projects.POST("/:id/materials/resolve-or-create", reportRoles, h.ResolveOrCreate)
 	projects.POST("/:id/materials", manageRoles, h.Create)
 	projects.PUT("/:id/materials/:materialId", manageRoles, h.Update)
 	projects.PATCH("/:id/materials/:materialId/deactivate", manageRoles, h.Deactivate)

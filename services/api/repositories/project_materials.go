@@ -205,6 +205,27 @@ func (r *ProjectMaterialRepository) UpsertWizardRowWithTx(ctx context.Context, t
 	return err
 }
 
+// ResolveOrCreate returns an existing project_material matching the normalised
+// (name, unit) pair, creating one with available_quantity=0 when none exists.
+// Concurrent calls are safe — the ON CONFLICT clause prevents duplicate rows.
+func (r *ProjectMaterialRepository) ResolveOrCreate(ctx context.Context, companyID, projectID, materialName, unit string) (*dto.FormDataMaterial, error) {
+	q := `INSERT INTO project_materials
+	        (project_id, company_id, material_name, unit, planned_quantity, used_quantity, available_quantity, source)
+	      VALUES ($1, $2, $3, $4, 0, 0, 0, 'report')
+	      ON CONFLICT (project_id, company_id, LOWER(material_name), unit)
+	      DO UPDATE SET active = true
+	      RETURNING id, material_name, material_code, available_quantity, unit`
+
+	var m dto.FormDataMaterial
+	err := r.db.QueryRow(ctx, q, projectID, companyID, materialName, unit).Scan(
+		&m.ID, &m.MaterialName, &m.MaterialCode, &m.AvailableQuantity, &m.Unit,
+	)
+	if err != nil {
+		return nil, err
+	}
+	return &m, nil
+}
+
 // UpsertWithTx inserts or updates a material within a transaction.
 // Returns (inserted bool, err).
 func (r *ProjectMaterialRepository) UpsertWithTx(ctx context.Context, tx pgx.Tx, projectID, companyID string, row dto.ImportPreviewRow) (inserted bool, err error) {

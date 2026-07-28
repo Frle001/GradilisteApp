@@ -375,6 +375,8 @@ export default function DailyReportForm({
           materialsLoading={materialsLoading}
           onAdd={addActivity}
           disabled={submitting || !projectId}
+          projectId={projectId || undefined}
+          onMaterialAdded={m => setProjectMaterials(prev => [...prev, m])}
         />
       </section>
 

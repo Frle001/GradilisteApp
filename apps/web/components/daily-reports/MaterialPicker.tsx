@@ -14,6 +14,8 @@ interface Props {
   onChange: (id: string, unit: string) => void
   disabled?: boolean
   placeholder?: string
+  /** When provided, a "Dodaj novi materijal" option is shown for unmatched queries. */
+  onCreateNew?: (name: string) => void
 }
 
 export default function MaterialPicker({
@@ -23,6 +25,7 @@ export default function MaterialPicker({
   onChange,
   disabled = false,
   placeholder = 'Odaberi materijal…',
+  onCreateNew,
 }: Props) {
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
@@ -45,6 +48,12 @@ export default function MaterialPicker({
       )
       .slice(0, MAX_VISIBLE)
   })()
+
+  const trimmedQuery = query.trim()
+  const showCreate =
+    !!onCreateNew &&
+    trimmedQuery.length > 0 &&
+    !materials.some(m => m.material_name.toLowerCase() === trimmedQuery.toLowerCase())
 
   // Close when user clicks outside the component
   useEffect(() => {
@@ -87,10 +96,11 @@ export default function MaterialPicker({
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    const maxIdx = filtered.length - 1 + (showCreate ? 1 : 0)
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault()
-        setHighlighted(i => Math.min(i + 1, filtered.length - 1))
+        setHighlighted(i => Math.min(i + 1, maxIdx))
         break
       case 'ArrowUp':
         e.preventDefault()
@@ -98,7 +108,13 @@ export default function MaterialPicker({
         break
       case 'Enter':
         e.preventDefault()
-        if (filtered[highlighted]) select(filtered[highlighted])
+        if (highlighted < filtered.length && filtered[highlighted]) {
+          select(filtered[highlighted])
+        } else if (showCreate && highlighted === filtered.length) {
+          onCreateNew!(trimmedQuery)
+          setOpen(false)
+          setQuery('')
+        }
         break
       case 'Escape':
         e.preventDefault()
@@ -167,11 +183,11 @@ export default function MaterialPicker({
       {/* ── Dropdown panel ───────────────────────────────────────────────── */}
       {open && (
         <div className="absolute z-50 left-0 right-0 mt-1 bg-slate-900 border border-slate-700 rounded-lg shadow-2xl overflow-hidden">
-          {materials.length === 0 ? (
+          {materials.length === 0 && !showCreate ? (
             <p className="px-3 py-2.5 text-sm text-slate-500">
               Projekt nema dodanih materijala.
             </p>
-          ) : filtered.length === 0 ? (
+          ) : filtered.length === 0 && !showCreate ? (
             <p className="px-3 py-2.5 text-sm text-slate-500">
               Nema pronađenih materijala.
             </p>
@@ -205,6 +221,23 @@ export default function MaterialPicker({
                   </p>
                 </li>
               ))}
+              {showCreate && (
+                <li
+                  role="option"
+                  aria-selected={false}
+                  onClick={() => { onCreateNew!(trimmedQuery); setOpen(false); setQuery('') }}
+                  onMouseEnter={() => setHighlighted(filtered.length)}
+                  className={[
+                    'px-3 py-2.5 cursor-pointer transition-colors',
+                    filtered.length > 0 ? 'border-t border-slate-700/60' : '',
+                    highlighted === filtered.length ? 'bg-blue-600/20' : 'hover:bg-slate-800',
+                  ].join(' ')}
+                >
+                  <p className="text-sm text-blue-400 leading-snug">
+                    + Dodaj novi materijal: &ldquo;{trimmedQuery}&rdquo;
+                  </p>
+                </li>
+              )}
             </ul>
           )}
         </div>

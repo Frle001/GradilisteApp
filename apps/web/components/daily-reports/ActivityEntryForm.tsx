@@ -8,17 +8,20 @@ import {
   ACTIVITY_TYPE_LABELS,
 } from '@/lib/types/daily-reports'
 import MaterialPicker from './MaterialPicker'
+import CreateMaterialModal from './CreateMaterialModal'
 
 interface Props {
   materials: FormDataMaterial[]
   materialsLoading?: boolean
   onAdd: (activity: ActivityInputUI) => void
   disabled?: boolean
+  projectId?: string
+  onMaterialAdded?: (material: FormDataMaterial) => void
 }
 
 const ACTIVITY_TYPES: ActivityType[] = ['montaza', 'demontaza', 'other']
 
-export default function ActivityEntryForm({ materials, materialsLoading = false, onAdd, disabled = false }: Props) {
+export default function ActivityEntryForm({ materials, materialsLoading = false, onAdd, disabled = false, projectId, onMaterialAdded }: Props) {
   const [isVtk, setIsVtk] = useState(false)
   const [materialId, setMaterialId] = useState<string>('')
   const [customName, setCustomName] = useState('')
@@ -27,6 +30,7 @@ export default function ActivityEntryForm({ materials, materialsLoading = false,
   const [activityType, setActivityType] = useState<ActivityType>('montaza')
   const [notes, setNotes] = useState('')
   const [errors, setErrors] = useState<string[]>([])
+  const [createModalName, setCreateModalName] = useState<string | null>(null)
 
   function validate(): string[] {
     const errs: string[] = []
@@ -34,11 +38,21 @@ export default function ActivityEntryForm({ materials, materialsLoading = false,
       if (!customName.trim()) errs.push('Naziv materijala je obavezan za VTR aktivnost.')
     } else {
       if (!materialId) errs.push('Odaberite materijal.')
+      if (materialId && activityType === 'montaza') {
+        const mat = materials.find(m => m.id === materialId)
+        if (mat && mat.available_quantity === 0) {
+          errs.push('Nije moguće utrošiti novi materijal bez raspoložive količine.')
+        }
+      }
     }
     const qty = parseFloat(quantity)
     if (!quantity || isNaN(qty) || qty <= 0) errs.push('Količina mora biti pozitivan broj.')
     if (!unit.trim()) errs.push('Jedinica mjere je obavezna.')
     return errs
+  }
+
+  function handleCreateNew(name: string) {
+    setCreateModalName(name)
   }
 
   function resolveDisplayName(): string {
@@ -132,6 +146,7 @@ export default function ActivityEntryForm({ materials, materialsLoading = false,
               value={materialId}
               onChange={handleMaterialChange}
               disabled={disabled}
+              onCreateNew={!disabled && projectId ? handleCreateNew : undefined}
             />
           </div>
         )}
@@ -209,6 +224,19 @@ export default function ActivityEntryForm({ materials, materialsLoading = false,
       >
         + Dodaj aktivnost
       </button>
+
+      {createModalName !== null && projectId && (
+        <CreateMaterialModal
+          projectId={projectId}
+          initialName={createModalName}
+          onCreated={m => {
+            onMaterialAdded?.(m)
+            handleMaterialChange(m.id, m.unit)
+            setCreateModalName(null)
+          }}
+          onClose={() => setCreateModalName(null)}
+        />
+      )}
     </div>
   )
 }
