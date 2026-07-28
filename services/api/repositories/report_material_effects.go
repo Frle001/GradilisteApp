@@ -73,6 +73,7 @@ func (r *ReportMaterialEffectsRepository) applyMontaza(
 	err := tx.QueryRow(ctx, `
 		UPDATE project_materials
 		SET available_quantity = available_quantity - $1,
+		    used_quantity      = used_quantity      + $1,
 		    updated_at = NOW()
 		WHERE id = $2::uuid
 		  AND company_id = $3::uuid
@@ -114,6 +115,7 @@ func (r *ReportMaterialEffectsRepository) applyMontazaVTK(
 	err := tx.QueryRow(ctx, `
 		UPDATE project_materials
 		SET available_quantity = available_quantity - $1,
+		    used_quantity      = used_quantity      + $1,
 		    updated_at = NOW()
 		WHERE project_id = $2::uuid
 		  AND company_id = $3::uuid
@@ -156,6 +158,7 @@ func (r *ReportMaterialEffectsRepository) applyDemontaza(
 	_, err := tx.Exec(ctx, `
 		UPDATE project_materials
 		SET available_quantity = available_quantity + $1,
+		    used_quantity      = GREATEST(used_quantity - $1, 0),
 		    updated_at = NOW()
 		WHERE id = $2::uuid
 		  AND company_id = $3::uuid
@@ -190,6 +193,7 @@ func (r *ReportMaterialEffectsRepository) applyDemontazaVTK(
 		ON CONFLICT (project_id, company_id, LOWER(material_name), unit)
 		DO UPDATE SET
 		    available_quantity = project_materials.available_quantity + EXCLUDED.available_quantity,
+		    used_quantity      = GREATEST(project_materials.used_quantity - EXCLUDED.available_quantity, 0),
 		    active = true,
 		    updated_at = NOW()
 		RETURNING id::text
