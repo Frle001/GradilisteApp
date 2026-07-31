@@ -16,7 +16,7 @@ type mockWorkerHoursRepo struct {
 	listAllProjectsFn  func(ctx context.Context, companyID string) ([]dto.WorkerProject, error)
 	getProjectStatusFn func(ctx context.Context, companyID, projectID string) (string, error)
 	otherHoursFn       func(ctx context.Context, companyID, workerEmpID, projectID, workDate string) (float64, error)
-	upsertFn           func(ctx context.Context, companyID, workerEmpID, projectID, workDate string, hours float64, notes, workDescription *string, submittedBy string) (*dto.WorkerHoursEntry, error)
+	upsertFn           func(ctx context.Context, companyID, workerEmpID, projectID, workDate string, hours float64, notes, workDescription *string, submittedBy string, clientSubmissionID *string) (*dto.WorkerHoursEntry, error)
 	listForDateFn      func(ctx context.Context, companyID, workerEmpID, workDate string) ([]dto.WorkerHoursEntry, error)
 	listBeforeDateFn   func(ctx context.Context, companyID, workerEmpID, beforeDate string) ([]dto.WorkerHoursEntry, error)
 	listForManagerFn   func(ctx context.Context, companyID, projectID, workDate string) ([]dto.ManagerWorkerHoursEntry, error)
@@ -46,9 +46,9 @@ func (m *mockWorkerHoursRepo) GetOtherProjectsHoursForDate(ctx context.Context, 
 	return 0, nil
 }
 
-func (m *mockWorkerHoursRepo) Upsert(ctx context.Context, companyID, workerEmpID, projectID, workDate string, hours float64, notes, workDescription *string, submittedBy string) (*dto.WorkerHoursEntry, error) {
+func (m *mockWorkerHoursRepo) Upsert(ctx context.Context, companyID, workerEmpID, projectID, workDate string, hours float64, notes, workDescription *string, submittedBy string, clientSubmissionID *string) (*dto.WorkerHoursEntry, error) {
 	if m.upsertFn != nil {
-		return m.upsertFn(ctx, companyID, workerEmpID, projectID, workDate, hours, notes, workDescription, submittedBy)
+		return m.upsertFn(ctx, companyID, workerEmpID, projectID, workDate, hours, notes, workDescription, submittedBy, clientSubmissionID)
 	}
 	return &dto.WorkerHoursEntry{ID: "entry-id"}, nil
 }
@@ -174,7 +174,7 @@ func baseReq() dto.SubmitWorkerHoursRequest {
 func TestSubmit_RadnikCanSubmitToAnyActiveProject(t *testing.T) {
 	upsertCalled := false
 	repo := &mockWorkerHoursRepo{
-		upsertFn: func(_ context.Context, companyID, _, _, _ string, _ float64, _ *string, _ *string, _ string) (*dto.WorkerHoursEntry, error) {
+		upsertFn: func(_ context.Context, companyID, _, _, _ string, _ float64, _ *string, _ *string, _ string, _ *string) (*dto.WorkerHoursEntry, error) {
 			upsertCalled = true
 			if companyID != "comp" {
 				t.Errorf("unexpected companyID %q", companyID)
@@ -195,7 +195,7 @@ func TestSubmit_RadnikCanSubmitToAnyActiveProject(t *testing.T) {
 func TestSubmit_PoslovodaCanSubmitToAnyActiveProject(t *testing.T) {
 	upsertCalled := false
 	repo := &mockWorkerHoursRepo{
-		upsertFn: func(_ context.Context, _, _, _, _ string, _ float64, _ *string, _ *string, _ string) (*dto.WorkerHoursEntry, error) {
+		upsertFn: func(_ context.Context, _, _, _, _ string, _ float64, _ *string, _ *string, _ string, _ *string) (*dto.WorkerHoursEntry, error) {
 			upsertCalled = true
 			return &dto.WorkerHoursEntry{ID: "e1"}, nil
 		},
@@ -214,7 +214,7 @@ func TestSubmit_WorkDescriptionForwardedToRepo(t *testing.T) {
 	desc := "Betoniranje temelja"
 	var capturedDesc *string
 	repo := &mockWorkerHoursRepo{
-		upsertFn: func(_ context.Context, _, _, _, _ string, _ float64, _ *string, wd *string, _ string) (*dto.WorkerHoursEntry, error) {
+		upsertFn: func(_ context.Context, _, _, _, _ string, _ float64, _ *string, wd *string, _ string, _ *string) (*dto.WorkerHoursEntry, error) {
 			capturedDesc = wd
 			return &dto.WorkerHoursEntry{ID: "e1"}, nil
 		},
@@ -320,6 +320,142 @@ func TestSubmit_UnknownRoleForbidden(t *testing.T) {
 		if !errors.Is(err, ErrForbidden) {
 			t.Errorf("role=%q: expected ErrForbidden, got %v", role, err)
 		}
+	}
+}
+
+// ── client_submission_id ──────────────────────────────────────────────────────
+
+// First submission with a new ID succeeds and passes the ID to the repo.
+func TestSubmit_WithSubmissionID_FirstSubmit_PassedToRepo(t *testing.T) {
+	id := "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+	var capturedID *string
+	repo := &mockWorkerHoursRepo{
+		upsertFn: func(_ context.Context, _, _, _, _ string, _ float64, _ *string, _ *string, _ string, clientSubmissionID *string) (*dto.WorkerHoursEntry, error) {
+			capturedID = clientSubmissionID
+			return &dto.WorkerHoursEntry{ID: "e1"}, nil
+		},
+	}
+	req := baseReq()
+	req.ClientSubmissionID = &id
+
+	svc := newWHSvc(repo)
+	entry, err := svc.Submit(context.Background(), "comp", "emp", "user", "radnik", req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if entry == nil {
+		t.Fatal("expected entry, got nil")
+	}
+	if capturedID == nil || *capturedID != id {
+		t.Errorf("submission ID not passed to repo: got %v, want %q", capturedID, id)
+	}
+}
+
+// When the repo detects that the submission ID was already stored (same payload),
+// it returns the existing entry. The service returns it unchanged (200, not 201).
+func TestSubmit_WithSubmissionID_Retry_ReturnsOriginalEntry(t *testing.T) {
+	id := "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+	existing := &dto.WorkerHoursEntry{ID: "original-entry-id", HoursWorked: 8}
+	repo := &mockWorkerHoursRepo{
+		upsertFn: func(_ context.Context, _, _, _, _ string, _ float64, _ *string, _ *string, _ string, _ *string) (*dto.WorkerHoursEntry, error) {
+			return existing, nil
+		},
+	}
+	req := baseReq()
+	req.ClientSubmissionID = &id
+
+	svc := newWHSvc(repo)
+	entry, err := svc.Submit(context.Background(), "comp", "emp", "user", "radnik", req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if entry == nil || entry.ID != "original-entry-id" {
+		t.Errorf("expected original entry, got %+v", entry)
+	}
+}
+
+// When the repo returns ErrSubmissionConflict (same ID, different payload),
+// the service maps it to ErrSubmissionConflict (handler will return 409).
+func TestSubmit_WithSubmissionID_PayloadMismatch_ReturnsConflict(t *testing.T) {
+	id := "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+	repo := &mockWorkerHoursRepo{
+		upsertFn: func(_ context.Context, _, _, _, _ string, _ float64, _ *string, _ *string, _ string, _ *string) (*dto.WorkerHoursEntry, error) {
+			return nil, repositories.ErrSubmissionConflict
+		},
+	}
+	req := baseReq()
+	req.ClientSubmissionID = &id
+
+	svc := newWHSvc(repo)
+	_, err := svc.Submit(context.Background(), "comp", "emp", "user", "radnik", req)
+	if !errors.Is(err, ErrSubmissionConflict) {
+		t.Errorf("expected ErrSubmissionConflict, got %v", err)
+	}
+}
+
+// Without a submission ID the service passes nil to the repo (legacy path).
+func TestSubmit_WithoutSubmissionID_PassesNilToRepo(t *testing.T) {
+	var capturedID *string
+	repo := &mockWorkerHoursRepo{
+		upsertFn: func(_ context.Context, _, _, _, _ string, _ float64, _ *string, _ *string, _ string, clientSubmissionID *string) (*dto.WorkerHoursEntry, error) {
+			capturedID = clientSubmissionID
+			return &dto.WorkerHoursEntry{ID: "e1"}, nil
+		},
+	}
+	svc := newWHSvc(repo)
+	_, err := svc.Submit(context.Background(), "comp", "emp", "user", "radnik", baseReq())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if capturedID != nil {
+		t.Errorf("expected nil submission ID, got %q", *capturedID)
+	}
+}
+
+// Authorization is checked before the repo is called, even when a submission ID is present.
+func TestSubmit_ForbiddenRole_SubmissionIDIgnored(t *testing.T) {
+	id := "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+	upsertCalled := false
+	repo := &mockWorkerHoursRepo{
+		upsertFn: func(_ context.Context, _, _, _, _ string, _ float64, _ *string, _ *string, _ string, _ *string) (*dto.WorkerHoursEntry, error) {
+			upsertCalled = true
+			return &dto.WorkerHoursEntry{}, nil
+		},
+	}
+	req := baseReq()
+	req.ClientSubmissionID = &id
+
+	svc := newWHSvc(repo)
+	_, err := svc.Submit(context.Background(), "comp", "emp", "user", "direktor", req)
+	if !errors.Is(err, ErrForbidden) {
+		t.Errorf("expected ErrForbidden, got %v", err)
+	}
+	if upsertCalled {
+		t.Error("Upsert must not be called for forbidden role")
+	}
+}
+
+func TestSubmit_ConcurrentRetries_BothSucceed(t *testing.T) {
+	id := "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+	calls := 0
+	repo := &mockWorkerHoursRepo{
+		upsertFn: func(_ context.Context, _, _, _, _ string, _ float64, _ *string, _ *string, _ string, _ *string) (*dto.WorkerHoursEntry, error) {
+			calls++
+			return &dto.WorkerHoursEntry{ID: "e1"}, nil
+		},
+	}
+	req := baseReq()
+	req.ClientSubmissionID = &id
+	svc := newWHSvc(repo)
+
+	for i := 0; i < 2; i++ {
+		_, err := svc.Submit(context.Background(), "comp", "emp", "user", "radnik", req)
+		if err != nil {
+			t.Fatalf("call %d: unexpected error: %v", i+1, err)
+		}
+	}
+	if calls != 2 {
+		t.Errorf("expected Upsert called twice, got %d", calls)
 	}
 }
 

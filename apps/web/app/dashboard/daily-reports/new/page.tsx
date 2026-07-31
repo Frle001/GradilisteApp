@@ -8,6 +8,8 @@ import DashboardShell from '@/components/layout/DashboardShell'
 import DailyReportForm from '@/components/daily-reports/DailyReportForm'
 import { type DailyReportFormData, type CreateDailyReportPayload } from '@/lib/types/daily-reports'
 import apiClient from '@/lib/api-client'
+import { enqueue, enqueueBlob } from '@/lib/offline/outbox'
+import { trySyncEntry } from '@/lib/offline/sync-engine'
 
 export default function NewDailyReportPage() {
   const { user, employee, isLoading, logout } = useAuth()
@@ -30,9 +32,43 @@ export default function NewDailyReportPage() {
       .catch(() => setLoadError('Greška pri učitavanju podataka forme.'))
   }, [user])
 
-  async function handleSubmit(payload: CreateDailyReportPayload): Promise<{ id: string }> {
-    const res = await apiClient.post('/daily-reports', payload)
-    return { id: res.data.id }
+  async function handleSubmit(payload: CreateDailyReportPayload): Promise<{ id: string } | void> {
+    const submissionId = crypto.randomUUID()
+
+    try {
+      await enqueue({ id: submissionId, type: 'daily-report', payload })
+    } catch {
+      // IDB unavailable (private browsing, quota exceeded) — direct call fallback.
+      const res = await apiClient.post('/daily-reports', payload)
+      return { id: res.data.id as string }
+    }
+
+    const resolvedId = await trySyncEntry(submissionId)
+
+    if (resolvedId) {
+      // Report landed on server — form will upload photos directly via its loop.
+      return { id: resolvedId }
+    }
+
+    // Offline or transient server error — queue any pending photos for background upload.
+    for (const file of pendingPhotos) {
+      try {
+        const blobKey = crypto.randomUUID()
+        await enqueueBlob(blobKey, file)
+        await enqueue({
+          id: crypto.randomUUID(),
+          type: 'photo-upload',
+          payload: null,
+          parentId: submissionId,
+          blobKey,
+          photoName: file.name,
+        })
+      } catch {
+        // Blob storage failed — photo is skipped for offline upload.
+      }
+    }
+    // Return void: form navigates to /dashboard/daily-reports.
+    // SyncStatusBanner will show the pending submission.
   }
 
   if (isLoading) return <LoadingScreen />

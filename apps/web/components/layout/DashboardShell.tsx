@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { type MeUser, type MeEmployee } from '@/hooks/useAuth'
 import { ROLE_LABELS } from '@/lib/types/employees'
 import MobileBottomNav from '@/components/layout/MobileBottomNav'
+import SyncStatusBanner from '@/components/ui/SyncStatusBanner'
 
 interface DashboardShellProps {
   user: MeUser
@@ -73,6 +74,8 @@ export default function DashboardShell({
           </div>
         </div>
       </header>
+
+      <SyncStatusBanner />
 
       {/* Content — pb-nav adds bottom padding on mobile to avoid nav overlap */}
       <main

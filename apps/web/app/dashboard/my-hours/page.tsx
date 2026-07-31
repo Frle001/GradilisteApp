@@ -5,6 +5,9 @@ import { useAuth } from '@/hooks/useAuth'
 import LoadingScreen from '@/components/ui/LoadingScreen'
 import DashboardShell from '@/components/layout/DashboardShell'
 import apiClient from '@/lib/api-client'
+import { enqueue, getEntry, findPendingEntry } from '@/lib/offline/outbox'
+import { trySyncEntry } from '@/lib/offline/sync-engine'
+import type { WorkerHoursPayload } from '@/lib/offline/types'
 
 interface WorkerProject {
   id: string
@@ -127,22 +130,58 @@ export default function MyHoursPage() {
     }
 
     setSubmitting(true)
+    const payload: WorkerHoursPayload = {
+      project_id: selectedProject,
+      work_date: today,
+      hours_worked: h,
+      notes: notes.trim() || null,
+      work_description: user?.role === 'poslovoda' ? (workDescription.trim() || null) : null,
+    }
+    // Reuse the existing outbox ID for this project/date if one is pending,
+    // so every retry sends the same client_submission_id to the server.
+    // db.put with the same id updates the payload in place.
+    let submissionId = crypto.randomUUID()
+    let useDirectFallback = false
     try {
-      await apiClient.post('/worker-hours', {
-        project_id: selectedProject,
-        work_date: today,
-        hours_worked: h,
-        notes: notes.trim() || null,
-        work_description: user?.role === 'poslovoda' ? (workDescription.trim() || null) : null,
+      const existingEntry = await findPendingEntry('worker-hours', e => {
+        const p = e.payload as WorkerHoursPayload
+        return p.project_id === payload.project_id && p.work_date === payload.work_date
       })
+      if (existingEntry) {
+        submissionId = existingEntry.id
+      }
+      await enqueue({ id: submissionId, type: 'worker-hours', payload, ownerId: user?.id, companyId: user?.company_id })
+    } catch {
+      useDirectFallback = true
+    }
+
+    if (useDirectFallback) {
+      // IDB unavailable — fall back to a direct network call.
+      try {
+        await apiClient.post('/worker-hours', payload)
+        setSubmitSuccess('Sati su uspješno upisani.')
+        fetchEntries()
+      } catch (err: unknown) {
+        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+        setSubmitError(msg ?? 'Greška pri unosu sati.')
+      }
+      setSubmitting(false)
+      return
+    }
+
+    // Attempt immediate sync; entry stays pending and retries automatically if offline.
+    await trySyncEntry(submissionId)
+    const entry = await getEntry(submissionId)
+
+    if (entry?.status === 'synced') {
       setSubmitSuccess('Sati su uspješno upisani.')
       fetchEntries()
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-      setSubmitError(msg ?? 'Greška pri unosu sati.')
-    } finally {
-      setSubmitting(false)
+    } else if (entry?.status === 'failed') {
+      setSubmitError(entry.lastError ?? 'Greška pri unosu sati.')
+    } else {
+      setSubmitSuccess('Sati su lokalno snimljeni i bit će poslani kada se povežete.')
     }
+    setSubmitting(false)
   }
 
   if (isLoading) return <LoadingScreen />
