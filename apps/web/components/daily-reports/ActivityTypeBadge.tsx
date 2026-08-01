@@ -9,10 +9,18 @@ const TYPE_STYLES: Record<ActivityType, string> = {
 interface Props {
   type: ActivityType
   isVtk?: boolean
+  trackingType?: 'stock' | 'work'
   className?: string
 }
 
-export default function ActivityTypeBadge({ type, isVtk = false, className = '' }: Props) {
+export default function ActivityTypeBadge({ type, isVtk = false, trackingType, className = '' }: Props) {
+  if (trackingType === 'work') {
+    return (
+      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-emerald-900/40 text-emerald-300 border border-emerald-800 ${className}`}>
+        Radna aktivnost
+      </span>
+    )
+  }
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${TYPE_STYLES[type]} ${className}`}>
       {ACTIVITY_TYPE_LABELS[type]}

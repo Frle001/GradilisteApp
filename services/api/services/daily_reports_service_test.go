@@ -668,3 +668,258 @@ func TestDailyReport_Approve_VTRAndNonVTRMixed_PoslovodaIDForwarded(t *testing.T
 		t.Errorf("expected projectID='project-abc' forwarded, got %q", fx.applyCallArgs.projectID)
 	}
 }
+
+// ── Tests: work-item (tracking_type=work) payload validation ─────────────────
+
+// TestDailyReport_Create_ContradicatoryPayloadRejected verifies that a payload
+// with is_vtk=true AND project_material_id set is rejected by validateReport.
+// A client must never submit both fields; the backend enforces this defensively.
+func TestDailyReport_Create_ContradicatoryPayloadRejected(t *testing.T) {
+	matID := "mat-1"
+	customName := "Štemanje"
+	repo := &mockDrRepo{
+		getProjectStatusFn: func(_ context.Context, _, _ string) (string, error) { return "active", nil },
+	}
+	req := dto.CreateDailyReportRequest{
+		ProjectID:  "project-1",
+		ReportDate: drTodayStr(),
+		Activities: []dto.ActivityInput{
+			{
+				IsVTK:              true,
+				ProjectMaterialID:  &matID,
+				CustomMaterialName: &customName,
+				Quantity:           25,
+				Unit:               "m",
+				ActivityType:       "montaza",
+			},
+		},
+	}
+	_, err := newDrSvc(repo).Create(context.Background(), "co-1", "user-1", "emp-poslovoda", "poslovoda", req)
+	if err == nil {
+		t.Fatal("expected error for contradictory is_vtk+project_material_id payload, got nil")
+	}
+	if !strings.Contains(err.Error(), "project_material_id mora biti null") {
+		t.Errorf("expected 'project_material_id mora biti null' error, got: %v", err)
+	}
+}
+
+// TestDailyReport_Create_WorkItemWithProjectMaterialIDAccepted verifies that a
+// work-type activity submitted with project_material_id and is_vtk=false passes
+// validateReport — this is the correct shape for work-item activities.
+func TestDailyReport_Create_WorkItemWithProjectMaterialIDAccepted(t *testing.T) {
+	matID := "mat-stemanje"
+	created := false
+	repo := &mockDrRepo{
+		getProjectStatusFn: func(_ context.Context, _, _ string) (string, error) { return "active", nil },
+		isMaterialInProjectFn: func(_ context.Context, materialID, _, _ string) (bool, error) {
+			if materialID == matID {
+				return true, nil
+			}
+			return false, nil
+		},
+		createFn: func(_ context.Context, _ pgx.Tx, _, _, _, _ string, _ dto.CreateDailyReportRequest) (string, error) {
+			created = true
+			return "report-work-item", nil
+		},
+	}
+	req := dto.CreateDailyReportRequest{
+		ProjectID:  "project-1",
+		ReportDate: drTodayStr(),
+		Activities: []dto.ActivityInput{
+			{
+				IsVTK:             false,
+				ProjectMaterialID: &matID,
+				Quantity:          25,
+				Unit:              "m",
+				ActivityType:      "montaza",
+			},
+		},
+	}
+	_, err := newDrSvc(repo).Create(context.Background(), "co-1", "user-1", "emp-poslovoda", "poslovoda", req)
+	if err != nil {
+		t.Fatalf("work-item activity with project_material_id should pass validation, got: %v", err)
+	}
+	if !created {
+		t.Error("expected drRepo.Create to be called for a valid work-item activity")
+	}
+}
+
+// TestDailyReport_Approve_WorkItemActivityForwardedWithCorrectTrackingType
+// verifies that when GetActivitiesForApproval returns an activity with
+// TrackingType="work" and IsVTK=false, ValidateAndApply receives that activity
+// with TrackingType="work" — confirming the service does not touch TrackingType.
+// The effects repo (not tested here) branches on TrackingType to bypass stock checks.
+func TestDailyReport_Approve_WorkItemActivityForwardedWithCorrectTrackingType(t *testing.T) {
+	matID := "mat-stemanje"
+	var gotActs []repositories.ActivityForApproval
+	fx := &mockMaterialEffectsRepo{
+		validateAndApplyFn: func(_ context.Context, _ pgx.Tx, _, _, _, _, _ string, acts []repositories.ActivityForApproval) error {
+			gotActs = acts
+			return nil
+		},
+	}
+	repo := &mockDrRepo{
+		getByIDForEditFn: func(_ context.Context, _, _ string) (string, string, string, error) {
+			return "submitted", "emp-poslovoda", "project-1", nil
+		},
+		getActivitiesForApprovalFn: func(_ context.Context, _, _ string) ([]repositories.ActivityForApproval, error) {
+			return []repositories.ActivityForApproval{
+				{
+					ID:               "act-work",
+					ProjectMaterialID: &matID,
+					Quantity:          25,
+					Unit:             "m",
+					ActivityType:     "montaza",
+					IsVTK:            false,
+					TrackingType:     "work",
+				},
+			}, nil
+		},
+	}
+	if err := newDrSvcWithEffects(repo, fx).Approve(context.Background(), "report-1", "co-1", "user-1", "emp-d"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(gotActs) != 1 {
+		t.Fatalf("expected 1 activity forwarded to ValidateAndApply, got %d", len(gotActs))
+	}
+	act := gotActs[0]
+	if act.TrackingType != "work" {
+		t.Errorf("expected TrackingType='work' forwarded, got %q", act.TrackingType)
+	}
+	if act.IsVTK {
+		t.Error("expected IsVTK=false for a project-linked work item, got true")
+	}
+	if act.ProjectMaterialID == nil || *act.ProjectMaterialID != matID {
+		t.Errorf("expected ProjectMaterialID=%q forwarded, got %v", matID, act.ProjectMaterialID)
+	}
+}
+
+// TestDailyReport_Approve_WorkItemZeroStockApproves verifies (at the service layer)
+// that a work-item approval is not blocked by the effects layer returning an error.
+// The actual no-stock-check behavior lives in applyMontaza (effects repo), but the
+// service must propagate a success transparently.
+func TestDailyReport_Approve_WorkItemZeroStockApproves(t *testing.T) {
+	matID := "mat-stemanje"
+	statusSet := ""
+	fx := &mockMaterialEffectsRepo{} // validateAndApplyFn nil → success
+	repo := &mockDrRepo{
+		getByIDForEditFn: func(_ context.Context, _, _ string) (string, string, string, error) {
+			return "submitted", "emp-poslovoda", "project-1", nil
+		},
+		getActivitiesForApprovalFn: func(_ context.Context, _, _ string) ([]repositories.ActivityForApproval, error) {
+			return []repositories.ActivityForApproval{
+				{
+					ID:               "act-work",
+					ProjectMaterialID: &matID,
+					Quantity:          25,
+					Unit:             "m",
+					ActivityType:     "montaza",
+					IsVTK:            false,
+					TrackingType:     "work",
+				},
+			}, nil
+		},
+		setStatusFn: func(_ context.Context, _ pgx.Tx, _, _, status string, _ *string) error {
+			statusSet = status
+			return nil
+		},
+	}
+	if err := newDrSvcWithEffects(repo, fx).Approve(context.Background(), "report-1", "co-1", "user-1", "emp-d"); err != nil {
+		t.Fatalf("work-item approval with zero stock should succeed, got: %v", err)
+	}
+	if statusSet != "approved" {
+		t.Errorf("expected status='approved', got %q", statusSet)
+	}
+}
+
+// TestDailyReport_Approve_VTKActivityNotReroutedAsWorkItem verifies that a genuine
+// VTK activity (is_vtk=true, custom_material_name set) retains TrackingType="stock"
+// and is NOT routed through work-item logic. The effects repo validates stock for VTK.
+func TestDailyReport_Approve_VTKActivityNotReroutedAsWorkItem(t *testing.T) {
+	matName := "Beton B25"
+	var gotActs []repositories.ActivityForApproval
+	fx := &mockMaterialEffectsRepo{
+		validateAndApplyFn: func(_ context.Context, _ pgx.Tx, _, _, _, _, _ string, acts []repositories.ActivityForApproval) error {
+			gotActs = acts
+			return nil
+		},
+	}
+	repo := &mockDrRepo{
+		getByIDForEditFn: func(_ context.Context, _, _ string) (string, string, string, error) {
+			return "submitted", "emp-poslovoda", "project-1", nil
+		},
+		getActivitiesForApprovalFn: func(_ context.Context, _, _ string) ([]repositories.ActivityForApproval, error) {
+			return []repositories.ActivityForApproval{
+				{
+					ID:                 "act-vtk",
+					CustomMaterialName: &matName,
+					Quantity:           5,
+					Unit:               "m3",
+					ActivityType:       "montaza",
+					IsVTK:              true,
+					TrackingType:       "stock",
+				},
+			}, nil
+		},
+	}
+	if err := newDrSvcWithEffects(repo, fx).Approve(context.Background(), "report-1", "co-1", "user-1", "emp-d"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(gotActs) != 1 {
+		t.Fatalf("expected 1 activity, got %d", len(gotActs))
+	}
+	if !gotActs[0].IsVTK {
+		t.Error("VTK activity must remain IsVTK=true when forwarded to effects repo")
+	}
+	if gotActs[0].TrackingType != "stock" {
+		t.Errorf("VTK activity must retain TrackingType='stock', got %q", gotActs[0].TrackingType)
+	}
+}
+
+// TestDailyReport_Approve_NormalStockActivityUnchanged verifies that a normal
+// stock activity (is_vtk=false, tracking_type=stock) is forwarded unchanged —
+// existing stock subtraction behaviour must not be affected by work-item changes.
+func TestDailyReport_Approve_NormalStockActivityUnchanged(t *testing.T) {
+	matID := "mat-beton"
+	var gotActs []repositories.ActivityForApproval
+	fx := &mockMaterialEffectsRepo{
+		validateAndApplyFn: func(_ context.Context, _ pgx.Tx, _, _, _, _, _ string, acts []repositories.ActivityForApproval) error {
+			gotActs = acts
+			return nil
+		},
+	}
+	repo := &mockDrRepo{
+		getByIDForEditFn: func(_ context.Context, _, _ string) (string, string, string, error) {
+			return "submitted", "emp-poslovoda", "project-1", nil
+		},
+		getActivitiesForApprovalFn: func(_ context.Context, _, _ string) ([]repositories.ActivityForApproval, error) {
+			return []repositories.ActivityForApproval{
+				{
+					ID:               "act-stock",
+					ProjectMaterialID: &matID,
+					Quantity:          3,
+					Unit:             "m3",
+					ActivityType:     "montaza",
+					IsVTK:            false,
+					TrackingType:     "stock",
+				},
+			}, nil
+		},
+	}
+	if err := newDrSvcWithEffects(repo, fx).Approve(context.Background(), "report-1", "co-1", "user-1", "emp-d"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(gotActs) != 1 {
+		t.Fatalf("expected 1 activity, got %d", len(gotActs))
+	}
+	act := gotActs[0]
+	if act.IsVTK {
+		t.Error("normal stock activity must remain IsVTK=false")
+	}
+	if act.TrackingType != "stock" {
+		t.Errorf("normal stock activity must retain TrackingType='stock', got %q", act.TrackingType)
+	}
+	if act.ProjectMaterialID == nil || *act.ProjectMaterialID != matID {
+		t.Errorf("expected ProjectMaterialID=%q, got %v", matID, act.ProjectMaterialID)
+	}
+}

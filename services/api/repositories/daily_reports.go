@@ -84,24 +84,29 @@ type ActivityForApproval struct {
 	Unit               string
 	ActivityType       string
 	IsVTK              bool
+	TrackingType       string // "stock" or "work"; always "stock" for VTK activities
 }
 
-// GetActivitiesForApproval returns montaža and demontaža activities for a report.
+// GetActivitiesForApproval returns montaža and demontaža activities for a report,
+// joined with the project material's tracking_type so the effects repository can
+// apply the correct logic (stock adjustment vs. work progress).
 func (r *DailyReportRepository) GetActivitiesForApproval(ctx context.Context, reportID, companyID string) ([]ActivityForApproval, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT
-			id::text,
-			project_material_id::text,
-			custom_material_name,
-			quantity,
-			unit,
-			activity_type,
-			is_vtk
-		FROM daily_report_activities
-		WHERE daily_report_id = $1::uuid
-		  AND company_id = $2::uuid
-		  AND activity_type IN ('montaza', 'demontaza')
-		ORDER BY created_at
+			dra.id::text,
+			dra.project_material_id::text,
+			dra.custom_material_name,
+			dra.quantity,
+			dra.unit,
+			dra.activity_type,
+			dra.is_vtk,
+			COALESCE(pm.tracking_type, 'stock') AS tracking_type
+		FROM daily_report_activities dra
+		LEFT JOIN project_materials pm ON pm.id = dra.project_material_id
+		WHERE dra.daily_report_id = $1::uuid
+		  AND dra.company_id = $2::uuid
+		  AND dra.activity_type IN ('montaza', 'demontaza')
+		ORDER BY dra.created_at
 	`, reportID, companyID)
 	if err != nil {
 		return nil, err
@@ -119,6 +124,7 @@ func (r *DailyReportRepository) GetActivitiesForApproval(ctx context.Context, re
 			&a.Unit,
 			&a.ActivityType,
 			&a.IsVTK,
+			&a.TrackingType,
 		); err != nil {
 			return nil, err
 		}
@@ -289,7 +295,8 @@ func (r *DailyReportRepository) GetByID(ctx context.Context, id, companyID strin
 			dra.unit,
 			dra.activity_type,
 			dra.is_vtk,
-			dra.notes
+			dra.notes,
+			COALESCE(pm.tracking_type, 'stock') AS tracking_type
 		FROM daily_report_activities dra
 		LEFT JOIN project_materials pm ON pm.id = dra.project_material_id
 		WHERE dra.daily_report_id = $1::uuid AND dra.company_id = $2::uuid
@@ -305,7 +312,7 @@ func (r *DailyReportRepository) GetByID(ctx context.Context, id, companyID strin
 		if err := actRows.Scan(
 			&a.ID, &a.ProjectMaterialID, &a.MaterialName,
 			&a.CustomMaterialName, &a.Quantity, &a.Unit,
-			&a.ActivityType, &a.IsVTK, &a.Notes,
+			&a.ActivityType, &a.IsVTK, &a.Notes, &a.TrackingType,
 		); err != nil {
 			return nil, err
 		}
@@ -467,7 +474,7 @@ func (r *DailyReportRepository) GetAllActiveWorkers(ctx context.Context, company
 
 func (r *DailyReportRepository) GetMaterialsForProject(ctx context.Context, projectID, companyID string) ([]dto.FormDataMaterial, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id::text, material_name, material_code, available_quantity, unit
+		SELECT id::text, material_name, material_code, available_quantity, unit, tracking_type
 		FROM project_materials
 		WHERE project_id = $1::uuid AND company_id = $2::uuid AND active = true
 		ORDER BY material_name
@@ -480,7 +487,7 @@ func (r *DailyReportRepository) GetMaterialsForProject(ctx context.Context, proj
 	var items []dto.FormDataMaterial
 	for rows.Next() {
 		var m dto.FormDataMaterial
-		if err := rows.Scan(&m.ID, &m.MaterialName, &m.MaterialCode, &m.AvailableQuantity, &m.Unit); err != nil {
+		if err := rows.Scan(&m.ID, &m.MaterialName, &m.MaterialCode, &m.AvailableQuantity, &m.Unit, &m.TrackingType); err != nil {
 			return nil, err
 		}
 		items = append(items, m)

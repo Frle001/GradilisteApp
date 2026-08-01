@@ -108,6 +108,7 @@ export default function DailyReportForm({
       activity_type: a.activity_type,
       is_vtk: a.is_vtk,
       notes: a.notes,
+      tracking_type: a.tracking_type,
     }))
   })
 

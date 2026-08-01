@@ -65,6 +65,7 @@ export interface DailyReportActivity {
   activity_type: ActivityType
   is_vtk: boolean
   notes: string | null
+  tracking_type: 'stock' | 'work'
 }
 
 export interface DailyReportAttachment {
@@ -110,6 +111,7 @@ export interface FormDataMaterial {
   material_code: string | null
   available_quantity: number
   unit: string
+  tracking_type: 'stock' | 'work'
 }
 
 export interface DailyReportFormData {
@@ -158,6 +160,7 @@ export interface WorkerHoursEntry {
 export interface ActivityInputUI extends ActivityInput {
   _tempId: string
   _displayName: string  // resolved material name for display
+  tracking_type?: 'stock' | 'work'
 }
 
 // ── Permission helpers ────────────────────────────────────────────────────────

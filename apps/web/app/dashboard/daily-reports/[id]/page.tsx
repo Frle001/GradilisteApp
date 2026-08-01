@@ -218,7 +218,7 @@ export default function DailyReportDetailPage() {
                           <span className="text-sm text-slate-100 font-medium">
                             {a.custom_material_name ?? a.material_name}
                           </span>
-                          <ActivityTypeBadge type={a.activity_type} isVtk={a.is_vtk} />
+                          <ActivityTypeBadge type={a.activity_type} isVtk={a.is_vtk} trackingType={a.tracking_type} />
                         </div>
                         <div className="flex flex-wrap gap-x-4 text-xs text-slate-400">
                           <span>Količina: <span className="text-slate-200">{a.quantity} {a.unit}</span></span>

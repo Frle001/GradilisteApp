@@ -32,13 +32,23 @@ export default function ActivityEntryForm({ materials, materialsLoading = false,
   const [errors, setErrors] = useState<string[]>([])
   const [createModalName, setCreateModalName] = useState<string | null>(null)
 
+  const selectedMat = !isVtk && materialId ? materials.find(m => m.id === materialId) ?? null : null
+  const isWorkItem = selectedMat?.tracking_type === 'work'
+
   function validate(): string[] {
     const errs: string[] = []
+
+    // Contradictory state: should never occur via UI, but defend anyway
+    if (isVtk && materialId) {
+      errs.push('Nije moguće odabrati projekt-materijal i VTR način istovremeno.')
+    }
+
     if (isVtk) {
       if (!customName.trim()) errs.push('Naziv materijala je obavezan za VTR aktivnost.')
     } else {
       if (!materialId) errs.push('Odaberite materijal.')
-      if (materialId && activityType === 'montaza') {
+      // Stock check only for stock-type montaža; work items have no stock pool.
+      if (materialId && activityType === 'montaza' && !isWorkItem) {
         const mat = materials.find(m => m.id === materialId)
         if (mat && mat.available_quantity === 0) {
           errs.push('Nije moguće utrošiti novi materijal bez raspoložive količine.')
@@ -49,6 +59,16 @@ export default function ActivityEntryForm({ materials, materialsLoading = false,
     if (!quantity || isNaN(qty) || qty <= 0) errs.push('Količina mora biti pozitivan broj.')
     if (!unit.trim()) errs.push('Jedinica mjere je obavezna.')
     return errs
+  }
+
+  function handleVtkToggle() {
+    if (disabled) return
+    if (!isVtk) {
+      // Enabling VTK: clear any selected project material so state is never contradictory.
+      setMaterialId('')
+      setUnit('')
+    }
+    setIsVtk(v => !v)
   }
 
   function handleCreateNew(name: string) {
@@ -71,9 +91,9 @@ export default function ActivityEntryForm({ materials, materialsLoading = false,
   }
 
   // unit comes directly from the picker so no materials.find() needed
-  function handleMaterialChange(id: string, unit: string) {
+  function handleMaterialChange(id: string, pickerUnit: string) {
     setMaterialId(id)
-    setUnit(id ? unit : '')
+    setUnit(id ? pickerUnit : '')
   }
 
   function handleAdd() {
@@ -91,6 +111,7 @@ export default function ActivityEntryForm({ materials, materialsLoading = false,
       activity_type: activityType,
       is_vtk: isVtk,
       notes: notes.trim() || null,
+      tracking_type: isWorkItem ? 'work' : 'stock',
     }
     onAdd(activity)
 
@@ -113,7 +134,7 @@ export default function ActivityEntryForm({ materials, materialsLoading = false,
           <div
             role="checkbox"
             aria-checked={isVtk}
-            onClick={() => { if (!disabled) setIsVtk(v => !v) }}
+            onClick={handleVtkToggle}
             className={`relative w-9 h-5 rounded-full transition-colors cursor-pointer ${isVtk ? 'bg-amber-500' : 'bg-slate-600'}`}
           >
             <span
@@ -148,6 +169,11 @@ export default function ActivityEntryForm({ materials, materialsLoading = false,
               disabled={disabled}
               onCreateNew={!disabled && projectId ? handleCreateNew : undefined}
             />
+            {isWorkItem && (
+              <p className="mt-1.5 text-xs text-emerald-400">
+                Upisana količina evidentira izvedeni rad i ne oduzima se sa zalihe.
+              </p>
+            )}
           </div>
         )}
 

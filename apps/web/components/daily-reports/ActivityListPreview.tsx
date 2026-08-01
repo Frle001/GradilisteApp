@@ -30,7 +30,7 @@ export default function ActivityListPreview({ activities, onRemove, disabled = f
           <div className="flex-1 min-w-0 space-y-1">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm text-slate-100 font-medium truncate">{a._displayName}</span>
-              <ActivityTypeBadge type={a.activity_type} isVtk={a.is_vtk} />
+              <ActivityTypeBadge type={a.activity_type} isVtk={a.is_vtk} trackingType={a.tracking_type} />
             </div>
             <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-slate-400">
               <span>

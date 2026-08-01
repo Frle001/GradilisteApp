@@ -83,6 +83,7 @@ type DailyReportActivity struct {
 	ActivityType       string  `json:"activity_type"`
 	IsVTK              bool    `json:"is_vtk"`
 	Notes              *string `json:"notes"`
+	TrackingType       string  `json:"tracking_type"` // "stock" or "work"
 }
 
 type DailyReportAttachment struct {
@@ -128,6 +129,7 @@ type FormDataMaterial struct {
 	MaterialCode      *string `json:"material_code"`
 	AvailableQuantity float64 `json:"available_quantity"`
 	Unit              string  `json:"unit"`
+	TrackingType      string  `json:"tracking_type"` // "stock" or "work"
 }
 
 type DailyReportFormData struct {
