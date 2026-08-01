@@ -125,7 +125,7 @@ export default function GradevinskiDnevnikPage() {
           </div>
         )}
 
-        <GradevinskiDnevnikTable rows={data?.data ?? []} loading={loading} />
+        <GradevinskiDnevnikTable rows={data?.data ?? []} loading={loading} userRole={user.role} />
 
         {data && data.pagination.total > 0 && (
           <ReportPaginationBar pagination={data.pagination} onPageChange={handlePageChange} />

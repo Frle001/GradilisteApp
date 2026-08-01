@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gradiliste/api/dto"
+	"github.com/gradiliste/api/repositories"
 )
 
 // ── Mock repository ───────────────────────────────────────────────────────────
@@ -15,9 +16,13 @@ type mockWorkerHoursRepo struct {
 	listAllProjectsFn  func(ctx context.Context, companyID string) ([]dto.WorkerProject, error)
 	getProjectStatusFn func(ctx context.Context, companyID, projectID string) (string, error)
 	otherHoursFn       func(ctx context.Context, companyID, workerEmpID, projectID, workDate string) (float64, error)
-	upsertFn           func(ctx context.Context, companyID, workerEmpID, projectID, workDate string, hours float64, notes *string, submittedBy string) (*dto.WorkerHoursEntry, error)
+	upsertFn           func(ctx context.Context, companyID, workerEmpID, projectID, workDate string, hours float64, notes, workDescription *string, submittedBy string) (*dto.WorkerHoursEntry, error)
 	listForDateFn      func(ctx context.Context, companyID, workerEmpID, workDate string) ([]dto.WorkerHoursEntry, error)
 	listBeforeDateFn   func(ctx context.Context, companyID, workerEmpID, beforeDate string) ([]dto.WorkerHoursEntry, error)
+	listForManagerFn   func(ctx context.Context, companyID, projectID, workDate string) ([]dto.ManagerWorkerHoursEntry, error)
+	getByIDFn          func(ctx context.Context, companyID, entryID string) (*dto.WorkerHoursDetail, error)
+	correctHoursFn     func(ctx context.Context, companyID, entryID string, newHours float64, reason, changedBy string) error
+	addCommentFn       func(ctx context.Context, companyID, entryID, authorUserID, text string) (*dto.WorkerHoursComment, error)
 }
 
 func (m *mockWorkerHoursRepo) ListCompanyActiveProjects(ctx context.Context, companyID string) ([]dto.WorkerProject, error) {
@@ -41,9 +46,9 @@ func (m *mockWorkerHoursRepo) GetOtherProjectsHoursForDate(ctx context.Context, 
 	return 0, nil
 }
 
-func (m *mockWorkerHoursRepo) Upsert(ctx context.Context, companyID, workerEmpID, projectID, workDate string, hours float64, notes *string, submittedBy string) (*dto.WorkerHoursEntry, error) {
+func (m *mockWorkerHoursRepo) Upsert(ctx context.Context, companyID, workerEmpID, projectID, workDate string, hours float64, notes, workDescription *string, submittedBy string) (*dto.WorkerHoursEntry, error) {
 	if m.upsertFn != nil {
-		return m.upsertFn(ctx, companyID, workerEmpID, projectID, workDate, hours, notes, submittedBy)
+		return m.upsertFn(ctx, companyID, workerEmpID, projectID, workDate, hours, notes, workDescription, submittedBy)
 	}
 	return &dto.WorkerHoursEntry{ID: "entry-id"}, nil
 }
@@ -62,13 +67,40 @@ func (m *mockWorkerHoursRepo) ListBeforeDate(ctx context.Context, companyID, wor
 	return []dto.WorkerHoursEntry{}, nil
 }
 
+func (m *mockWorkerHoursRepo) ListForManager(ctx context.Context, companyID, projectID, workDate string) ([]dto.ManagerWorkerHoursEntry, error) {
+	if m.listForManagerFn != nil {
+		return m.listForManagerFn(ctx, companyID, projectID, workDate)
+	}
+	return []dto.ManagerWorkerHoursEntry{}, nil
+}
+
+func (m *mockWorkerHoursRepo) GetByID(ctx context.Context, companyID, entryID string) (*dto.WorkerHoursDetail, error) {
+	if m.getByIDFn != nil {
+		return m.getByIDFn(ctx, companyID, entryID)
+	}
+	return &dto.WorkerHoursDetail{}, nil
+}
+
+func (m *mockWorkerHoursRepo) CorrectHours(ctx context.Context, companyID, entryID string, newHours float64, reason, changedBy string) error {
+	if m.correctHoursFn != nil {
+		return m.correctHoursFn(ctx, companyID, entryID, newHours, reason, changedBy)
+	}
+	return nil
+}
+
+func (m *mockWorkerHoursRepo) AddComment(ctx context.Context, companyID, entryID, authorUserID, text string) (*dto.WorkerHoursComment, error) {
+	if m.addCommentFn != nil {
+		return m.addCommentFn(ctx, companyID, entryID, authorUserID, text)
+	}
+	return &dto.WorkerHoursComment{ID: "comment-id", CommentText: text}, nil
+}
+
 func newWHSvc(repo *mockWorkerHoursRepo) *WorkerHoursService {
 	return &WorkerHoursService{repo: repo}
 }
 
 // ── ListCompanyProjects ───────────────────────────────────────────────────────
 
-// Both radnik and poslovoda see all active company projects — no assignment filter.
 func TestListProjects_RadnikSeesAllCompanyProjects(t *testing.T) {
 	svc := newWHSvc(&mockWorkerHoursRepo{})
 	projects, err := svc.ListCompanyProjects(context.Background(), "comp", "radnik")
@@ -139,11 +171,10 @@ func baseReq() dto.SubmitWorkerHoursRequest {
 	}
 }
 
-// Both roles submit to any active company project without an assignment check.
 func TestSubmit_RadnikCanSubmitToAnyActiveProject(t *testing.T) {
 	upsertCalled := false
 	repo := &mockWorkerHoursRepo{
-		upsertFn: func(_ context.Context, companyID, workerEmpID, projectID, workDate string, hours float64, _ *string, submittedBy string) (*dto.WorkerHoursEntry, error) {
+		upsertFn: func(_ context.Context, companyID, _, _, _ string, _ float64, _ *string, _ *string, _ string) (*dto.WorkerHoursEntry, error) {
 			upsertCalled = true
 			if companyID != "comp" {
 				t.Errorf("unexpected companyID %q", companyID)
@@ -164,7 +195,7 @@ func TestSubmit_RadnikCanSubmitToAnyActiveProject(t *testing.T) {
 func TestSubmit_PoslovodaCanSubmitToAnyActiveProject(t *testing.T) {
 	upsertCalled := false
 	repo := &mockWorkerHoursRepo{
-		upsertFn: func(_ context.Context, _, _, _, _ string, _ float64, _ *string, _ string) (*dto.WorkerHoursEntry, error) {
+		upsertFn: func(_ context.Context, _, _, _, _ string, _ float64, _ *string, _ *string, _ string) (*dto.WorkerHoursEntry, error) {
 			upsertCalled = true
 			return &dto.WorkerHoursEntry{ID: "e1"}, nil
 		},
@@ -179,11 +210,31 @@ func TestSubmit_PoslovodaCanSubmitToAnyActiveProject(t *testing.T) {
 	}
 }
 
-// Project from another company (GetProjectStatus returns "") is rejected.
+func TestSubmit_WorkDescriptionForwardedToRepo(t *testing.T) {
+	desc := "Betoniranje temelja"
+	var capturedDesc *string
+	repo := &mockWorkerHoursRepo{
+		upsertFn: func(_ context.Context, _, _, _, _ string, _ float64, _ *string, wd *string, _ string) (*dto.WorkerHoursEntry, error) {
+			capturedDesc = wd
+			return &dto.WorkerHoursEntry{ID: "e1"}, nil
+		},
+	}
+	req := baseReq()
+	req.WorkDescription = &desc
+	svc := newWHSvc(repo)
+	_, err := svc.Submit(context.Background(), "comp", "emp", "user", "poslovoda", req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if capturedDesc == nil || *capturedDesc != desc {
+		t.Errorf("expected work_description %q forwarded to repo, got %v", desc, capturedDesc)
+	}
+}
+
 func TestSubmit_ProjectFromOtherCompanyRejected(t *testing.T) {
 	repo := &mockWorkerHoursRepo{
 		getProjectStatusFn: func(_ context.Context, _, _ string) (string, error) {
-			return "", nil // not found in this company
+			return "", nil
 		},
 	}
 	for _, role := range []string{"radnik", "poslovoda"} {
@@ -196,7 +247,6 @@ func TestSubmit_ProjectFromOtherCompanyRejected(t *testing.T) {
 	}
 }
 
-// Inactive or archived projects are rejected.
 func TestSubmit_InactiveProjectRejected(t *testing.T) {
 	for _, status := range []string{"archived", "completed", "draft"} {
 		repo := &mockWorkerHoursRepo{
@@ -215,7 +265,6 @@ func TestSubmit_InactiveProjectRejected(t *testing.T) {
 	}
 }
 
-// Future or past dates are rejected.
 func TestSubmit_WrongDateRejected(t *testing.T) {
 	for _, date := range []string{"2099-01-01", "2020-01-01"} {
 		req := baseReq()
@@ -231,7 +280,6 @@ func TestSubmit_WrongDateRejected(t *testing.T) {
 	}
 }
 
-// Hours outside [0, 24] are rejected.
 func TestSubmit_InvalidHoursRejected(t *testing.T) {
 	for _, h := range []float64{-1, 25, 100} {
 		req := baseReq()
@@ -247,7 +295,6 @@ func TestSubmit_InvalidHoursRejected(t *testing.T) {
 	}
 }
 
-// Daily total exceeding 24 h is rejected.
 func TestSubmit_DailyCapExceeded(t *testing.T) {
 	repo := &mockWorkerHoursRepo{
 		otherHoursFn: func(_ context.Context, _, _, _, _ string) (float64, error) {
@@ -255,7 +302,7 @@ func TestSubmit_DailyCapExceeded(t *testing.T) {
 		},
 	}
 	req := baseReq()
-	req.HoursWorked = 5 // 20 + 5 > 24
+	req.HoursWorked = 5
 	for _, role := range []string{"radnik", "poslovoda"} {
 		svc := newWHSvc(repo)
 		_, err := svc.Submit(context.Background(), "comp", "emp", "user", role, req)
@@ -266,11 +313,110 @@ func TestSubmit_DailyCapExceeded(t *testing.T) {
 	}
 }
 
-// Unsupported roles are forbidden.
 func TestSubmit_UnknownRoleForbidden(t *testing.T) {
 	for _, role := range []string{"direktor", "inzenjer", "administracija", ""} {
 		svc := newWHSvc(&mockWorkerHoursRepo{})
 		_, err := svc.Submit(context.Background(), "comp", "emp", "user", role, baseReq())
+		if !errors.Is(err, ErrForbidden) {
+			t.Errorf("role=%q: expected ErrForbidden, got %v", role, err)
+		}
+	}
+}
+
+// ── Manager access control ────────────────────────────────────────────────────
+
+func TestGetDetail_ManagerRolesAllowed(t *testing.T) {
+	for _, role := range []string{"direktor", "inzenjer"} {
+		svc := newWHSvc(&mockWorkerHoursRepo{})
+		_, err := svc.GetDetail(context.Background(), "comp", role, "entry-id")
+		if errors.Is(err, ErrForbidden) {
+			t.Errorf("role=%s: expected access, got ErrForbidden", role)
+		}
+	}
+}
+
+func TestGetDetail_NonManagerRolesForbidden(t *testing.T) {
+	for _, role := range []string{"radnik", "poslovoda", "administracija", ""} {
+		svc := newWHSvc(&mockWorkerHoursRepo{})
+		_, err := svc.GetDetail(context.Background(), "comp", role, "entry-id")
+		if !errors.Is(err, ErrForbidden) {
+			t.Errorf("role=%q: expected ErrForbidden, got %v", role, err)
+		}
+	}
+}
+
+func TestGetDetail_NotFoundPropagated(t *testing.T) {
+	repo := &mockWorkerHoursRepo{
+		getByIDFn: func(_ context.Context, _, _ string) (*dto.WorkerHoursDetail, error) {
+			return nil, repositories.ErrWorkerHoursNotFound
+		},
+	}
+	svc := newWHSvc(repo)
+	_, err := svc.GetDetail(context.Background(), "comp", "direktor", "missing-id")
+	if !errors.Is(err, repositories.ErrWorkerHoursNotFound) {
+		t.Errorf("expected ErrWorkerHoursNotFound, got %v", err)
+	}
+}
+
+func TestCorrectEntry_NonManagerForbidden(t *testing.T) {
+	for _, role := range []string{"radnik", "poslovoda", ""} {
+		svc := newWHSvc(&mockWorkerHoursRepo{})
+		err := svc.CorrectEntry(context.Background(), "comp", role, "user", "entry-id",
+			dto.CorrectWorkerHoursRequest{NewHours: 8, Reason: "Test"})
+		if !errors.Is(err, ErrForbidden) {
+			t.Errorf("role=%q: expected ErrForbidden, got %v", role, err)
+		}
+	}
+}
+
+func TestCorrectEntry_InvalidHoursRejected(t *testing.T) {
+	for _, h := range []float64{-1, 25} {
+		svc := newWHSvc(&mockWorkerHoursRepo{})
+		err := svc.CorrectEntry(context.Background(), "comp", "direktor", "user", "entry-id",
+			dto.CorrectWorkerHoursRequest{NewHours: h, Reason: "Test"})
+		var ve *ValidationError
+		if !errors.As(err, &ve) {
+			t.Errorf("hours=%.0f: expected ValidationError, got %v", h, err)
+		}
+	}
+}
+
+func TestCorrectEntry_ForwardsToRepo(t *testing.T) {
+	correctCalled := false
+	repo := &mockWorkerHoursRepo{
+		correctHoursFn: func(_ context.Context, companyID, entryID string, newHours float64, reason, changedBy string) error {
+			correctCalled = true
+			if companyID != "comp" || entryID != "entry-id" || newHours != 6 || changedBy != "user-id" {
+				return errors.New("unexpected args")
+			}
+			return nil
+		},
+	}
+	svc := newWHSvc(repo)
+	err := svc.CorrectEntry(context.Background(), "comp", "direktor", "user-id", "entry-id",
+		dto.CorrectWorkerHoursRequest{NewHours: 6, Reason: "Ispravljeno"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !correctCalled {
+		t.Error("CorrectHours was not called on repo")
+	}
+}
+
+func TestAddComment_NonManagerForbidden(t *testing.T) {
+	for _, role := range []string{"radnik", "poslovoda", ""} {
+		svc := newWHSvc(&mockWorkerHoursRepo{})
+		_, err := svc.AddComment(context.Background(), "comp", role, "user", "entry-id", "tekst")
+		if !errors.Is(err, ErrForbidden) {
+			t.Errorf("role=%q: expected ErrForbidden, got %v", role, err)
+		}
+	}
+}
+
+func TestListManagerEntries_NonManagerForbidden(t *testing.T) {
+	for _, role := range []string{"radnik", "poslovoda", ""} {
+		svc := newWHSvc(&mockWorkerHoursRepo{})
+		_, err := svc.ListManagerEntries(context.Background(), "comp", role, "", "")
 		if !errors.Is(err, ErrForbidden) {
 			t.Errorf("role=%q: expected ErrForbidden, got %v", role, err)
 		}

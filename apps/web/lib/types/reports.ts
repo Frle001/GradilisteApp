@@ -36,6 +36,11 @@ export interface GradevinskiDnevnikRow {
   worker_name: string
   hours_worked: number
   notes: string | null
+  work_description: string | null
+  worker_role: string
+  worker_hours_id: string | null
+  has_revisions: boolean
+  has_comments: boolean
   status: string
   source: string
 }

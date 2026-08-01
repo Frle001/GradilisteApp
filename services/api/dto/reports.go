@@ -27,19 +27,24 @@ type ReportPagination struct {
 // ── Građevinski dnevnik ───────────────────────────────────────────────────────
 
 type GradevinskiDnevnikRow struct {
-	ReportID       string  `json:"report_id"`
-	ReportDate     string  `json:"report_date"`
-	ProjectID      string  `json:"project_id"`
-	ProjectName    string  `json:"project_name"`
-	ProjectAddress *string `json:"project_address"`
-	PoslovodaID    string  `json:"poslovoda_id"`
-	PoslovodaName  string  `json:"poslovoda_name"`
-	WorkerID       string  `json:"worker_id"`
-	WorkerName     string  `json:"worker_name"`
-	HoursWorked    float64 `json:"hours_worked"`
-	Notes          *string `json:"notes"`
-	Status         string  `json:"status"`
-	Source         string  `json:"source"`
+	ReportID        string  `json:"report_id"`
+	ReportDate      string  `json:"report_date"`
+	ProjectID       string  `json:"project_id"`
+	ProjectName     string  `json:"project_name"`
+	ProjectAddress  *string `json:"project_address"`
+	PoslovodaID     string  `json:"poslovoda_id"`
+	PoslovodaName   string  `json:"poslovoda_name"`
+	WorkerID        string  `json:"worker_id"`
+	WorkerName      string  `json:"worker_name"`
+	HoursWorked     float64 `json:"hours_worked"`
+	Notes           *string `json:"notes"`
+	WorkDescription *string `json:"work_description"`
+	WorkerRole      string  `json:"worker_role"`
+	WorkerHoursID   *string `json:"worker_hours_id"` // non-null only for worker_daily_hours rows
+	HasRevisions    bool    `json:"has_revisions"`
+	HasComments     bool    `json:"has_comments"`
+	Status          string  `json:"status"`
+	Source          string  `json:"source"`
 }
 
 type GradevinskiDnevnikSummary struct {

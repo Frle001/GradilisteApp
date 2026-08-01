@@ -13,9 +13,15 @@ type workerHoursRepoIface interface {
 	ListCompanyActiveProjects(ctx context.Context, companyID string) ([]dto.WorkerProject, error)
 	GetProjectStatus(ctx context.Context, companyID, projectID string) (string, error)
 	GetOtherProjectsHoursForDate(ctx context.Context, companyID, workerEmpID, projectID, workDate string) (float64, error)
-	Upsert(ctx context.Context, companyID, workerEmpID, projectID, workDate string, hoursWorked float64, notes *string, submittedByUserID string) (*dto.WorkerHoursEntry, error)
+	Upsert(ctx context.Context, companyID, workerEmpID, projectID, workDate string, hoursWorked float64, notes, workDescription *string, submittedByUserID string) (*dto.WorkerHoursEntry, error)
 	ListForWorkerDate(ctx context.Context, companyID, workerEmpID, workDate string) ([]dto.WorkerHoursEntry, error)
 	ListBeforeDate(ctx context.Context, companyID, workerEmpID, beforeDate string) ([]dto.WorkerHoursEntry, error)
+
+	// Manager methods
+	ListForManager(ctx context.Context, companyID, projectID, workDate string) ([]dto.ManagerWorkerHoursEntry, error)
+	GetByID(ctx context.Context, companyID, entryID string) (*dto.WorkerHoursDetail, error)
+	CorrectHours(ctx context.Context, companyID, entryID string, newHours float64, reason, changedByUserID string) error
+	AddComment(ctx context.Context, companyID, entryID, authorUserID, text string) (*dto.WorkerHoursComment, error)
 }
 
 type WorkerHoursService struct {
@@ -57,6 +63,7 @@ func (s *WorkerHoursService) ListHistory(ctx context.Context, companyID, workerE
 
 // Submit validates and upserts the employee's hours for today.
 // Both radnik and poslovoda use the same validation and upsert flow.
+// work_description is accepted from any role but only surfaced in the poslovoda UI.
 func (s *WorkerHoursService) Submit(ctx context.Context, companyID, workerEmpID, callerUserID, callerRole string, req dto.SubmitWorkerHoursRequest) (*dto.WorkerHoursEntry, error) {
 	switch callerRole {
 	case "radnik", "poslovoda":
@@ -96,5 +103,55 @@ func (s *WorkerHoursService) Submit(ctx context.Context, companyID, workerEmpID,
 		return nil, validationErr(fmt.Sprintf("Ukupni sati za danas bi premašili 24 sata (već upisano: %.1f h na ostalim projektima)", otherHours))
 	}
 
-	return s.repo.Upsert(ctx, companyID, workerEmpID, req.ProjectID, req.WorkDate, req.HoursWorked, req.Notes, callerUserID)
+	return s.repo.Upsert(ctx, companyID, workerEmpID, req.ProjectID, req.WorkDate, req.HoursWorked, req.Notes, req.WorkDescription, callerUserID)
+}
+
+// ── Manager methods ───────────────────────────────────────────────────────────
+
+func (s *WorkerHoursService) isManager(role string) bool {
+	return role == "direktor" || role == "inzenjer"
+}
+
+// ListManagerEntries returns all worker-hours entries visible to a manager.
+// projectID and workDate are optional filters (empty string = no filter).
+func (s *WorkerHoursService) ListManagerEntries(ctx context.Context, companyID, callerRole, projectID, workDate string) ([]dto.ManagerWorkerHoursEntry, error) {
+	if !s.isManager(callerRole) {
+		return nil, ErrForbidden
+	}
+	return s.repo.ListForManager(ctx, companyID, projectID, workDate)
+}
+
+// GetDetail returns the full entry detail including revision history and comments.
+func (s *WorkerHoursService) GetDetail(ctx context.Context, companyID, callerRole, entryID string) (*dto.WorkerHoursDetail, error) {
+	if !s.isManager(callerRole) {
+		return nil, ErrForbidden
+	}
+	return s.repo.GetByID(ctx, companyID, entryID)
+}
+
+// CorrectEntry validates and applies a manager correction to worker hours.
+// The correction is recorded in the revisions table within a single transaction.
+func (s *WorkerHoursService) CorrectEntry(ctx context.Context, companyID, callerRole, callerUserID, entryID string, req dto.CorrectWorkerHoursRequest) error {
+	if !s.isManager(callerRole) {
+		return ErrForbidden
+	}
+	if req.NewHours < 0 || req.NewHours > 24 {
+		return validationErr("Ispravljeni broj sati mora biti između 0 i 24")
+	}
+	if req.Reason == "" {
+		return validationErr("Razlog ispravka je obavezan")
+	}
+	return s.repo.CorrectHours(ctx, companyID, entryID, req.NewHours, req.Reason, callerUserID)
+}
+
+// AddComment adds a private internal comment on a worker-hours entry.
+// Comments are only visible to direktor and inženjer.
+func (s *WorkerHoursService) AddComment(ctx context.Context, companyID, callerRole, callerUserID, entryID, text string) (*dto.WorkerHoursComment, error) {
+	if !s.isManager(callerRole) {
+		return nil, ErrForbidden
+	}
+	if text == "" {
+		return nil, validationErr("Komentar ne smije biti prazan")
+	}
+	return s.repo.AddComment(ctx, companyID, entryID, callerUserID, text)
 }

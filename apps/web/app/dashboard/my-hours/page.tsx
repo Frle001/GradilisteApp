@@ -18,6 +18,7 @@ interface HoursEntry {
   work_date: string
   hours_worked: number
   notes: string | null
+  work_description: string | null
   updated_at: string
 }
 
@@ -56,6 +57,7 @@ export default function MyHoursPage() {
   const [selectedProject, setSelectedProject] = useState('')
   const [hours, setHours] = useState('')
   const [notes, setNotes] = useState('')
+  const [workDescription, setWorkDescription] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null)
@@ -99,9 +101,11 @@ export default function MyHoursPage() {
     if (existing) {
       setHours(String(existing.hours_worked))
       setNotes(existing.notes ?? '')
+      setWorkDescription(existing.work_description ?? '')
     } else {
       setHours('')
       setNotes('')
+      setWorkDescription('')
     }
     setSubmitError(null)
     setSubmitSuccess(null)
@@ -129,6 +133,7 @@ export default function MyHoursPage() {
         work_date: today,
         hours_worked: h,
         notes: notes.trim() || null,
+        work_description: user?.role === 'poslovoda' ? (workDescription.trim() || null) : null,
       })
       setSubmitSuccess('Sati su uspješno upisani.')
       fetchEntries()
@@ -237,6 +242,23 @@ export default function MyHoursPage() {
               />
             </div>
 
+            {/* Opis rada — only visible to poslovoda */}
+            {user?.role === 'poslovoda' && (
+              <div>
+                <label className="block text-sm font-medium text-slate-300 mb-1.5">
+                  Opis rada <span className="text-slate-500">(nije obavezno)</span>
+                </label>
+                <textarea
+                  value={workDescription}
+                  onChange={e => setWorkDescription(e.target.value)}
+                  rows={3}
+                  placeholder="Opis obavljenog rada na projektu..."
+                  className="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 resize-none"
+                  disabled={submitting}
+                />
+              </div>
+            )}
+
             {isUpdate && selectedProject && (
               <p className="text-xs text-amber-400">
                 Već ste upisali sate za ovaj projekt danas — potvrdom ćete ažurirati postojeći unos.
@@ -301,6 +323,9 @@ export default function MyHoursPage() {
                   {entry.notes && (
                     <p className="text-xs text-slate-400 mt-0.5 truncate">{entry.notes}</p>
                   )}
+                  {user?.role === 'poslovoda' && entry.work_description && (
+                    <p className="text-xs text-slate-500 mt-0.5 truncate italic">{entry.work_description}</p>
+                  )}
                 </div>
                 <div className="shrink-0 text-right">
                   <span className="text-lg font-bold text-white">{entry.hours_worked}</span>
@@ -347,6 +372,9 @@ export default function MyHoursPage() {
                     <p className="text-sm font-medium text-white truncate">{entry.project_name}</p>
                     {entry.notes && (
                       <p className="text-xs text-slate-400 mt-1">{entry.notes}</p>
+                    )}
+                    {user?.role === 'poslovoda' && entry.work_description && (
+                      <p className="text-xs text-slate-500 mt-0.5 italic">{entry.work_description}</p>
                     )}
                   </div>
                   <div className="shrink-0 text-right">

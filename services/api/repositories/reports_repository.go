@@ -91,6 +91,11 @@ WITH combined AS (
 		(we.first_name||' '||we.last_name)      AS worker_name,
 		wdh.hours_worked,
 		wdh.notes,
+		wdh.work_description,
+		we.role                                 AS worker_role,
+		wdh.id::text                            AS worker_hours_id,
+		EXISTS(SELECT 1 FROM worker_daily_hours_revisions rev WHERE rev.worker_daily_hours_id = wdh.id) AS has_revisions,
+		EXISTS(SELECT 1 FROM worker_daily_hours_comments  cmt WHERE cmt.worker_daily_hours_id = wdh.id) AS has_comments,
 		'radnik_unos'::text                     AS status,
 		'Radnik unos'::text                     AS source
 	FROM worker_daily_hours wdh
@@ -120,6 +125,11 @@ WITH combined AS (
 		'—'::text,                              -- worker_name
 		wdh.hours_worked,
 		wdh.notes,
+		wdh.work_description,
+		we.role                                 AS worker_role,
+		wdh.id::text                            AS worker_hours_id,
+		EXISTS(SELECT 1 FROM worker_daily_hours_revisions rev WHERE rev.worker_daily_hours_id = wdh.id) AS has_revisions,
+		EXISTS(SELECT 1 FROM worker_daily_hours_comments  cmt WHERE cmt.worker_daily_hours_id = wdh.id) AS has_comments,
 		'poslovoda_unos'::text,
 		'Poslovođa unos'::text
 	FROM worker_daily_hours wdh
@@ -146,6 +156,11 @@ WITH combined AS (
 		(we.first_name||' '||we.last_name),
 		drwh.hours_worked,
 		drwh.notes,
+		NULL::text                              AS work_description,
+		we.role                                 AS worker_role,
+		NULL::text                              AS worker_hours_id,
+		false                                   AS has_revisions,
+		false                                   AS has_comments,
 		dr.status,
 		'Dnevni izvještaj'::text
 	FROM daily_report_worker_hours drwh
@@ -292,7 +307,7 @@ func (r *ReportsRepository) ListDnevnik(ctx context.Context, companyID string, f
 		SELECT
 			report_id, report_date, project_id, project_name, project_address,
 			poslovoda_id, poslovoda_name, worker_id, worker_name,
-			hours_worked, notes, status, source
+			hours_worked, notes, work_description, worker_role, worker_hours_id, has_revisions, has_comments, status, source
 		FROM combined c
 		%s
 		ORDER BY report_date DESC, project_name, worker_name
@@ -314,7 +329,9 @@ func (r *ReportsRepository) ListDnevnik(ctx context.Context, companyID string, f
 			&row.ProjectID, &row.ProjectName, &row.ProjectAddress,
 			&row.PoslovodaID, &row.PoslovodaName,
 			&row.WorkerID, &row.WorkerName,
-			&row.HoursWorked, &row.Notes, &row.Status, &row.Source,
+			&row.HoursWorked, &row.Notes, &row.WorkDescription, &row.WorkerRole,
+			&row.WorkerHoursID, &row.HasRevisions, &row.HasComments,
+			&row.Status, &row.Source,
 		); err != nil {
 			return nil, err
 		}
@@ -350,7 +367,7 @@ func (r *ReportsRepository) ExportDnevnik(ctx context.Context, companyID string,
 		SELECT
 			report_id, report_date, project_id, project_name, project_address,
 			poslovoda_id, poslovoda_name, worker_id, worker_name,
-			hours_worked, notes, status, source
+			hours_worked, notes, work_description, worker_role, worker_hours_id, has_revisions, has_comments, status, source
 		FROM combined c
 		%s
 		ORDER BY report_date DESC, project_name, worker_name
@@ -372,7 +389,9 @@ func (r *ReportsRepository) ExportDnevnik(ctx context.Context, companyID string,
 			&row.ProjectID, &row.ProjectName, &row.ProjectAddress,
 			&row.PoslovodaID, &row.PoslovodaName,
 			&row.WorkerID, &row.WorkerName,
-			&row.HoursWorked, &row.Notes, &row.Status, &row.Source,
+			&row.HoursWorked, &row.Notes, &row.WorkDescription, &row.WorkerRole,
+			&row.WorkerHoursID, &row.HasRevisions, &row.HasComments,
+			&row.Status, &row.Source,
 		); err != nil {
 			return nil, err
 		}
