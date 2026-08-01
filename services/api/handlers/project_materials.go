@@ -76,6 +76,30 @@ func (h *ProjectMaterialHandler) Update(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"material": m})
 }
 
+// DELETE /api/projects/:id/materials/:materialId
+// Hard-deletes the material when no history/dependencies exist; deactivates it otherwise.
+// 204 No Content → permanently deleted.
+// 200 OK         → deactivated (has linked records).
+func (h *ProjectMaterialHandler) Delete(c *gin.Context) {
+	u := appctx.GetAuthUser(c)
+	projectID := c.Param("id")
+	materialID := c.Param("materialId")
+
+	action, err := h.svc.Delete(c.Request.Context(), materialID, projectID, u.CompanyID, u.UserID)
+	if err != nil {
+		respondMaterialError(c, err)
+		return
+	}
+	if action == "deleted" {
+		c.Status(http.StatusNoContent)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{
+		"action":  "deactivated",
+		"message": "Materijal je deaktiviran jer postoje povezani zapisi.",
+	})
+}
+
 // PATCH /api/projects/:id/materials/:materialId/deactivate
 func (h *ProjectMaterialHandler) Deactivate(c *gin.Context) {
 	u := appctx.GetAuthUser(c)

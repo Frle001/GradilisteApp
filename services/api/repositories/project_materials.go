@@ -168,6 +168,58 @@ func (r *ProjectMaterialRepository) Deactivate(ctx context.Context, id, projectI
 	return nil
 }
 
+// DeleteOrDeactivate inspects all tables that reference project_material_id and either
+// hard-deletes the row (no dependents) or soft-deletes it (has dependents). The entire
+// check+action runs inside a single transaction with a row-level lock to prevent races.
+// Returns "deleted" or "deactivated".
+func (r *ProjectMaterialRepository) DeleteOrDeactivate(ctx context.Context, id, projectID, companyID string) (string, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer tx.Rollback(ctx)
+
+	// Lock the row and verify it belongs to this project/company.
+	var rowID string
+	err = tx.QueryRow(ctx,
+		`SELECT id FROM project_materials WHERE id = $1 AND project_id = $2 AND company_id = $3 FOR UPDATE`,
+		id, projectID, companyID,
+	).Scan(&rowID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrMaterialNotFound
+	}
+	if err != nil {
+		return "", err
+	}
+
+	// Check every table that carries meaningful history for this material.
+	var hasHistory bool
+	err = tx.QueryRow(ctx, `
+		SELECT (
+			EXISTS(SELECT 1 FROM material_purchase_items       WHERE project_material_id = $1)
+			OR EXISTS(SELECT 1 FROM employee_material_responsibility WHERE project_material_id = $1)
+			OR EXISTS(SELECT 1 FROM daily_report_activities    WHERE project_material_id = $1)
+			OR EXISTS(SELECT 1 FROM report_material_effects    WHERE project_material_id = $1)
+		)`, id,
+	).Scan(&hasHistory)
+	if err != nil {
+		return "", err
+	}
+
+	var action string
+	if hasHistory {
+		_, err = tx.Exec(ctx, `UPDATE project_materials SET active = false WHERE id = $1`, id)
+		action = "deactivated"
+	} else {
+		_, err = tx.Exec(ctx, `DELETE FROM project_materials WHERE id = $1`, id)
+		action = "deleted"
+	}
+	if err != nil {
+		return "", err
+	}
+	return action, tx.Commit(ctx)
+}
+
 // UpsertConfirmRowWithTx inserts or updates a project_material from a WizardConfirmRow
 // (which may have been edited by the director before confirming).
 func (r *ProjectMaterialRepository) UpsertConfirmRowWithTx(ctx context.Context, tx pgx.Tx, projectID, companyID string, row dto.WizardConfirmRow) error {

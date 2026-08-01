@@ -35,6 +35,7 @@ export default function ProjectMaterialsPage() {
   const [editTarget, setEditTarget] = useState<MaterialListItem | null>(null)
   const [formError, setFormError] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [deleteNotice, setDeleteNotice] = useState<{ kind: 'deleted' | 'deactivated'; name: string } | null>(null)
 
   const canManage = !!user && canManageMaterials(user.role) && projectStatus === 'active'
   const canImport = !!user && canImportMaterials(user.role) && projectStatus === 'active'
@@ -89,14 +90,22 @@ export default function ProjectMaterialsPage() {
     }
   }
 
-  async function handleDeactivate(materialId: string) {
-    if (!confirm('Deaktivirati ovaj materijal?')) return
+  async function handleDelete(materialId: string) {
+    const target = materials.find(m => m.id === materialId)
+    const name = target?.material_name ?? 'materijal'
+    if (!confirm(`Ukloniti "${name}"?\n\nAko ne postoje povezani zapisi, materijal će biti trajno obrisan. Ako postoje, bit će deaktiviran (sakriven s lista).`)) return
+    setDeleteNotice(null)
     try {
-      await apiClient.patch(`/projects/${projectId}/materials/${materialId}/deactivate`)
+      const res = await apiClient.delete(`/projects/${projectId}/materials/${materialId}`)
+      if (res.status === 204) {
+        setDeleteNotice({ kind: 'deleted', name })
+      } else {
+        setDeleteNotice({ kind: 'deactivated', name })
+      }
       fetchMaterials()
     } catch (e: unknown) {
       const err = e as { response?: { data?: { error?: string } } }
-      alert(err?.response?.data?.error ?? 'Greška pri deaktivaciji.')
+      alert(err?.response?.data?.error ?? 'Greška pri uklanjanju materijala.')
     }
   }
 
@@ -191,6 +200,26 @@ export default function ProjectMaterialsPage() {
           </label>
         </div>
 
+        {deleteNotice && (
+          <div className={`border rounded-lg px-4 py-3 flex items-start justify-between gap-3 ${
+            deleteNotice.kind === 'deleted'
+              ? 'bg-emerald-950 border-emerald-800'
+              : 'bg-amber-950 border-amber-800'
+          }`}>
+            <p className={`text-sm ${deleteNotice.kind === 'deleted' ? 'text-emerald-300' : 'text-amber-300'}`}>
+              {deleteNotice.kind === 'deleted'
+                ? `"${deleteNotice.name}" je trajno obrisan.`
+                : `"${deleteNotice.name}" je deaktiviran — postoje povezani zapisi (dnevna izvješća, kupnje ili zaduženja).`}
+            </p>
+            <button
+              onClick={() => setDeleteNotice(null)}
+              className="text-slate-500 hover:text-slate-300 shrink-0 text-xs"
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {error && (
           <div className="bg-red-950 border border-red-800 rounded-lg px-4 py-3">
             <p className="text-red-300 text-sm">{error}</p>
@@ -206,7 +235,7 @@ export default function ProjectMaterialsPage() {
               materials={materials}
               canManage={canManage}
               onEdit={openEdit}
-              onDeactivate={handleDeactivate}
+              onDelete={handleDelete}
               showInactive={showInactive}
             />
           )}

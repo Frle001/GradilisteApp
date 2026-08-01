@@ -21,6 +21,7 @@ func RegisterProjectMaterialRoutes(
 	projects.POST("/:id/materials/resolve-or-create", reportRoles, h.ResolveOrCreate)
 	projects.POST("/:id/materials", manageRoles, h.Create)
 	projects.PUT("/:id/materials/:materialId", manageRoles, h.Update)
+	projects.DELETE("/:id/materials/:materialId", manageRoles, h.Delete)
 	projects.PATCH("/:id/materials/:materialId/deactivate", manageRoles, h.Deactivate)
 
 	// Phase 6.5 wizard import flow (3 steps):

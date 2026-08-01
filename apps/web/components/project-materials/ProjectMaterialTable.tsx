@@ -6,11 +6,11 @@ interface Props {
   materials: MaterialListItem[]
   canManage: boolean
   onEdit: (m: MaterialListItem) => void
-  onDeactivate: (id: string) => void
+  onDelete: (id: string) => void
   showInactive: boolean
 }
 
-export default function ProjectMaterialTable({ materials, canManage, onEdit, onDeactivate, showInactive }: Props) {
+export default function ProjectMaterialTable({ materials, canManage, onEdit, onDelete, showInactive }: Props) {
   const visible = showInactive ? materials : materials.filter((m) => m.active)
 
   if (visible.length === 0) {
@@ -61,10 +61,10 @@ export default function ProjectMaterialTable({ materials, canManage, onEdit, onD
                           Uredi
                         </button>
                         <button
-                          onClick={() => onDeactivate(m.id)}
+                          onClick={() => onDelete(m.id)}
                           className="text-xs text-red-500 hover:text-red-400 transition"
                         >
-                          Deaktiviraj
+                          Ukloni
                         </button>
                       </>
                     )}
@@ -111,8 +111,8 @@ export default function ProjectMaterialTable({ materials, canManage, onEdit, onD
                 <button onClick={() => onEdit(m)} className="text-xs text-slate-400 hover:text-white transition">
                   Uredi
                 </button>
-                <button onClick={() => onDeactivate(m.id)} className="text-xs text-red-500 hover:text-red-400 transition">
-                  Deaktiviraj
+                <button onClick={() => onDelete(m.id)} className="text-xs text-red-500 hover:text-red-400 transition">
+                  Ukloni
                 </button>
               </div>
             )}

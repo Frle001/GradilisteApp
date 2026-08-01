@@ -132,6 +132,23 @@ func (s *ProjectMaterialService) ResolveOrCreate(ctx context.Context, projectID,
 	return s.matRepo.ResolveOrCreate(ctx, companyID, projectID, materialName, unit)
 }
 
+// Delete checks for historical/dependent records and either hard-deletes (none found)
+// or soft-deletes the project material (some found). Returns "deleted" or "deactivated".
+func (s *ProjectMaterialService) Delete(ctx context.Context, id, projectID, companyID, callerUserID string) (string, error) {
+	action, err := s.matRepo.DeleteOrDeactivate(ctx, id, projectID, companyID)
+	if err != nil {
+		return "", err
+	}
+	go s.auditRepo.Log(context.Background(), repositories.AuditParams{
+		CompanyID:  companyID,
+		UserID:     &callerUserID,
+		Action:     "project_material." + action,
+		EntityType: "project_material",
+		EntityID:   &id,
+	})
+	return action, nil
+}
+
 func (s *ProjectMaterialService) Deactivate(ctx context.Context, id, projectID, companyID, callerUserID string) error {
 	status, err := s.projRepo.GetStatus(ctx, companyID, projectID)
 	if errors.Is(err, repositories.ErrNotFound) {
