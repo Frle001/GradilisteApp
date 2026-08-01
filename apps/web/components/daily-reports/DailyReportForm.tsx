@@ -15,7 +15,7 @@ import apiClient from '@/lib/api-client'
 import { useFormDraft } from '@/hooks/useFormDraft'
 
 const MAX_PHOTO_SIZE = 10 * 1024 * 1024 // 10 MB — mirrors backend MaxReceiptFileSize
-const MAX_PHOTOS = 10
+const MAX_PHOTOS = 100
 
 const ALLOWED_PHOTO_TYPES: Record<string, true> = {
   'image/jpeg': true,
@@ -174,7 +174,7 @@ export default function DailyReportForm({
     const available = MAX_PHOTOS - photos.length
     const toAdd = valid.slice(0, available)
     if (valid.length > available) {
-      errors.push(`Možete dodati još najviše ${available} fotografija (ukupno maks. ${MAX_PHOTOS}).`)
+      errors.push(`Možete dodati najviše ${MAX_PHOTOS} fotografija.`)
     }
 
     setPhotoErrors(errors)
@@ -446,6 +446,7 @@ export default function DailyReportForm({
                   <img
                     src={getPhotoUrl(file)}
                     alt={file.name}
+                    loading="lazy"
                     className="w-full aspect-square object-cover"
                   />
                   <button

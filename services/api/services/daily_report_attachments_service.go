@@ -12,11 +12,11 @@ import (
 	"github.com/gradiliste/api/repositories"
 )
 
-const maxReportAttachments = 10
+const maxReportAttachments = 100
 
 var ErrAttachmentNotFound = errors.New("attachment not found")
 var ErrAttachmentForbidden = errors.New("access denied to this attachment")
-var ErrTooManyAttachments = fmt.Errorf("izvještaj već ima %d privitaka", maxReportAttachments)
+var ErrTooManyAttachments = fmt.Errorf("Možete dodati najviše %d fotografija.", maxReportAttachments)
 
 // drAttachRepoIface is the repository interface used by DailyReportAttachmentsService.
 type drAttachRepoIface interface {

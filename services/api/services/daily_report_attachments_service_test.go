@@ -170,14 +170,68 @@ func TestAttachment_Upload_RejectsUnsupportedMIME(t *testing.T) {
 	}
 }
 
-func TestAttachment_Upload_RejectsMoreThan10(t *testing.T) {
+// TestAttachment_Upload_100thPhotoAccepted verifies the 100th upload succeeds
+// (count=99 active, limit is 100).
+func TestAttachment_Upload_100thPhotoAccepted(t *testing.T) {
 	repo := &mockAttachRepo{
-		countFn: func(_ context.Context, _, _ string) (int, error) { return 10, nil },
+		countFn: func(_ context.Context, _, _ string) (int, error) { return 99, nil },
+	}
+	svc := newAttachSvc(repo, newFakeStorage())
+	att, err := svc.Upload(context.Background(), "co-1", "report-1", "user-1", "direktor", "", newFakePhoto([]byte("img")), makePhotoHeader("image/jpeg", 1000))
+	if err != nil {
+		t.Fatalf("100th photo should be accepted, got: %v", err)
+	}
+	if att == nil {
+		t.Fatal("expected non-nil attachment for 100th photo")
+	}
+}
+
+// TestAttachment_Upload_101stPhotoRejected verifies the 101st upload is rejected
+// with ErrTooManyAttachments (count=100 active, limit is 100).
+func TestAttachment_Upload_101stPhotoRejected(t *testing.T) {
+	repo := &mockAttachRepo{
+		countFn: func(_ context.Context, _, _ string) (int, error) { return 100, nil },
 	}
 	svc := newAttachSvc(repo, newFakeStorage())
 	_, err := svc.Upload(context.Background(), "co-1", "report-1", "user-1", "direktor", "", newFakePhoto([]byte("img")), makePhotoHeader("image/jpeg", 1000))
 	if !errors.Is(err, ErrTooManyAttachments) {
-		t.Errorf("expected ErrTooManyAttachments, got: %v", err)
+		t.Errorf("expected ErrTooManyAttachments for 101st photo, got: %v", err)
+	}
+}
+
+// TestAttachment_Upload_ErrorMessageContainsLimit verifies the ErrTooManyAttachments
+// message mentions the 100-photo limit in Croatian.
+func TestAttachment_Upload_ErrorMessageContainsLimit(t *testing.T) {
+	repo := &mockAttachRepo{
+		countFn: func(_ context.Context, _, _ string) (int, error) { return 100, nil },
+	}
+	svc := newAttachSvc(repo, newFakeStorage())
+	_, err := svc.Upload(context.Background(), "co-1", "report-1", "user-1", "direktor", "", newFakePhoto([]byte("img")), makePhotoHeader("image/jpeg", 1000))
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "100") {
+		t.Errorf("error message should mention 100, got: %s", err.Error())
+	}
+	if !strings.Contains(err.Error(), "fotografija") {
+		t.Errorf("error message should contain 'fotografija', got: %s", err.Error())
+	}
+}
+
+// TestAttachment_Upload_SoftDeletedNotCounted verifies that soft-deleted attachments
+// are not counted toward the limit. CountActive returns 5 (95 were soft-deleted);
+// the upload must succeed.
+func TestAttachment_Upload_SoftDeletedNotCounted(t *testing.T) {
+	repo := &mockAttachRepo{
+		countFn: func(_ context.Context, _, _ string) (int, error) { return 5, nil },
+	}
+	svc := newAttachSvc(repo, newFakeStorage())
+	att, err := svc.Upload(context.Background(), "co-1", "report-1", "user-1", "direktor", "", newFakePhoto([]byte("img")), makePhotoHeader("image/jpeg", 1000))
+	if err != nil {
+		t.Fatalf("upload must succeed when only 5 active attachments exist (soft-deleted excluded), got: %v", err)
+	}
+	if att == nil {
+		t.Fatal("expected non-nil attachment")
 	}
 }
 

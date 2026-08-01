@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 import apiClient from '@/lib/api-client'
 import { type DailyReportAttachment } from '@/lib/types/daily-reports'
 
+const MAX_REPORT_PHOTOS = 100
+
 interface Props {
   reportId: string
   initialAttachments: DailyReportAttachment[]
@@ -16,10 +18,28 @@ function formatBytes(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+// useInView returns true once the element attached to ref enters the viewport.
+// Fires once then disconnects; rootMargin of 200px pre-loads just before visible.
+function useInView(ref: React.RefObject<HTMLElement>): boolean {
+  const [inView, setInView] = useState(false)
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const io = new IntersectionObserver(([entry]) => {
+      if (entry.isIntersecting) { setInView(true); io.disconnect() }
+    }, { rootMargin: '200px' })
+    io.observe(el)
+    return () => io.disconnect()
+  }, [ref])
+  return inView
+}
+
 // Fetch an attachment from the API and return a blob URL, or null on error.
-function usePhotoBlobUrl(reportId: string, attachId: string): string | null {
+// enabled must be true before the fetch starts (used to defer until visible).
+function usePhotoBlobUrl(reportId: string, attachId: string, enabled: boolean): string | null {
   const [url, setUrl] = useState<string | null>(null)
   useEffect(() => {
+    if (!enabled) return
     let objectUrl: string | null = null
     apiClient
       .get(`/daily-reports/${reportId}/attachments/${attachId}/download`, { responseType: 'blob' })
@@ -31,7 +51,7 @@ function usePhotoBlobUrl(reportId: string, attachId: string): string | null {
     return () => {
       if (objectUrl) URL.revokeObjectURL(objectUrl)
     }
-  }, [reportId, attachId])
+  }, [reportId, attachId, enabled])
   return url
 }
 
@@ -44,10 +64,12 @@ function PhotoThumb({
   canDelete: boolean
   onExpand: (id: string) => void
 }) {
-  const blobUrl = usePhotoBlobUrl(reportId, att.id)
+  const containerRef = useRef<HTMLDivElement>(null)
+  const inView = useInView(containerRef as React.RefObject<HTMLElement>)
+  const blobUrl = usePhotoBlobUrl(reportId, att.id, inView)
 
   return (
-    <div className="relative group rounded-lg overflow-hidden border border-slate-700 bg-slate-800">
+    <div ref={containerRef} className="relative group rounded-lg overflow-hidden border border-slate-700 bg-slate-800">
       <button
         type="button"
         className="w-full aspect-square block"
@@ -99,7 +121,7 @@ function Lightbox({
   hasPrev: boolean
   hasNext: boolean
 }) {
-  const blobUrl = usePhotoBlobUrl(reportId, att.id)
+  const blobUrl = usePhotoBlobUrl(reportId, att.id, true)
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -172,8 +194,8 @@ export default function ReportPhotoGallery({ reportId, initialAttachments, canEd
     if (!file) return
     e.target.value = ''
 
-    if (attachments.length >= 10) {
-      setUploadError('Izvještaj već ima 10 privitaka.')
+    if (attachments.length >= MAX_REPORT_PHOTOS) {
+      setUploadError(`Možete dodati najviše ${MAX_REPORT_PHOTOS} fotografija.`)
       return
     }
 
@@ -213,10 +235,10 @@ export default function ReportPhotoGallery({ reportId, initialAttachments, canEd
         <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
           Fotografije
           <span className="ml-2 text-slate-600 font-normal normal-case text-xs">
-            {attachments.length}/10
+            {attachments.length} / {MAX_REPORT_PHOTOS}
           </span>
         </h2>
-        {canEdit && attachments.length < 10 && (
+        {canEdit && attachments.length < MAX_REPORT_PHOTOS && (
           <button
             type="button"
             disabled={uploading}
