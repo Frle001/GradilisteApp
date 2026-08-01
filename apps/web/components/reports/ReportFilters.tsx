@@ -217,7 +217,7 @@ export default function ReportFilters({
           </FilterField>
 
           {showVtk && (
-            <FilterField label="VTK">
+            <FilterField label="VTR">
               <select
                 disabled={loading}
                 className={inputCls}
@@ -228,8 +228,8 @@ export default function ReportFilters({
                 }}
               >
                 <option value="">Sve</option>
-                <option value="true">Samo VTK</option>
-                <option value="false">Nije VTK</option>
+                <option value="true">Samo VTR</option>
+                <option value="false">Nije VTR</option>
               </select>
             </FilterField>
           )}

@@ -111,35 +111,40 @@ func (r *ReportMaterialEffectsRepository) applyMontazaVTK(
 		return fmt.Errorf("VTR montaža aktivnost nema naziv materijala")
 	}
 
-	var updatedID string
+	// Step 1: Resolve-or-create the material at zero stock.
+	// If the material was never on this project, create it so subsequent logic
+	// can run consistently and produce a clear stock-check error rather than a
+	// generic "not found" message.
+	var materialID string
 	err := tx.QueryRow(ctx, `
+		INSERT INTO project_materials
+		    (project_id, company_id, material_name, unit, planned_quantity, used_quantity, available_quantity, source)
+		VALUES ($1::uuid, $2::uuid, $3, $4, 0, 0, 0, 'report')
+		ON CONFLICT (project_id, company_id, LOWER(material_name), unit)
+		DO UPDATE SET active = true
+		RETURNING id::text
+	`, projectID, companyID, *a.CustomMaterialName, a.Unit).Scan(&materialID)
+	if err != nil {
+		return fmt.Errorf("greška pri pronalasku VTR materijala za montažu: %w", err)
+	}
+
+	// Step 2: Apply the montaža effect — subtract from available_quantity.
+	// A newly created zero-stock material will always fail the stock check here,
+	// producing the correct "not available" message.
+	var updatedID string
+	err = tx.QueryRow(ctx, `
 		UPDATE project_materials
 		SET available_quantity = available_quantity - $1,
 		    used_quantity      = used_quantity      + $1,
 		    updated_at = NOW()
-		WHERE project_id = $2::uuid
+		WHERE id = $2::uuid
 		  AND company_id = $3::uuid
-		  AND LOWER(material_name) = LOWER($4)
-		  AND unit = $5
 		  AND available_quantity >= $1
 		RETURNING id::text
-	`, a.Quantity, projectID, companyID, *a.CustomMaterialName, a.Unit).Scan(&updatedID)
+	`, a.Quantity, materialID, companyID).Scan(&updatedID)
 
 	if err == pgx.ErrNoRows {
-		var exists bool
-		_ = tx.QueryRow(ctx, `
-			SELECT EXISTS(
-				SELECT 1 FROM project_materials
-				WHERE project_id = $1::uuid
-				  AND company_id = $2::uuid
-				  AND LOWER(material_name) = LOWER($3)
-				  AND unit = $4
-			)
-		`, projectID, companyID, *a.CustomMaterialName, a.Unit).Scan(&exists)
-		if exists {
-			return fmt.Errorf("nedovoljno dostupnih zaliha za VTR materijal '%s' (potrebno %.2f %s)", *a.CustomMaterialName, a.Quantity, a.Unit)
-		}
-		return fmt.Errorf("VTR materijal '%s' (%s) nije pronađen u projektu", *a.CustomMaterialName, a.Unit)
+		return fmt.Errorf("Materijal nije dostupan na projektu za ovu VTR montažu.")
 	}
 	if err != nil {
 		return fmt.Errorf("greška pri umanjenju stanja VTR materijala: %w", err)
@@ -181,29 +186,41 @@ func (r *ReportMaterialEffectsRepository) applyDemontazaVTK(
 	a ActivityForApproval,
 ) error {
 	if a.CustomMaterialName == nil {
-		return fmt.Errorf("VTK demontaža aktivnost nema naziv materijala")
+		return fmt.Errorf("VTR demontaža aktivnost nema naziv materijala")
 	}
 
-	// Upsert by (project_id, company_id, LOWER(material_name), unit) — the unique index on project_materials.
+	// Step 1: Resolve-or-create the material at zero stock.
+	// Baking the quantity into the INSERT VALUES would double-count on an idempotency
+	// retry, because ON CONFLICT would add qty again. Keep INSERT at zero and apply
+	// the effect in a separate UPDATE so each step is independently idempotent.
 	var materialID string
 	err := tx.QueryRow(ctx, `
 		INSERT INTO project_materials
-		    (project_id, company_id, material_name, planned_quantity, used_quantity, available_quantity, unit, source)
-		VALUES ($1::uuid, $2::uuid, $3, 0, 0, $4, $5, 'demontaza')
+		    (project_id, company_id, material_name, unit, planned_quantity, used_quantity, available_quantity, source)
+		VALUES ($1::uuid, $2::uuid, $3, $4, 0, 0, 0, 'demontaza')
 		ON CONFLICT (project_id, company_id, LOWER(material_name), unit)
-		DO UPDATE SET
-		    available_quantity = project_materials.available_quantity + EXCLUDED.available_quantity,
-		    used_quantity      = GREATEST(project_materials.used_quantity - EXCLUDED.available_quantity, 0),
-		    active = true,
-		    updated_at = NOW()
+		DO UPDATE SET active = true
 		RETURNING id::text
-	`, projectID, companyID, *a.CustomMaterialName, a.Quantity, a.Unit).Scan(&materialID)
+	`, projectID, companyID, *a.CustomMaterialName, a.Unit).Scan(&materialID)
 	if err != nil {
-		return fmt.Errorf("greška pri upsertu materijala za demontažu: %w", err)
+		return fmt.Errorf("greška pri pronalasku VTR materijala za demontažu: %w", err)
+	}
+
+	// Step 2: Apply the demontaža effect — add to available_quantity.
+	_, err = tx.Exec(ctx, `
+		UPDATE project_materials
+		SET available_quantity = available_quantity + $1,
+		    used_quantity      = GREATEST(used_quantity - $1, 0),
+		    updated_at = NOW()
+		WHERE id = $2::uuid
+		  AND company_id = $3::uuid
+	`, a.Quantity, materialID, companyID)
+	if err != nil {
+		return fmt.Errorf("greška pri povećanju stanja VTR materijala: %w", err)
 	}
 
 	if err := r.upsertResponsibility(ctx, tx, companyID, poslovodaEmpID, projectID, materialID, a.Unit, a.Quantity); err != nil {
-		return fmt.Errorf("greška pri ažuriranju odgovornosti za VTK materijal: %w", err)
+		return fmt.Errorf("greška pri ažuriranju odgovornosti za VTR materijal: %w", err)
 	}
 
 	return r.insertEffect(ctx, tx, companyID, reportID, projectID, appliedByUserID, a, &materialID)

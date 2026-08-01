@@ -170,7 +170,7 @@ export default function ArchiveSummaryPage() {
                   sub="ukupno"
                 />
                 <StatCard label="Aktivnosti" value={summary.activities_count} />
-                <StatCard label="VTK stavki" value={summary.vtk_count} />
+                <StatCard label="VTR stavki" value={summary.vtk_count} />
               </div>
               {summary.daily_reports_count > 0 && (
                 <div className="mt-2">

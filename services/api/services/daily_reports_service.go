@@ -377,10 +377,10 @@ func (s *DailyReportService) validateReport(ctx context.Context, companyID, proj
 		}
 		if a.IsVTK {
 			if a.CustomMaterialName == nil || strings.TrimSpace(*a.CustomMaterialName) == "" {
-				return fmt.Errorf("aktivnost %d (VTK): naziv materijala je obavezan", i+1)
+				return fmt.Errorf("aktivnost %d (VTR): naziv materijala je obavezan", i+1)
 			}
 			if a.ProjectMaterialID != nil {
-				return fmt.Errorf("aktivnost %d (VTK): project_material_id mora biti null", i+1)
+				return fmt.Errorf("aktivnost %d (VTR): project_material_id mora biti null", i+1)
 			}
 		} else {
 			if a.ProjectMaterialID == nil || strings.TrimSpace(*a.ProjectMaterialID) == "" {

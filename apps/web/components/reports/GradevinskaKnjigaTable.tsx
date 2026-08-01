@@ -59,7 +59,7 @@ export default function GradevinskaKnjigaTable({ rows, loading }: Props) {
             <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Aktivnost</th>
             <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider text-right whitespace-nowrap">Količina</th>
             <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Jed.</th>
-            <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">VTK</th>
+            <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">VTR</th>
             <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider whitespace-nowrap">Status</th>
             <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Napomena</th>
           </tr>

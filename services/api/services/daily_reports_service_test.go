@@ -507,3 +507,164 @@ func TestDailyReport_Approve_StatusNotChangedOnEffectsFailure(t *testing.T) {
 		t.Error("SetStatus must not be called when ValidateAndApply fails")
 	}
 }
+
+// ── Tests: VTR approval ───────────────────────────────────────────────────────
+
+// TestDailyReport_Approve_VTRMontazaZeroStockErrorPropagates verifies that when
+// a VTR montaža activity fails because the material has zero stock, the specific
+// Croatian error message propagates from the effects repo through the service
+// without wrapping or modification.
+//
+// Scenario 15: VTR montaža on missing zero-stock material returns clear message.
+func TestDailyReport_Approve_VTRMontazaZeroStockErrorPropagates(t *testing.T) {
+	zeroStockErr := errors.New("Materijal nije dostupan na projektu za ovu VTR montažu.")
+	fx := &mockMaterialEffectsRepo{
+		validateAndApplyFn: func(_ context.Context, _ pgx.Tx, _, _, _, _, _ string, _ []repositories.ActivityForApproval) error {
+			return zeroStockErr
+		},
+	}
+	matName := "Beton B25"
+	repo := &mockDrRepo{
+		getByIDForEditFn: func(_ context.Context, _, _ string) (string, string, string, error) {
+			return "submitted", "emp-poslovoda", "project-1", nil
+		},
+		getActivitiesForApprovalFn: func(_ context.Context, _, _ string) ([]repositories.ActivityForApproval, error) {
+			return []repositories.ActivityForApproval{
+				{ID: "act-1", IsVTK: true, CustomMaterialName: &matName, Quantity: 5, Unit: "m2", ActivityType: "montaza"},
+			}, nil
+		},
+	}
+	err := newDrSvcWithEffects(repo, fx).Approve(context.Background(), "report-1", "co-1", "user-1", "emp-d")
+	if !errors.Is(err, zeroStockErr) {
+		t.Errorf("expected zero-stock error to propagate unchanged, got %v", err)
+	}
+}
+
+// TestDailyReport_Approve_VTRMontazaBlocksStatusChange verifies that a VTR
+// montaža stock failure prevents SetStatus from being called (i.e. the report
+// remains in "submitted" state and the transaction is rolled back).
+//
+// Scenario 15 (status guard): stock error from VTR montaža rolls back approval.
+func TestDailyReport_Approve_VTRMontazaBlocksStatusChange(t *testing.T) {
+	setStatusCalled := false
+	fx := &mockMaterialEffectsRepo{
+		validateAndApplyFn: func(_ context.Context, _ pgx.Tx, _, _, _, _, _ string, _ []repositories.ActivityForApproval) error {
+			return errors.New("Materijal nije dostupan na projektu za ovu VTR montažu.")
+		},
+	}
+	matName := "Beton B25"
+	repo := &mockDrRepo{
+		getByIDForEditFn: func(_ context.Context, _, _ string) (string, string, string, error) {
+			return "submitted", "emp-poslovoda", "project-1", nil
+		},
+		getActivitiesForApprovalFn: func(_ context.Context, _, _ string) ([]repositories.ActivityForApproval, error) {
+			return []repositories.ActivityForApproval{
+				{ID: "act-1", IsVTK: true, CustomMaterialName: &matName, Quantity: 5, Unit: "m2", ActivityType: "montaza"},
+			}, nil
+		},
+		setStatusFn: func(_ context.Context, _ pgx.Tx, _, _, _ string, _ *string) error {
+			setStatusCalled = true
+			return nil
+		},
+	}
+	_ = newDrSvcWithEffects(repo, fx).Approve(context.Background(), "report-1", "co-1", "user-1", "emp-d")
+	if setStatusCalled {
+		t.Error("SetStatus must not be called when VTR montaža fails stock validation")
+	}
+}
+
+// TestDailyReport_Approve_VTRActivitiesForwardedToEffects verifies that VTR
+// activities (IsVTK=true) are included in the full activity slice forwarded to
+// ValidateAndApply — the service must not filter them out.
+//
+// Scenarios 4, 6, 7: VTR activities reach the effects layer for processing.
+func TestDailyReport_Approve_VTRActivitiesForwardedToEffects(t *testing.T) {
+	var gotActCount int
+	fx := &mockMaterialEffectsRepo{
+		validateAndApplyFn: func(_ context.Context, _ pgx.Tx, _, _, _, _, _ string, acts []repositories.ActivityForApproval) error {
+			gotActCount = len(acts)
+			return nil
+		},
+	}
+	matName := "Beton B25"
+	matID := "mat-1"
+	repo := &mockDrRepo{
+		getByIDForEditFn: func(_ context.Context, _, _ string) (string, string, string, error) {
+			return "submitted", "emp-poslovoda", "project-1", nil
+		},
+		getActivitiesForApprovalFn: func(_ context.Context, _, _ string) ([]repositories.ActivityForApproval, error) {
+			return []repositories.ActivityForApproval{
+				{ID: "act-vtr", IsVTK: true, CustomMaterialName: &matName, Quantity: 2, Unit: "m2", ActivityType: "demontaza"},
+				{ID: "act-normal", IsVTK: false, ProjectMaterialID: &matID, Quantity: 1, Unit: "kom", ActivityType: "montaza"},
+			}, nil
+		},
+	}
+	if err := newDrSvcWithEffects(repo, fx).Approve(context.Background(), "report-1", "co-1", "user-1", "emp-d"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotActCount != 2 {
+		t.Errorf("expected both VTR and normal activities forwarded to effects, got %d", gotActCount)
+	}
+}
+
+// TestDailyReport_Approve_VTRDemontazaSucceeds verifies that a VTR demontaža
+// approval succeeds when the effects repo reports no error — simulating the
+// case where the material already exists or was just created in the same tx.
+//
+// Scenario 17: already-existing VTR material approves without error.
+func TestDailyReport_Approve_VTRDemontazaSucceeds(t *testing.T) {
+	statusSet := ""
+	fx := &mockMaterialEffectsRepo{} // validateAndApplyFn nil → returns nil
+	matName := "Beton B25"
+	repo := &mockDrRepo{
+		getByIDForEditFn: func(_ context.Context, _, _ string) (string, string, string, error) {
+			return "submitted", "emp-poslovoda", "project-1", nil
+		},
+		getActivitiesForApprovalFn: func(_ context.Context, _, _ string) ([]repositories.ActivityForApproval, error) {
+			return []repositories.ActivityForApproval{
+				{ID: "act-vtr", IsVTK: true, CustomMaterialName: &matName, Quantity: 3, Unit: "kom", ActivityType: "demontaza"},
+			}, nil
+		},
+		setStatusFn: func(_ context.Context, _ pgx.Tx, _, _, status string, _ *string) error {
+			statusSet = status
+			return nil
+		},
+	}
+	if err := newDrSvcWithEffects(repo, fx).Approve(context.Background(), "report-1", "co-1", "user-1", "emp-d"); err != nil {
+		t.Fatalf("VTR demontaža approval should succeed when effects return no error: %v", err)
+	}
+	if statusSet != "approved" {
+		t.Errorf("expected status set to 'approved', got %q", statusSet)
+	}
+}
+
+// TestDailyReport_Approve_VTRAndNonVTRMixed_PoslovodaIDForwarded verifies that
+// a report mixing VTR and non-VTR activities still forwards the correct
+// poslovodaEmpID and projectID to ValidateAndApply.
+//
+// Scenarios 7, 8: poslovoda identity correctly propagated for responsibility tracking.
+func TestDailyReport_Approve_VTRAndNonVTRMixed_PoslovodaIDForwarded(t *testing.T) {
+	fx := &mockMaterialEffectsRepo{}
+	matName := "Beton B25"
+	matID := "mat-existing"
+	repo := &mockDrRepo{
+		getByIDForEditFn: func(_ context.Context, _, _ string) (string, string, string, error) {
+			return "submitted", "emp-poslovoda-xyz", "project-abc", nil
+		},
+		getActivitiesForApprovalFn: func(_ context.Context, _, _ string) ([]repositories.ActivityForApproval, error) {
+			return []repositories.ActivityForApproval{
+				{ID: "act-vtr", IsVTK: true, CustomMaterialName: &matName, Quantity: 2, Unit: "m3", ActivityType: "demontaza"},
+				{ID: "act-std", IsVTK: false, ProjectMaterialID: &matID, Quantity: 1, Unit: "kom", ActivityType: "demontaza"},
+			}, nil
+		},
+	}
+	if err := newDrSvcWithEffects(repo, fx).Approve(context.Background(), "report-1", "co-1", "user-1", "emp-d"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fx.applyCallArgs.poslovodaID != "emp-poslovoda-xyz" {
+		t.Errorf("expected poslovodaID='emp-poslovoda-xyz' forwarded, got %q", fx.applyCallArgs.poslovodaID)
+	}
+	if fx.applyCallArgs.projectID != "project-abc" {
+		t.Errorf("expected projectID='project-abc' forwarded, got %q", fx.applyCallArgs.projectID)
+	}
+}

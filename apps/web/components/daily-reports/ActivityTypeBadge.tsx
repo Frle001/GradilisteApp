@@ -16,7 +16,7 @@ export default function ActivityTypeBadge({ type, isVtk = false, className = '' 
   return (
     <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium ${TYPE_STYLES[type]} ${className}`}>
       {ACTIVITY_TYPE_LABELS[type]}
-      {isVtk && <span className="text-amber-400 font-semibold">VTK</span>}
+      {isVtk && <span className="text-amber-400 font-semibold">VTR</span>}
     </span>
   )
 }

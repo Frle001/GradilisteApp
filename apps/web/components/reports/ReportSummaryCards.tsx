@@ -80,7 +80,7 @@ export function KnjigaSummaryCards({ summary }: { summary: GradevinskaKnjigaSumm
         }
       />
       <Card
-        label="VTK stavki"
+        label="VTR stavki"
         value={summary.vtk_count}
         accent="border-l-amber-500"
         icon={

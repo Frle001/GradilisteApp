@@ -234,7 +234,7 @@ func (s *ExcelExportService) BuildKnjigaXLSX(rows []dto.GradevinskaKnjigaRow, su
 		"Datum", "Gradilište", "Adresa gradilišta",
 		"Poslovođa", "Materijal", "Šifra materijala",
 		"Količina", "Jedinica", "Aktivnost",
-		"VTK", "Status izvještaja", "Napomena",
+		"VTR", "Status izvještaja", "Napomena",
 	}
 
 	headerStyle, err := makeHeaderStyle(f)
@@ -297,7 +297,7 @@ func (s *ExcelExportService) BuildKnjigaXLSX(rows []dto.GradevinskaKnjigaRow, su
 	addSummarySheet(f, "Građevinska knjiga", len(rows), []string{
 		fmt.Sprintf("Ukupna količina: %.2f", summary.TotalQuantity),
 		fmt.Sprintf("Broj aktivnosti: %d", summary.ActivitiesCount),
-		fmt.Sprintf("VTK stavki: %d", vtk),
+		fmt.Sprintf("VTR stavki: %d", vtk),
 		fmt.Sprintf("Broj gradilišta: %d", summary.ProjectsCount),
 	})
 
