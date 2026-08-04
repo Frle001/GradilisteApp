@@ -765,13 +765,13 @@ func TestDailyReport_Approve_WorkItemActivityForwardedWithCorrectTrackingType(t 
 		getActivitiesForApprovalFn: func(_ context.Context, _, _ string) ([]repositories.ActivityForApproval, error) {
 			return []repositories.ActivityForApproval{
 				{
-					ID:               "act-work",
+					ID:                "act-work",
 					ProjectMaterialID: &matID,
 					Quantity:          25,
-					Unit:             "m",
-					ActivityType:     "montaza",
-					IsVTK:            false,
-					TrackingType:     "work",
+					Unit:              "m",
+					ActivityType:      "montaza",
+					IsVTK:             false,
+					TrackingType:      "work",
 				},
 			}, nil
 		},
@@ -809,13 +809,13 @@ func TestDailyReport_Approve_WorkItemZeroStockApproves(t *testing.T) {
 		getActivitiesForApprovalFn: func(_ context.Context, _, _ string) ([]repositories.ActivityForApproval, error) {
 			return []repositories.ActivityForApproval{
 				{
-					ID:               "act-work",
+					ID:                "act-work",
 					ProjectMaterialID: &matID,
 					Quantity:          25,
-					Unit:             "m",
-					ActivityType:     "montaza",
-					IsVTK:            false,
-					TrackingType:     "work",
+					Unit:              "m",
+					ActivityType:      "montaza",
+					IsVTK:             false,
+					TrackingType:      "work",
 				},
 			}, nil
 		},
@@ -895,13 +895,13 @@ func TestDailyReport_Approve_NormalStockActivityUnchanged(t *testing.T) {
 		getActivitiesForApprovalFn: func(_ context.Context, _, _ string) ([]repositories.ActivityForApproval, error) {
 			return []repositories.ActivityForApproval{
 				{
-					ID:               "act-stock",
+					ID:                "act-stock",
 					ProjectMaterialID: &matID,
 					Quantity:          3,
-					Unit:             "m3",
-					ActivityType:     "montaza",
-					IsVTK:            false,
-					TrackingType:     "stock",
+					Unit:              "m3",
+					ActivityType:      "montaza",
+					IsVTK:             false,
+					TrackingType:      "stock",
 				},
 			}, nil
 		},
