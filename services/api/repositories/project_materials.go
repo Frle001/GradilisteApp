@@ -266,11 +266,11 @@ func (r *ProjectMaterialRepository) ResolveOrCreate(ctx context.Context, company
 	      VALUES ($1, $2, $3, $4, 0, 0, 0, 'report')
 	      ON CONFLICT (project_id, company_id, LOWER(material_name), unit)
 	      DO UPDATE SET active = true
-	      RETURNING id, material_name, material_code, available_quantity, unit`
+	      RETURNING id, material_name, material_code, available_quantity, unit, tracking_type`
 
 	var m dto.FormDataMaterial
 	err := r.db.QueryRow(ctx, q, projectID, companyID, materialName, unit).Scan(
-		&m.ID, &m.MaterialName, &m.MaterialCode, &m.AvailableQuantity, &m.Unit,
+		&m.ID, &m.MaterialName, &m.MaterialCode, &m.AvailableQuantity, &m.Unit, &m.TrackingType,
 	)
 	if err != nil {
 		return nil, err

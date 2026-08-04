@@ -5,6 +5,10 @@ import { useAuth } from '@/hooks/useAuth'
 import LoadingScreen from '@/components/ui/LoadingScreen'
 import DashboardShell from '@/components/layout/DashboardShell'
 import apiClient from '@/lib/api-client'
+import { enqueue, getEntry, findPendingEntry } from '@/lib/offline/outbox'
+import { trySyncEntry } from '@/lib/offline/sync-engine'
+import { onRefresh } from '@/lib/refresh-events'
+import type { WorkerHoursPayload } from '@/lib/offline/types'
 
 interface WorkerProject {
   id: string
@@ -32,7 +36,6 @@ function formatHrDate(dateStr: string): string {
   })
 }
 
-// Parse YYYY-MM-DD as local date to avoid UTC-midnight timezone shift.
 function formatHistoryDate(dateStr: string): string {
   const [y, m, d] = dateStr.split('-').map(Number)
   return new Date(y, m - 1, d).toLocaleDateString('hr-HR', {
@@ -59,6 +62,7 @@ export default function MyHoursPage() {
   const [notes, setNotes] = useState('')
   const [workDescription, setWorkDescription] = useState('')
   const [submitting, setSubmitting] = useState(false)
+  const [refreshing, setRefreshing] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
   const [submitSuccess, setSubmitSuccess] = useState<string | null>(null)
 
@@ -94,6 +98,16 @@ export default function MyHoursPage() {
     fetchHistory()
   }, [user, fetchProjects, fetchEntries, fetchHistory])
 
+  // Refresh when sync completes
+  useEffect(() => {
+    return onRefresh((domains) => {
+      if (domains.includes('worker-hours')) {
+        fetchEntries()
+        fetchHistory()
+      }
+    })
+  }, [fetchEntries, fetchHistory])
+
   // Pre-fill form when editing an existing entry
   useEffect(() => {
     if (!selectedProject) return
@@ -111,6 +125,20 @@ export default function MyHoursPage() {
     setSubmitSuccess(null)
   }, [selectedProject, entries])
 
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    // Attempt a sync pass first so any pending items land before we read
+    try {
+      const { runSync } = await import('@/lib/offline/sync-engine')
+      await runSync({ userId: user?.id, companyId: user?.company_id })
+    } catch { /* offline — just refetch */ }
+    await Promise.all([
+      fetchEntries(),
+      fetchHistory(),
+    ])
+    setRefreshing(false)
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setSubmitError(null)
@@ -127,22 +155,59 @@ export default function MyHoursPage() {
     }
 
     setSubmitting(true)
+    const payload: WorkerHoursPayload = {
+      project_id: selectedProject,
+      work_date: today,
+      hours_worked: h,
+      notes: notes.trim() || null,
+      work_description: user?.role === 'poslovoda' ? (workDescription.trim() || null) : null,
+    }
+    let submissionId = crypto.randomUUID()
+    let useDirectFallback = false
     try {
-      await apiClient.post('/worker-hours', {
-        project_id: selectedProject,
-        work_date: today,
-        hours_worked: h,
-        notes: notes.trim() || null,
-        work_description: user?.role === 'poslovoda' ? (workDescription.trim() || null) : null,
+      const existingEntry = await findPendingEntry('worker-hours', e => {
+        const p = e.payload as WorkerHoursPayload
+        return p.project_id === payload.project_id && p.work_date === payload.work_date
       })
+      if (existingEntry) {
+        submissionId = existingEntry.id
+      }
+      await enqueue({
+        id: submissionId,
+        type: 'worker-hours',
+        payload,
+        ownerId: user?.id,
+        companyId: user?.company_id,
+      })
+    } catch {
+      useDirectFallback = true
+    }
+
+    if (useDirectFallback) {
+      try {
+        await apiClient.post('/worker-hours', payload)
+        setSubmitSuccess('Sati su uspješno upisani.')
+        fetchEntries()
+      } catch (err: unknown) {
+        const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+        setSubmitError(msg ?? 'Greška pri unosu sati.')
+      }
+      setSubmitting(false)
+      return
+    }
+
+    await trySyncEntry(submissionId)
+    const entry = await getEntry(submissionId)
+
+    if (entry?.status === 'synced') {
       setSubmitSuccess('Sati su uspješno upisani.')
       fetchEntries()
-    } catch (err: unknown) {
-      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
-      setSubmitError(msg ?? 'Greška pri unosu sati.')
-    } finally {
-      setSubmitting(false)
+    } else if (entry?.status === 'failed') {
+      setSubmitError(entry.lastError ?? 'Greška pri unosu sati.')
+    } else {
+      setSubmitSuccess('Sati su lokalno snimljeni i bit će poslani kada se povežete.')
     }
+    setSubmitting(false)
   }
 
   if (isLoading) return <LoadingScreen />
@@ -152,7 +217,6 @@ export default function MyHoursPage() {
   const isUpdate = !!existingForSelected
   const totalToday = entries.reduce((sum, e) => sum + e.hours_worked, 0)
 
-  // Hours on other projects today (excluding the currently selected one)
   const otherProjectsTotal = entries
     .filter(e => e.project_id !== selectedProject)
     .reduce((sum, e) => sum + e.hours_worked, 0)
@@ -168,9 +232,18 @@ export default function MyHoursPage() {
       onLogout={logout}
     >
       {/* Date header */}
-      <div className="mb-6">
-        <h1 className="text-xl font-bold text-white">Moji radni sati</h1>
-        <p className="text-slate-400 text-sm mt-1 capitalize">{formatHrDate(today)}</p>
+      <div className="mb-6 flex items-center justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-white">Moji radni sati</h1>
+          <p className="text-slate-400 text-sm mt-1 capitalize">{formatHrDate(today)}</p>
+        </div>
+        <button
+          onClick={() => void handleRefresh()}
+          disabled={refreshing || submitting}
+          className="shrink-0 text-sm text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 px-3 py-2 rounded-lg transition disabled:opacity-50"
+        >
+          {refreshing ? 'Osvježavanje…' : 'Osvježi'}
+        </button>
       </div>
 
       {fetchError && (
@@ -223,6 +296,21 @@ export default function MyHoursPage() {
                 onChange={e => setHours(e.target.value)}
                 placeholder="npr. 8"
                 className="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500"
+                disabled={submitting}
+              />
+            </div>
+
+            {/* Work description */}
+            <div>
+              <label className="block text-sm font-medium text-slate-300 mb-1.5">
+                Opis radova <span className="text-slate-500">(nije obavezno)</span>
+              </label>
+              <textarea
+                value={workDescription}
+                onChange={e => setWorkDescription(e.target.value)}
+                rows={3}
+                placeholder="Kratki opis izvedenih radova..."
+                className="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 resize-none"
                 disabled={submitting}
               />
             </div>
@@ -320,6 +408,9 @@ export default function MyHoursPage() {
               >
                 <div className="min-w-0">
                   <p className="text-sm font-medium text-white truncate">{entry.project_name}</p>
+                  {entry.work_description && (
+                    <p className="text-xs text-slate-300 mt-0.5 line-clamp-2">{entry.work_description}</p>
+                  )}
                   {entry.notes && (
                     <p className="text-xs text-slate-400 mt-0.5 truncate">{entry.notes}</p>
                   )}
@@ -347,6 +438,7 @@ export default function MyHoursPage() {
           </ul>
         )}
       </div>
+
       {/* Previous entries — read-only */}
       <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 mt-6">
         <h2 className="text-sm font-semibold text-slate-300 mb-4">Prethodni unosi</h2>
@@ -370,6 +462,9 @@ export default function MyHoursPage() {
                       {formatHistoryDate(entry.work_date)}
                     </p>
                     <p className="text-sm font-medium text-white truncate">{entry.project_name}</p>
+                    {entry.work_description && (
+                      <p className="text-xs text-slate-300 mt-1 line-clamp-2">{entry.work_description}</p>
+                    )}
                     {entry.notes && (
                       <p className="text-xs text-slate-400 mt-1">{entry.notes}</p>
                     )}

@@ -136,6 +136,7 @@ export interface ActivityInput {
   activity_type: ActivityType
   is_vtk: boolean
   notes: string | null
+  tracking_type?: 'stock' | 'work'
 }
 
 export interface CreateDailyReportPayload {

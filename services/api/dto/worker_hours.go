@@ -5,11 +5,12 @@ import "time"
 // ── Requests ──────────────────────────────────────────────────────────────────
 
 type SubmitWorkerHoursRequest struct {
-	ProjectID       string  `json:"project_id" binding:"required"`
-	WorkDate        string  `json:"work_date" binding:"required"` // YYYY-MM-DD
-	HoursWorked     float64 `json:"hours_worked" binding:"required"`
-	Notes           *string `json:"notes"`
-	WorkDescription *string `json:"work_description"` // optional; shown only for poslovoda in UI
+	ProjectID          string  `json:"project_id" binding:"required"`
+	WorkDate           string  `json:"work_date" binding:"required"` // YYYY-MM-DD
+	HoursWorked        float64 `json:"hours_worked" binding:"required"`
+	Notes              *string `json:"notes"`
+	WorkDescription    *string `json:"work_description"`
+	ClientSubmissionID *string `json:"client_submission_id"`
 }
 
 type CorrectWorkerHoursRequest struct {

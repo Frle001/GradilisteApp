@@ -4,10 +4,20 @@ export interface AuthUser {
   employee_id: string | null
   email: string
   role: string
+  active?: boolean
+  email_verified?: boolean
+}
+
+export interface CachedEmployee {
+  id: string
+  first_name: string
+  last_name: string
+  role: string
 }
 
 const TOKEN_KEY = 'gradiliste_token'
 const USER_KEY = 'gradiliste_user'
+const EMPLOYEE_KEY = 'gradiliste_employee'
 const MUST_CHANGE_KEY = 'gradiliste_must_change_password'
 
 export function getToken(): string | null {
@@ -42,6 +52,30 @@ export function clearUser(): void {
   localStorage.removeItem(USER_KEY)
 }
 
+export function getCachedEmployee(): CachedEmployee | null {
+  if (typeof window === 'undefined') return null
+  const raw = localStorage.getItem(EMPLOYEE_KEY)
+  if (!raw) return null
+  try {
+    return JSON.parse(raw) as CachedEmployee
+  } catch {
+    return null
+  }
+}
+
+export function setCachedEmployee(emp: CachedEmployee | null): void {
+  if (typeof window === 'undefined') return
+  if (emp === null) {
+    localStorage.removeItem(EMPLOYEE_KEY)
+  } else {
+    localStorage.setItem(EMPLOYEE_KEY, JSON.stringify(emp))
+  }
+}
+
+export function clearEmployee(): void {
+  localStorage.removeItem(EMPLOYEE_KEY)
+}
+
 export function getMustChangePassword(): boolean {
   if (typeof window === 'undefined') return false
   return localStorage.getItem(MUST_CHANGE_KEY) === 'true'
@@ -62,5 +96,6 @@ export function isAuthenticated(): boolean {
 export function clearAuth(): void {
   clearToken()
   clearUser()
+  clearEmployee()
   clearMustChangePassword()
 }

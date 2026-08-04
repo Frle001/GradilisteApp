@@ -21,11 +21,16 @@ type ActivityInput struct {
 }
 
 type CreateDailyReportRequest struct {
-	ProjectID   string             `json:"project_id" binding:"required"`
-	ReportDate  string             `json:"report_date" binding:"required"`
-	Notes       *string            `json:"notes"`
-	WorkerHours []WorkerHoursInput `json:"worker_hours"`
-	Activities  []ActivityInput    `json:"activities"`
+	// ClientSubmissionID is a client-generated UUID included in every
+	// submission. If the same ID is received a second time (e.g. after a
+	// network timeout where the server already committed), the existing
+	// report ID is returned without creating a duplicate.
+	ClientSubmissionID *string            `json:"client_submission_id"`
+	ProjectID          string             `json:"project_id" binding:"required"`
+	ReportDate         string             `json:"report_date" binding:"required"`
+	Notes              *string            `json:"notes"`
+	WorkerHours        []WorkerHoursInput `json:"worker_hours"`
+	Activities         []ActivityInput    `json:"activities"`
 }
 
 type RejectDailyReportRequest struct {

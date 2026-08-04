@@ -42,12 +42,21 @@ func (r *ReportMaterialEffectsRepository) ValidateAndApply(
 ) error {
 	for _, a := range acts {
 		switch {
+		case a.ActivityType == "montaza" && !a.IsVTK && a.TrackingType == "work":
+			// Work-progress materials track cumulative effort — no stock deduction.
+			if err := r.applyMontazaWork(ctx, tx, companyID, reportID, projectID, appliedByUserID, a); err != nil {
+				return err
+			}
 		case a.ActivityType == "montaza" && !a.IsVTK:
 			if err := r.applyMontaza(ctx, tx, companyID, reportID, projectID, poslovodaEmpID, appliedByUserID, a); err != nil {
 				return err
 			}
 		case a.ActivityType == "montaza" && a.IsVTK:
 			if err := r.applyMontazaVTK(ctx, tx, companyID, reportID, projectID, poslovodaEmpID, appliedByUserID, a); err != nil {
+				return err
+			}
+		case a.ActivityType == "demontaza" && !a.IsVTK && a.TrackingType == "work":
+			if err := r.applyDemontazaWork(ctx, tx, companyID, reportID, projectID, appliedByUserID, a); err != nil {
 				return err
 			}
 		case a.ActivityType == "demontaza" && !a.IsVTK:
@@ -61,6 +70,47 @@ func (r *ReportMaterialEffectsRepository) ValidateAndApply(
 		}
 	}
 	return nil
+}
+
+// applyMontazaWork handles montaža for work-progress materials.
+// These materials track cumulative effort (used_quantity only); no stock check is
+// performed and no responsibility rows are created.
+func (r *ReportMaterialEffectsRepository) applyMontazaWork(
+	ctx context.Context, tx pgx.Tx,
+	companyID, reportID, projectID, appliedByUserID string,
+	a ActivityForApproval,
+) error {
+	_, err := tx.Exec(ctx, `
+		UPDATE project_materials
+		SET used_quantity = used_quantity + $1,
+		    updated_at   = NOW()
+		WHERE id = $2::uuid
+		  AND company_id = $3::uuid
+	`, a.Quantity, *a.ProjectMaterialID, companyID)
+	if err != nil {
+		return fmt.Errorf("greška pri ažuriranju utrošene količine radne aktivnosti: %w", err)
+	}
+	return r.insertEffect(ctx, tx, companyID, reportID, projectID, appliedByUserID, a, a.ProjectMaterialID)
+}
+
+// applyDemontazaWork handles demontaža for work-progress materials.
+// Subtracts from used_quantity (un-recording work); no available_quantity or responsibility changes.
+func (r *ReportMaterialEffectsRepository) applyDemontazaWork(
+	ctx context.Context, tx pgx.Tx,
+	companyID, reportID, projectID, appliedByUserID string,
+	a ActivityForApproval,
+) error {
+	_, err := tx.Exec(ctx, `
+		UPDATE project_materials
+		SET used_quantity = GREATEST(used_quantity - $1, 0),
+		    updated_at   = NOW()
+		WHERE id = $2::uuid
+		  AND company_id = $3::uuid
+	`, a.Quantity, *a.ProjectMaterialID, companyID)
+	if err != nil {
+		return fmt.Errorf("greška pri umanjenju utrošene količine radne aktivnosti: %w", err)
+	}
+	return r.insertEffect(ctx, tx, companyID, reportID, projectID, appliedByUserID, a, a.ProjectMaterialID)
 }
 
 func (r *ReportMaterialEffectsRepository) applyMontaza(

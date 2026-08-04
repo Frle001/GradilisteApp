@@ -16,6 +16,10 @@ var (
 
 	// ErrShiftCancelled is returned when a management operation targets a cancelled shift.
 	ErrShiftCancelled = errors.New("shift is cancelled")
+
+	// ErrSubmissionConflict is returned when a client_submission_id has already been
+	// committed with a different payload, indicating a corrupted or stale retry.
+	ErrSubmissionConflict = errors.New("submission conflict: payload mismatch")
 )
 
 // ValidationError carries a human-readable message from input validation.

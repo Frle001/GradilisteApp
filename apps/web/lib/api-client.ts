@@ -87,7 +87,12 @@ apiClient.interceptors.response.use(
       return apiClient(original)
     } catch (refreshErr) {
       drainQueue(null, refreshErr)
-      clearAuth()
+      // Only clear auth when the server explicitly rejects the refresh token (401).
+      // Network failures or 5xx during refresh must not destroy the local session.
+      const refreshStatus = (refreshErr as { response?: { status?: number } })?.response?.status
+      if (refreshStatus === 401) {
+        clearAuth()
+      }
       return Promise.reject(refreshErr)
     } finally {
       isRefreshing = false

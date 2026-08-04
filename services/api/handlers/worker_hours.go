@@ -76,6 +76,10 @@ func (h *WorkerHoursHandler) Submit(c *gin.Context) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Nemate pristup ovoj operaciji"})
 			return
 		}
+		if errors.Is(err, services.ErrSubmissionConflict) {
+			c.JSON(http.StatusConflict, gin.H{"error": "Ovaj submission ID je već korišten s drugačijim podacima"})
+			return
+		}
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
 		return
 	}

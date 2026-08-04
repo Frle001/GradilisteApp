@@ -13,6 +13,10 @@ import (
 
 var ErrWorkerHoursNotFound = errors.New("worker hours entry not found")
 
+// ErrSubmissionConflict is returned by Upsert when a client_submission_id has
+// already been stored with a different (project, date, hours, notes, work_description) payload.
+var ErrSubmissionConflict = errors.New("worker_hours: client_submission_id already used with different payload")
+
 type WorkerHoursRepository struct {
 	db *pgxpool.Pool
 }
@@ -68,14 +72,105 @@ func (r *WorkerHoursRepository) GetOtherProjectsHoursForDate(ctx context.Context
 }
 
 // Upsert inserts or updates the worker's hours for a given project/date.
+//
+// When clientSubmissionID is non-nil, the function first checks for an existing
+// row that was committed under that ID:
+//   - Same payload → returns the existing row idempotently (retry safe).
+//   - Different payload → returns ErrSubmissionConflict (409 territory).
+//   - No row yet → proceeds with the upsert and stores the ID on the row.
+//
+// Rows created without a submission ID (legacy / no-network-guard path) are not
+// touched by the ID index and behave as before.
 func (r *WorkerHoursRepository) Upsert(
 	ctx context.Context,
 	companyID, workerEmpID, projectID, workDate string,
 	hoursWorked float64,
 	notes, workDescription *string,
 	submittedByUserID string,
+	clientSubmissionID *string,
 ) (*dto.WorkerHoursEntry, error) {
+	// ── Idempotency check ────────────────────────────────────────────────────
+	if clientSubmissionID != nil {
+		var e dto.WorkerHoursEntry
+		var payloadMatches bool
+		err := r.db.QueryRow(ctx, `
+			SELECT
+				id::text,
+				worker_id::text,
+				project_id::text,
+				(SELECT name FROM projects WHERE id = wdh.project_id),
+				work_date::text,
+				hours_worked,
+				notes,
+				work_description,
+				created_at,
+				updated_at,
+				(project_id             = $3::uuid
+				 AND work_date          = $4::date
+				 AND hours_worked       = $5
+				 AND notes              IS NOT DISTINCT FROM $6
+				 AND work_description   IS NOT DISTINCT FROM $7) AS payload_matches
+			FROM worker_daily_hours wdh
+			WHERE company_id           = $1::uuid
+			  AND client_submission_id  = $2::uuid
+		`, companyID, *clientSubmissionID, projectID, workDate, hoursWorked, notes, workDescription,
+		).Scan(
+			&e.ID, &e.WorkerID, &e.ProjectID, &e.ProjectName,
+			&e.WorkDate, &e.HoursWorked, &e.Notes, &e.WorkDescription,
+			&e.CreatedAt, &e.UpdatedAt,
+			&payloadMatches,
+		)
+		if err == nil {
+			if payloadMatches {
+				return &e, nil
+			}
+			return nil, ErrSubmissionConflict
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("worker_hours.Upsert idempotency check: %w", err)
+		}
+		// No row for this submission ID — fall through to the upsert.
+	}
+
+	// ── Upsert ──────────────────────────────────────────────────────────────
 	var e dto.WorkerHoursEntry
+
+	if clientSubmissionID != nil {
+		err := r.db.QueryRow(ctx, `
+			INSERT INTO worker_daily_hours
+				(company_id, worker_id, project_id, work_date, hours_worked, notes, work_description, submitted_by, client_submission_id)
+			VALUES
+				($1::uuid, $2::uuid, $3::uuid, $4::date, $5, $6, $7, $8::uuid, $9::uuid)
+			ON CONFLICT (company_id, worker_id, project_id, work_date)
+			DO UPDATE SET
+				hours_worked         = EXCLUDED.hours_worked,
+				notes                = EXCLUDED.notes,
+				work_description     = EXCLUDED.work_description,
+				submitted_by         = EXCLUDED.submitted_by,
+				client_submission_id = EXCLUDED.client_submission_id
+			RETURNING
+				id::text,
+				worker_id::text,
+				project_id::text,
+				(SELECT name FROM projects WHERE id = worker_daily_hours.project_id),
+				work_date::text,
+				hours_worked,
+				notes,
+				work_description,
+				created_at,
+				updated_at
+		`, companyID, workerEmpID, projectID, workDate, hoursWorked, notes, workDescription, submittedByUserID, *clientSubmissionID,
+		).Scan(
+			&e.ID, &e.WorkerID, &e.ProjectID, &e.ProjectName,
+			&e.WorkDate, &e.HoursWorked, &e.Notes, &e.WorkDescription,
+			&e.CreatedAt, &e.UpdatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("worker_hours.Upsert: %w", err)
+		}
+		return &e, nil
+	}
+
 	err := r.db.QueryRow(ctx, `
 		INSERT INTO worker_daily_hours
 			(company_id, worker_id, project_id, work_date, hours_worked, notes, work_description, submitted_by)
@@ -91,14 +186,15 @@ func (r *WorkerHoursRepository) Upsert(
 			id::text,
 			worker_id::text,
 			project_id::text,
-			(SELECT name FROM projects WHERE id = worker_daily_hours.project_id) AS project_name,
+			(SELECT name FROM projects WHERE id = worker_daily_hours.project_id),
 			work_date::text,
 			hours_worked,
 			notes,
 			work_description,
 			created_at,
 			updated_at
-	`, companyID, workerEmpID, projectID, workDate, hoursWorked, notes, workDescription, submittedByUserID).Scan(
+	`, companyID, workerEmpID, projectID, workDate, hoursWorked, notes, workDescription, submittedByUserID,
+	).Scan(
 		&e.ID, &e.WorkerID, &e.ProjectID, &e.ProjectName,
 		&e.WorkDate, &e.HoursWorked, &e.Notes, &e.WorkDescription,
 		&e.CreatedAt, &e.UpdatedAt,

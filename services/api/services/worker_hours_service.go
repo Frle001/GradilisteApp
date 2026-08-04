@@ -2,10 +2,12 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"github.com/gradiliste/api/dto"
+	"github.com/gradiliste/api/repositories"
 )
 
 // workerHoursRepoIface is the repository surface used by WorkerHoursService.
@@ -13,7 +15,7 @@ type workerHoursRepoIface interface {
 	ListCompanyActiveProjects(ctx context.Context, companyID string) ([]dto.WorkerProject, error)
 	GetProjectStatus(ctx context.Context, companyID, projectID string) (string, error)
 	GetOtherProjectsHoursForDate(ctx context.Context, companyID, workerEmpID, projectID, workDate string) (float64, error)
-	Upsert(ctx context.Context, companyID, workerEmpID, projectID, workDate string, hoursWorked float64, notes, workDescription *string, submittedByUserID string) (*dto.WorkerHoursEntry, error)
+	Upsert(ctx context.Context, companyID, workerEmpID, projectID, workDate string, hoursWorked float64, notes, workDescription *string, submittedByUserID string, clientSubmissionID *string) (*dto.WorkerHoursEntry, error)
 	ListForWorkerDate(ctx context.Context, companyID, workerEmpID, workDate string) ([]dto.WorkerHoursEntry, error)
 	ListBeforeDate(ctx context.Context, companyID, workerEmpID, beforeDate string) ([]dto.WorkerHoursEntry, error)
 
@@ -103,7 +105,11 @@ func (s *WorkerHoursService) Submit(ctx context.Context, companyID, workerEmpID,
 		return nil, validationErr(fmt.Sprintf("Ukupni sati za danas bi premašili 24 sata (već upisano: %.1f h na ostalim projektima)", otherHours))
 	}
 
-	return s.repo.Upsert(ctx, companyID, workerEmpID, req.ProjectID, req.WorkDate, req.HoursWorked, req.Notes, req.WorkDescription, callerUserID)
+	entry, err := s.repo.Upsert(ctx, companyID, workerEmpID, req.ProjectID, req.WorkDate, req.HoursWorked, req.Notes, req.WorkDescription, callerUserID, req.ClientSubmissionID)
+	if errors.Is(err, repositories.ErrSubmissionConflict) {
+		return nil, ErrSubmissionConflict
+	}
+	return entry, err
 }
 
 // ── Manager methods ───────────────────────────────────────────────────────────

@@ -352,17 +352,43 @@ func (r *DailyReportRepository) GetByID(ctx context.Context, id, companyID strin
 
 func (r *DailyReportRepository) Create(ctx context.Context, tx pgx.Tx, companyID, projectID, poslovodaEmpID, userID string, req dto.CreateDailyReportRequest) (string, error) {
 	var reportID string
-	err := tx.QueryRow(ctx, `
-		INSERT INTO daily_reports
-			(company_id, project_id, poslovoda_id, report_date, status, notes, submitted_by, submitted_at)
-		VALUES ($1::uuid, $2::uuid, $3::uuid, $4::date, 'submitted', $5, $6::uuid, NOW())
-		RETURNING id::text
-	`, companyID, projectID, poslovodaEmpID, req.ReportDate, req.Notes, userID).Scan(&reportID)
-	if err != nil {
-		if isDuplicateKey(err) {
-			return "", ErrDailyReportDuplicate
+
+	// When client_submission_id is provided, use ON CONFLICT so that a retry
+	// after a network timeout returns the already-committed report ID without
+	// inserting a duplicate.  The conflict target uses the partial unique index
+	// idx_daily_reports_client_submission_id (WHERE client_submission_id IS NOT NULL).
+	// When client_submission_id is NULL the plain INSERT path is used.
+	if req.ClientSubmissionID != nil && *req.ClientSubmissionID != "" {
+		var isNew bool
+		err := tx.QueryRow(ctx, `
+			INSERT INTO daily_reports
+				(company_id, project_id, poslovoda_id, report_date, status, notes, submitted_by, submitted_at, client_submission_id)
+			VALUES ($1::uuid, $2::uuid, $3::uuid, $4::date, 'submitted', $5, $6::uuid, NOW(), $7::uuid)
+			ON CONFLICT (company_id, client_submission_id) WHERE client_submission_id IS NOT NULL
+			DO UPDATE SET updated_at = NOW()
+			RETURNING id::text, (xmax = 0) AS is_new
+		`, companyID, projectID, poslovodaEmpID, req.ReportDate, req.Notes, userID, *req.ClientSubmissionID).Scan(&reportID, &isNew)
+		if err != nil {
+			return "", err
 		}
-		return "", err
+		// xmax = 0 means INSERT (new row); xmax != 0 means DO UPDATE (already existed).
+		// On a retry the child rows already exist — return the existing report ID.
+		if !isNew {
+			return reportID, nil
+		}
+	} else {
+		err := tx.QueryRow(ctx, `
+			INSERT INTO daily_reports
+				(company_id, project_id, poslovoda_id, report_date, status, notes, submitted_by, submitted_at)
+			VALUES ($1::uuid, $2::uuid, $3::uuid, $4::date, 'submitted', $5, $6::uuid, NOW())
+			RETURNING id::text
+		`, companyID, projectID, poslovodaEmpID, req.ReportDate, req.Notes, userID).Scan(&reportID)
+		if err != nil {
+			if isDuplicateKey(err) {
+				return "", ErrDailyReportDuplicate
+			}
+			return "", err
+		}
 	}
 
 	if err := r.insertWorkerHours(ctx, tx, companyID, reportID, req.WorkerHours); err != nil {
