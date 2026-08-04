@@ -5,6 +5,7 @@ import { type MeUser, type MeEmployee } from '@/hooks/useAuth'
 import { ROLE_LABELS } from '@/lib/types/employees'
 import MobileBottomNav from '@/components/layout/MobileBottomNav'
 import SyncStatusBanner from '@/components/ui/SyncStatusBanner'
+import { useServerReachable } from '@/lib/connection-state'
 
 interface DashboardShellProps {
   user: MeUser
@@ -27,6 +28,7 @@ export default function DashboardShell({
   onLogout,
   wide = false,
 }: DashboardShellProps) {
+  const serverReachable = useServerReachable()
   const displayName = employee
     ? `${employee.first_name} ${employee.last_name}`
     : user.email
@@ -75,6 +77,13 @@ export default function DashboardShell({
         </div>
       </header>
 
+      {!serverReachable && (
+        <div className="bg-amber-950 border-b border-amber-800 px-4 py-2 text-center">
+          <p className="text-amber-300 text-sm">
+            Veza s poslužiteljem nije dostupna. Radite u izvanmrežnom načinu.
+          </p>
+        </div>
+      )}
       <SyncStatusBanner userId={user.id} companyId={user.company_id} />
 
       {/* Content — pb-nav adds bottom padding on mobile to avoid nav overlap */}
