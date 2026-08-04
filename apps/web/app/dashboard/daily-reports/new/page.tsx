@@ -36,7 +36,7 @@ export default function NewDailyReportPage() {
     const submissionId = crypto.randomUUID()
 
     try {
-      await enqueue({ id: submissionId, type: 'daily-report', payload })
+      await enqueue({ id: submissionId, type: 'daily-report', payload, ownerId: user?.id, companyId: user?.company_id })
     } catch {
       // IDB unavailable (private browsing, quota exceeded) — direct call fallback.
       const res = await apiClient.post('/daily-reports', payload)

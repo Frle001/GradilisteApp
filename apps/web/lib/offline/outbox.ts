@@ -146,6 +146,57 @@ export async function deleteBlob(key: string): Promise<void> {
   await db.delete('blobs', key)
 }
 
+export async function getFailedEntries(): Promise<OutboxEntry[]> {
+  const db = await getDB()
+  return db.getAllFromIndex('outbox', 'by-status', 'failed')
+}
+
+export async function getFailedCount(): Promise<number> {
+  const db = await getDB()
+  return db.countFromIndex('outbox', 'by-status', 'failed')
+}
+
+/**
+ * Permanently remove an entry (and its blob if any).
+ * Used when the user explicitly discards a failed item.
+ */
+export async function discardEntry(id: string): Promise<void> {
+  const db = await getDB()
+  const tx = db.transaction(['outbox', 'blobs'], 'readwrite')
+  const entry = await tx.objectStore('outbox').get(id)
+  if (entry?.blobKey) await tx.objectStore('blobs').delete(entry.blobKey)
+  await tx.objectStore('outbox').delete(id)
+  await tx.done
+}
+
+/**
+ * Reset a failed entry back to pending so it will be retried on next sync.
+ */
+export async function requeueFailed(id: string): Promise<void> {
+  const db = await getDB()
+  const tx = db.transaction('outbox', 'readwrite')
+  const entry = await tx.objectStore('outbox').get(id)
+  if (entry && entry.status === 'failed') {
+    await tx.objectStore('outbox').put({ ...entry, status: 'pending', lastError: undefined })
+  }
+  await tx.done
+}
+
+/** Count of pending entries per type. */
+export async function getPendingCountsByType(): Promise<Record<OutboxEntryType, number>> {
+  const db = await getDB()
+  const entries = await db.getAllFromIndex('outbox', 'by-status', 'pending')
+  const counts: Record<OutboxEntryType, number> = {
+    'daily-report': 0,
+    'worker-hours': 0,
+    'photo-upload': 0,
+  }
+  for (const e of entries) {
+    counts[e.type] = (counts[e.type] ?? 0) + 1
+  }
+  return counts
+}
+
 /** Remove all synced entries older than `maxAgeMs` to keep the store tidy. */
 export async function pruneSynced(maxAgeMs = 7 * 24 * 60 * 60 * 1000): Promise<void> {
   const db = await getDB()

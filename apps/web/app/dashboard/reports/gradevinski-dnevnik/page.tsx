@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import LoadingScreen from '@/components/ui/LoadingScreen'
 import apiClient from '@/lib/api-client'
+import { onRefresh } from '@/lib/refresh-events'
 import {
   type GradevinskiDnevnikResponse,
   type ReportFilter,
@@ -25,7 +26,9 @@ export default function GradevinskiDnevnikPage() {
   const [optionsError, setOptionsError] = useState<string | null>(null)
   const [data, setData] = useState<GradevinskiDnevnikResponse | null>(null)
   const [loading, setLoading] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const filterRef = useRef(filter)
 
   useEffect(() => {
     apiClient.get('/reports/filter-options')
@@ -64,7 +67,24 @@ export default function GradevinskiDnevnikPage() {
     }
   }, [])
 
+  useEffect(() => { filterRef.current = filter }, [filter])
   useEffect(() => { fetchData(filter) }, [filter, fetchData])
+
+  useEffect(() => {
+    return onRefresh((domains) => {
+      if (domains.includes('gradevinski-dnevnik')) fetchData(filterRef.current)
+    })
+  }, [fetchData])
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      const { runSync } = await import('@/lib/offline/sync-engine')
+      await runSync()
+    } catch { /* offline */ }
+    await fetchData(filter)
+    setRefreshing(false)
+  }
 
   function handleFilterChange(f: ReportFilter) {
     setFilter({ ...f, page: 1, per_page: filter.per_page ?? 25 })
@@ -92,11 +112,20 @@ export default function GradevinskiDnevnikPage() {
             <h1 className="text-2xl font-bold text-white tracking-tight">Građevinski dnevnik</h1>
             <p className="text-sm text-slate-400 mt-1">Pregled radnih sati po radnicima i gradilištu</p>
           </div>
-          <ExportExcelButton
-            endpoint="/reports/gradevinski-dnevnik/export"
-            filename={`gradjevinski-dnevnik-${new Date().toISOString().slice(0, 10)}.xlsx`}
-            filter={filter}
-          />
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => void handleRefresh()}
+              disabled={refreshing || loading}
+              className="text-sm text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 px-3 py-2 rounded-lg transition disabled:opacity-50"
+            >
+              {refreshing ? 'Osvježavanje…' : 'Osvježi'}
+            </button>
+            <ExportExcelButton
+              endpoint="/reports/gradevinski-dnevnik/export"
+              filename={`gradjevinski-dnevnik-${new Date().toISOString().slice(0, 10)}.xlsx`}
+              filter={filter}
+            />
+          </div>
         </div>
 
         <ReportFilters

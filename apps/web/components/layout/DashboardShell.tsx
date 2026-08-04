@@ -75,7 +75,7 @@ export default function DashboardShell({
         </div>
       </header>
 
-      <SyncStatusBanner />
+      <SyncStatusBanner userId={user.id} companyId={user.company_id} />
 
       {/* Content — pb-nav adds bottom padding on mobile to avoid nav overlap */}
       <main

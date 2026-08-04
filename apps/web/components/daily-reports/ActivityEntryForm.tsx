@@ -49,8 +49,7 @@ export default function ActivityEntryForm({ materials, materialsLoading = false,
       if (!materialId) errs.push('Odaberite materijal.')
       // Stock check only for stock-type montaža; work items have no stock pool.
       if (materialId && activityType === 'montaza' && !isWorkItem) {
-        const mat = materials.find(m => m.id === materialId)
-        if (mat && mat.available_quantity === 0) {
+        if (selectedMat && selectedMat.available_quantity === 0) {
           errs.push('Nije moguće utrošiti novi materijal bez raspoložive količine.')
         }
       }
@@ -77,17 +76,12 @@ export default function ActivityEntryForm({ materials, materialsLoading = false,
 
   function resolveDisplayName(): string {
     if (isVtk) return customName.trim()
-    const mat = materials.find(m => m.id === materialId)
-    return mat ? mat.material_name : ''
+    return selectedMat ? selectedMat.material_name : ''
   }
 
   function resolveUnit(): string {
     if (unit.trim()) return unit.trim()
-    if (!isVtk && materialId) {
-      const mat = materials.find(m => m.id === materialId)
-      return mat?.unit ?? ''
-    }
-    return ''
+    return selectedMat?.unit ?? ''
   }
 
   // unit comes directly from the picker so no materials.find() needed
@@ -111,7 +105,7 @@ export default function ActivityEntryForm({ materials, materialsLoading = false,
       activity_type: activityType,
       is_vtk: isVtk,
       notes: notes.trim() || null,
-      tracking_type: isWorkItem ? 'work' : 'stock',
+      tracking_type: isVtk ? undefined : (isWorkItem ? 'work' : 'stock'),
     }
     onAdd(activity)
 

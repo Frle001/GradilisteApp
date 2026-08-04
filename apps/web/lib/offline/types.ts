@@ -58,12 +58,19 @@ export interface ActivityInputPayload {
   activity_type: string
   is_vtk: boolean
   notes: string | null
+  tracking_type?: 'stock' | 'work'
+}
+
+export interface WorkerHoursInputPayload {
+  worker_id: string
+  hours_worked: number
+  notes: string | null
 }
 
 export interface DailyReportPayload {
   project_id: string
   report_date: string
   notes: string | null
-  worker_hours: []
+  worker_hours: WorkerHoursInputPayload[]
   activities: ActivityInputPayload[]
 }

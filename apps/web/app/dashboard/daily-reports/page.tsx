@@ -14,6 +14,7 @@ import {
   canCreateDailyReport,
 } from '@/lib/types/daily-reports'
 import apiClient from '@/lib/api-client'
+import { onRefresh } from '@/lib/refresh-events'
 
 const STATUS_FILTERS: Array<{ value: string; label: string }> = [
   { value: '', label: 'Svi statusi' },
@@ -39,6 +40,7 @@ export default function DailyReportsPage() {
 
   const [reports, setReports] = useState<DailyReportListItem[]>([])
   const [isLoadingReports, setIsLoadingReports] = useState(true)
+  const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('')
@@ -66,6 +68,23 @@ export default function DailyReportsPage() {
   }, [user, statusFilter, dateFrom, dateTo])
 
   useEffect(() => { fetchReports() }, [fetchReports])
+
+  // Refresh list when a daily-report sync completes
+  useEffect(() => {
+    return onRefresh((domains) => {
+      if (domains.includes('daily-reports')) fetchReports()
+    })
+  }, [fetchReports])
+
+  const handleRefresh = async () => {
+    setRefreshing(true)
+    try {
+      const { runSync } = await import('@/lib/offline/sync-engine')
+      await runSync({ userId: user?.id, companyId: user?.company_id })
+    } catch { /* offline — just refetch */ }
+    fetchReports()
+    setRefreshing(false)
+  }
 
   if (isLoading) return <LoadingScreen />
   if (!user) return null
@@ -96,7 +115,16 @@ export default function DailyReportsPage() {
       }
     >
       <div className="space-y-5">
-        <h1 className="text-2xl font-bold text-white">Dnevni izvještaji</h1>
+        <div className="flex items-center justify-between gap-4">
+          <h1 className="text-2xl font-bold text-white">Dnevni izvještaji</h1>
+          <button
+            onClick={() => void handleRefresh()}
+            disabled={refreshing || isLoadingReports}
+            className="shrink-0 text-sm text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 px-3 py-2 rounded-lg transition disabled:opacity-50"
+          >
+            {refreshing ? 'Osvježavanje…' : 'Osvježi'}
+          </button>
+        </div>
 
         {/* Filters */}
         <div className="flex flex-wrap gap-3">

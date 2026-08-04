@@ -358,6 +358,7 @@ func TestSubmit_WithSubmissionID_Retry_ReturnsOriginalEntry(t *testing.T) {
 	existing := &dto.WorkerHoursEntry{ID: "original-entry-id", HoursWorked: 8}
 	repo := &mockWorkerHoursRepo{
 		upsertFn: func(_ context.Context, _, _, _, _ string, _ float64, _ *string, _ *string, _ string, _ *string) (*dto.WorkerHoursEntry, error) {
+			// Repo already found and returned the committed row.
 			return existing, nil
 		},
 	}
@@ -556,5 +557,56 @@ func TestListManagerEntries_NonManagerForbidden(t *testing.T) {
 		if !errors.Is(err, ErrForbidden) {
 			t.Errorf("role=%q: expected ErrForbidden, got %v", role, err)
 		}
+	}
+}
+
+// ── work_description ──────────────────────────────────────────────────────────
+
+// work_description is nil when not provided (old entries without this field).
+func TestSubmit_WorkDescription_NilWhenAbsent(t *testing.T) {
+	var capturedDesc *string
+	repo := &mockWorkerHoursRepo{
+		upsertFn: func(_ context.Context, _, _, _, _ string, _ float64, _ *string, workDescription *string, _ string, _ *string) (*dto.WorkerHoursEntry, error) {
+			capturedDesc = workDescription
+			return &dto.WorkerHoursEntry{ID: "e1"}, nil
+		},
+	}
+	svc := newWHSvc(repo)
+	_, err := svc.Submit(context.Background(), "comp", "emp", "user", "radnik", baseReq())
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if capturedDesc != nil {
+		t.Errorf("expected nil work_description for old-style entry, got %q", *capturedDesc)
+	}
+}
+
+// work_description + client_submission_id together are both forwarded.
+func TestSubmit_WorkDescription_WithSubmissionID_BothPassed(t *testing.T) {
+	id := "aaaaaaaa-bbbb-cccc-dddd-ffffffffffff"
+	desc := "Betoniranje temelja"
+	var capturedDesc *string
+	var capturedID *string
+	repo := &mockWorkerHoursRepo{
+		upsertFn: func(_ context.Context, _, _, _, _ string, _ float64, _ *string, workDescription *string, _ string, clientSubmissionID *string) (*dto.WorkerHoursEntry, error) {
+			capturedDesc = workDescription
+			capturedID = clientSubmissionID
+			return &dto.WorkerHoursEntry{ID: "e1"}, nil
+		},
+	}
+	req := baseReq()
+	req.WorkDescription = &desc
+	req.ClientSubmissionID = &id
+
+	svc := newWHSvc(repo)
+	_, err := svc.Submit(context.Background(), "comp", "emp", "user", "radnik", req)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if capturedDesc == nil || *capturedDesc != desc {
+		t.Errorf("work_description not forwarded: got %v", capturedDesc)
+	}
+	if capturedID == nil || *capturedID != id {
+		t.Errorf("client_submission_id not forwarded: got %v", capturedID)
 	}
 }

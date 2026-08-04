@@ -1,23 +1,27 @@
 'use client'
 
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { getPendingCount } from '@/lib/offline/outbox'
+import { getPendingCount, getFailedCount } from '@/lib/offline/outbox'
 import { runSync } from '@/lib/offline/sync-engine'
+import { onRefresh } from '@/lib/refresh-events'
 
-const POLL_INTERVAL_MS = 30_000 // background poll when online
+const POLL_INTERVAL_MS = 30_000
 
-export function useOutboxSync() {
+export function useOutboxSync(userId?: string, companyId?: string) {
   const [pendingCount, setPendingCount] = useState(0)
+  const [failedCount, setFailedCount] = useState(0)
   const [isSyncing, setIsSyncing] = useState(false)
   const [isOnline, setIsOnline] = useState(true)
+  const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null)
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  const refreshCount = useCallback(async () => {
+  const refreshCounts = useCallback(async () => {
     try {
-      const n = await getPendingCount()
-      setPendingCount(n)
+      const [p, f] = await Promise.all([getPendingCount(), getFailedCount()])
+      setPendingCount(p)
+      setFailedCount(f)
     } catch {
-      // IDB may not be available (SSR or private browsing)
+      // IDB unavailable (SSR or private browsing)
     }
   }, [])
 
@@ -25,18 +29,26 @@ export function useOutboxSync() {
     if (isSyncing) return
     setIsSyncing(true)
     try {
-      await runSync()
+      await runSync({ userId, companyId })
+      setLastSyncedAt(Date.now())
     } finally {
       setIsSyncing(false)
-      await refreshCount()
+      await refreshCounts()
     }
-  }, [isSyncing, refreshCount])
+  }, [isSyncing, refreshCounts, userId, companyId])
 
-  // Initial count + online state
+  // Initial count + online state + startup sync
   useEffect(() => {
     setIsOnline(navigator.onLine)
-    refreshCount()
-  }, [refreshCount])
+    void refreshCounts()
+    if (navigator.onLine) void triggerSync()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []) // run once on mount; triggerSync is stable after first render
+
+  // Refresh counts whenever sync completes on this or other tabs/pages
+  useEffect(() => {
+    return onRefresh(() => { void refreshCounts() })
+  }, [refreshCounts])
 
   // Auto-sync on online, visibilitychange, focus
   useEffect(() => {
@@ -75,5 +87,5 @@ export function useOutboxSync() {
     }
   }, [isOnline, triggerSync])
 
-  return { pendingCount, isSyncing, isOnline, triggerSync, refreshCount }
+  return { pendingCount, failedCount, isSyncing, isOnline, lastSyncedAt, triggerSync, refreshCounts }
 }
