@@ -62,6 +62,7 @@ export interface PurchaseFormMaterial {
   material_code: string | null
   available_quantity: number
   unit: string
+  tracking_type: 'stock' | 'work'
 }
 
 export interface PurchaseFormDataResponse {

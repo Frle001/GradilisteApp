@@ -56,7 +56,7 @@ func (r *ProjectMaterialRepository) List(ctx context.Context, projectID, company
 
 	where := "WHERE " + strings.Join(conditions, " AND ")
 	q := `SELECT id, material_name, material_code, planned_quantity, used_quantity, available_quantity,
-	             unit, source, active, created_at, updated_at
+	             unit, source, active, tracking_type, created_at, updated_at
 	      FROM project_materials ` + where + ` ORDER BY material_name ASC`
 
 	rows, err := r.db.Query(ctx, q, args...)
@@ -71,7 +71,7 @@ func (r *ProjectMaterialRepository) List(ctx context.Context, projectID, company
 		if err := rows.Scan(
 			&m.ID, &m.MaterialName, &m.MaterialCode,
 			&m.PlannedQuantity, &m.UsedQuantity, &m.AvailableQuantity,
-			&m.Unit, &m.Source, &m.Active, &m.CreatedAt, &m.UpdatedAt,
+			&m.Unit, &m.Source, &m.Active, &m.TrackingType, &m.CreatedAt, &m.UpdatedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -82,7 +82,7 @@ func (r *ProjectMaterialRepository) List(ctx context.Context, projectID, company
 
 func (r *ProjectMaterialRepository) GetByID(ctx context.Context, id, projectID, companyID string) (*dto.MaterialListItem, error) {
 	q := `SELECT id, material_name, material_code, planned_quantity, used_quantity, available_quantity,
-	             unit, source, active, created_at, updated_at
+	             unit, source, active, tracking_type, created_at, updated_at
 	      FROM project_materials
 	      WHERE id = $1 AND project_id = $2 AND company_id = $3`
 
@@ -90,7 +90,7 @@ func (r *ProjectMaterialRepository) GetByID(ctx context.Context, id, projectID, 
 	err := r.db.QueryRow(ctx, q, id, projectID, companyID).Scan(
 		&m.ID, &m.MaterialName, &m.MaterialCode,
 		&m.PlannedQuantity, &m.UsedQuantity, &m.AvailableQuantity,
-		&m.Unit, &m.Source, &m.Active, &m.CreatedAt, &m.UpdatedAt,
+		&m.Unit, &m.Source, &m.Active, &m.TrackingType, &m.CreatedAt, &m.UpdatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrMaterialNotFound
@@ -103,20 +103,20 @@ func (r *ProjectMaterialRepository) GetByID(ctx context.Context, id, projectID, 
 
 func (r *ProjectMaterialRepository) Create(ctx context.Context, projectID, companyID string, req dto.CreateMaterialRequest) (*dto.MaterialListItem, error) {
 	q := `INSERT INTO project_materials
-	        (project_id, company_id, material_name, material_code, planned_quantity, used_quantity, available_quantity, unit, source)
-	      VALUES ($1, $2, $3, $4, $5, 0, 0, $6, 'manual')
+	        (project_id, company_id, material_name, material_code, planned_quantity, used_quantity, available_quantity, unit, source, tracking_type)
+	      VALUES ($1, $2, $3, $4, $5, 0, 0, $6, 'manual', $7)
 	      RETURNING id, material_name, material_code, planned_quantity, used_quantity, available_quantity,
-	                unit, source, active, created_at, updated_at`
+	                unit, source, active, tracking_type, created_at, updated_at`
 
 	var m dto.MaterialListItem
 	if err := r.db.QueryRow(ctx, q,
 		projectID, companyID,
 		req.MaterialName, req.MaterialCode,
-		req.PlannedQuantity, req.Unit,
+		req.PlannedQuantity, req.Unit, req.TrackingType,
 	).Scan(
 		&m.ID, &m.MaterialName, &m.MaterialCode,
 		&m.PlannedQuantity, &m.UsedQuantity, &m.AvailableQuantity,
-		&m.Unit, &m.Source, &m.Active, &m.CreatedAt, &m.UpdatedAt,
+		&m.Unit, &m.Source, &m.Active, &m.TrackingType, &m.CreatedAt, &m.UpdatedAt,
 	); err != nil {
 		if isDuplicateKey(err) {
 			return nil, ErrMaterialDuplicate
@@ -128,19 +128,19 @@ func (r *ProjectMaterialRepository) Create(ctx context.Context, projectID, compa
 
 func (r *ProjectMaterialRepository) Update(ctx context.Context, id, projectID, companyID string, req dto.UpdateMaterialRequest) (*dto.MaterialListItem, error) {
 	q := `UPDATE project_materials
-	      SET material_name = $1, material_code = $2, planned_quantity = $3, unit = $4
-	      WHERE id = $5 AND project_id = $6 AND company_id = $7
+	      SET material_name = $1, material_code = $2, planned_quantity = $3, unit = $4, tracking_type = $5
+	      WHERE id = $6 AND project_id = $7 AND company_id = $8
 	      RETURNING id, material_name, material_code, planned_quantity, used_quantity, available_quantity,
-	                unit, source, active, created_at, updated_at`
+	                unit, source, active, tracking_type, created_at, updated_at`
 
 	var m dto.MaterialListItem
 	err := r.db.QueryRow(ctx, q,
-		req.MaterialName, req.MaterialCode, req.PlannedQuantity, req.Unit,
+		req.MaterialName, req.MaterialCode, req.PlannedQuantity, req.Unit, req.TrackingType,
 		id, projectID, companyID,
 	).Scan(
 		&m.ID, &m.MaterialName, &m.MaterialCode,
 		&m.PlannedQuantity, &m.UsedQuantity, &m.AvailableQuantity,
-		&m.Unit, &m.Source, &m.Active, &m.CreatedAt, &m.UpdatedAt,
+		&m.Unit, &m.Source, &m.Active, &m.TrackingType, &m.CreatedAt, &m.UpdatedAt,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrMaterialNotFound

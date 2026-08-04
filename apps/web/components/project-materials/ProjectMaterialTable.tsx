@@ -1,6 +1,6 @@
 'use client'
 
-import { type MaterialListItem } from '@/lib/types/project-materials'
+import { type MaterialListItem, TRACKING_TYPE_LABELS } from '@/lib/types/project-materials'
 
 interface Props {
   materials: MaterialListItem[]
@@ -34,6 +34,7 @@ export default function ProjectMaterialTable({ materials, canManage, onEdit, onD
               <th className="text-right py-2 pr-4">Utrošeno</th>
               <th className="text-right py-2 pr-4">Dostupno</th>
               <th className="text-left py-2 pr-4">JM</th>
+              <th className="text-left py-2 pr-4">Tip</th>
               <th className="text-left py-2 pr-4">Izvor</th>
               {canManage && <th className="text-right py-2">Akcije</th>}
             </tr>
@@ -49,6 +50,15 @@ export default function ProjectMaterialTable({ materials, canManage, onEdit, onD
                   {fmtQty(m.available_quantity)}
                 </td>
                 <td className="py-2.5 pr-4 text-slate-400">{m.unit}</td>
+                <td className="py-2.5 pr-4">
+                  <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                    m.tracking_type === 'work'
+                      ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-600/40'
+                      : 'bg-slate-700/60 text-slate-400 border border-slate-600/40'
+                  }`}>
+                    {TRACKING_TYPE_LABELS[m.tracking_type] ?? m.tracking_type}
+                  </span>
+                </td>
                 <td className="py-2.5 pr-4 text-slate-500 text-xs">{m.source ?? '—'}</td>
                 {canManage && (
                   <td className="py-2.5 text-right space-x-2 whitespace-nowrap">
@@ -87,6 +97,13 @@ export default function ProjectMaterialTable({ materials, canManage, onEdit, onD
               <div>
                 <p className="text-white font-medium text-sm">{m.material_name}</p>
                 {m.material_code && <p className="text-slate-500 text-xs">{m.material_code}</p>}
+                <span className={`inline-flex items-center mt-1 px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                  m.tracking_type === 'work'
+                    ? 'bg-emerald-500/15 text-emerald-300 border border-emerald-600/40'
+                    : 'bg-slate-700/60 text-slate-400 border border-slate-600/40'
+                }`}>
+                  {TRACKING_TYPE_LABELS[m.tracking_type] ?? m.tracking_type}
+                </span>
               </div>
               <span className="text-slate-400 text-xs">{m.unit}</span>
             </div>

@@ -1,5 +1,12 @@
 // ── Existing material CRUD types ──────────────────────────────────────────────
 
+export type TrackingType = 'stock' | 'work'
+
+export const TRACKING_TYPE_LABELS: Record<TrackingType, string> = {
+  stock: 'Materijal',
+  work:  'Radna aktivnost',
+}
+
 export interface MaterialListItem {
   id: string
   material_name: string
@@ -10,6 +17,7 @@ export interface MaterialListItem {
   unit: string
   source: string | null
   active: boolean
+  tracking_type: TrackingType
   created_at: string
   updated_at: string
 }
@@ -19,6 +27,7 @@ export interface CreateMaterialPayload {
   material_code?: string | null
   planned_quantity: number
   unit: string
+  tracking_type: TrackingType
 }
 
 export interface UpdateMaterialPayload {
@@ -26,6 +35,7 @@ export interface UpdateMaterialPayload {
   material_code?: string | null
   planned_quantity: number
   unit: string
+  tracking_type: TrackingType
 }
 
 // ── Phase 6.5 wizard import types ────────────────────────────────────────────

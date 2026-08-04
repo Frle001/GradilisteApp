@@ -54,7 +54,23 @@ func (s *ProjectMaterialService) List(ctx context.Context, projectID, companyID 
 	return items, nil
 }
 
+func normalizeTrackingType(t string) (string, error) {
+	if t == "" {
+		return "stock", nil
+	}
+	if t == "stock" || t == "work" {
+		return t, nil
+	}
+	return "", errors.New("tracking_type mora biti 'stock' ili 'work'")
+}
+
 func (s *ProjectMaterialService) Create(ctx context.Context, projectID, companyID, callerUserID string, req dto.CreateMaterialRequest) (*dto.MaterialListItem, error) {
+	tt, err := normalizeTrackingType(req.TrackingType)
+	if err != nil {
+		return nil, err
+	}
+	req.TrackingType = tt
+
 	status, err := s.projRepo.GetStatus(ctx, companyID, projectID)
 	if errors.Is(err, repositories.ErrNotFound) {
 		return nil, repositories.ErrNotFound
@@ -82,6 +98,12 @@ func (s *ProjectMaterialService) Create(ctx context.Context, projectID, companyI
 }
 
 func (s *ProjectMaterialService) Update(ctx context.Context, id, projectID, companyID, callerUserID string, req dto.UpdateMaterialRequest) (*dto.MaterialListItem, error) {
+	tt, err := normalizeTrackingType(req.TrackingType)
+	if err != nil {
+		return nil, err
+	}
+	req.TrackingType = tt
+
 	status, err := s.projRepo.GetStatus(ctx, companyID, projectID)
 	if errors.Is(err, repositories.ErrNotFound) {
 		return nil, repositories.ErrNotFound

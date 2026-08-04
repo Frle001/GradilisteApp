@@ -12,22 +12,25 @@ type MaterialListItem struct {
 	Unit              string    `json:"unit"`
 	Source            *string   `json:"source"`
 	Active            bool      `json:"active"`
+	TrackingType      string    `json:"tracking_type"`
 	CreatedAt         time.Time `json:"created_at"`
 	UpdatedAt         time.Time `json:"updated_at"`
 }
 
 type CreateMaterialRequest struct {
-	MaterialName    string  `json:"material_name" binding:"required"`
+	MaterialName    string  `json:"material_name"    binding:"required"`
 	MaterialCode    *string `json:"material_code"`
 	PlannedQuantity float64 `json:"planned_quantity" binding:"min=0"`
-	Unit            string  `json:"unit" binding:"required"`
+	Unit            string  `json:"unit"             binding:"required"`
+	TrackingType    string  `json:"tracking_type"` // "stock" (default) or "work"
 }
 
 type UpdateMaterialRequest struct {
-	MaterialName    string  `json:"material_name" binding:"required"`
+	MaterialName    string  `json:"material_name"    binding:"required"`
 	MaterialCode    *string `json:"material_code"`
 	PlannedQuantity float64 `json:"planned_quantity" binding:"min=0"`
-	Unit            string  `json:"unit" binding:"required"`
+	Unit            string  `json:"unit"             binding:"required"`
+	TrackingType    string  `json:"tracking_type"` // "stock" (default) or "work"
 }
 
 // ── Legacy import types (kept for internal use) ───────────────────────────────

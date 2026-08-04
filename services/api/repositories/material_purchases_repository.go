@@ -139,9 +139,10 @@ func (r *MaterialPurchasesRepository) GetFormProjects(ctx context.Context, compa
 
 func (r *MaterialPurchasesRepository) GetFormMaterials(ctx context.Context, companyID, projectID string) ([]dto.PurchaseFormMaterial, error) {
 	rows, err := r.db.Query(ctx, `
-		SELECT id::text, material_name, material_code, available_quantity, unit
+		SELECT id::text, material_name, material_code, available_quantity, unit, tracking_type
 		FROM project_materials
 		WHERE company_id = $1::uuid AND project_id = $2::uuid AND active = true
+		  AND tracking_type = 'stock'
 		ORDER BY material_name
 	`, companyID, projectID)
 	if err != nil {
@@ -152,7 +153,7 @@ func (r *MaterialPurchasesRepository) GetFormMaterials(ctx context.Context, comp
 	var out []dto.PurchaseFormMaterial
 	for rows.Next() {
 		var m dto.PurchaseFormMaterial
-		if err := rows.Scan(&m.ID, &m.MaterialName, &m.MaterialCode, &m.AvailableQuantity, &m.Unit); err != nil {
+		if err := rows.Scan(&m.ID, &m.MaterialName, &m.MaterialCode, &m.AvailableQuantity, &m.Unit, &m.TrackingType); err != nil {
 			return nil, err
 		}
 		out = append(out, m)

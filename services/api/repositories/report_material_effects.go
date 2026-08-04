@@ -68,7 +68,23 @@ func (r *ReportMaterialEffectsRepository) applyMontaza(
 	companyID, reportID, projectID, poslovodaEmpID, appliedByUserID string,
 	a ActivityForApproval,
 ) error {
-	// Atomic subtract: only succeeds if available_quantity >= quantity.
+	// Work-type items accumulate progress; no stock pool, no quantity check.
+	if a.TrackingType == "work" {
+		tag, err := tx.Exec(ctx, `
+			UPDATE project_materials
+			SET used_quantity = used_quantity + $1, updated_at = NOW()
+			WHERE id = $2::uuid AND company_id = $3::uuid
+		`, a.Quantity, *a.ProjectMaterialID, companyID)
+		if err != nil {
+			return fmt.Errorf("greška pri bilježenju napretka radne aktivnosti: %w", err)
+		}
+		if tag.RowsAffected() == 0 {
+			return fmt.Errorf("radna aktivnost nije pronađena u projektu")
+		}
+		return r.insertEffect(ctx, tx, companyID, reportID, projectID, appliedByUserID, a, a.ProjectMaterialID)
+	}
+
+	// Stock items: atomic subtract — only succeeds if available_quantity >= quantity.
 	var updatedID string
 	err := tx.QueryRow(ctx, `
 		UPDATE project_materials
@@ -160,6 +176,21 @@ func (r *ReportMaterialEffectsRepository) applyDemontaza(
 	companyID, reportID, projectID, poslovodaEmpID, appliedByUserID string,
 	a ActivityForApproval,
 ) error {
+	// Work-type items: demontaža corrects (subtracts) accumulated progress.
+	// No stock pool, no responsibility rows involved.
+	if a.TrackingType == "work" {
+		_, err := tx.Exec(ctx, `
+			UPDATE project_materials
+			SET used_quantity = GREATEST(used_quantity - $1, 0), updated_at = NOW()
+			WHERE id = $2::uuid AND company_id = $3::uuid
+		`, a.Quantity, *a.ProjectMaterialID, companyID)
+		if err != nil {
+			return fmt.Errorf("greška pri ispravku napretka radne aktivnosti: %w", err)
+		}
+		return r.insertEffect(ctx, tx, companyID, reportID, projectID, appliedByUserID, a, a.ProjectMaterialID)
+	}
+
+	// Stock items: return quantity to available pool.
 	_, err := tx.Exec(ctx, `
 		UPDATE project_materials
 		SET available_quantity = available_quantity + $1,

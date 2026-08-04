@@ -222,7 +222,9 @@ export default function MaterialPicker({
                   <p className="text-xs text-slate-500 mt-0.5 truncate">
                     {m.unit}
                     {m.material_code ? ` · ${m.material_code}` : ''}
-                    {` · kol: ${m.available_quantity}`}
+                    {m.tracking_type === 'work'
+                      ? <span className="text-emerald-600"> · radna aktivnost</span>
+                      : ` · kol: ${m.available_quantity}`}
                   </p>
                 </li>
               ))}

@@ -92,6 +92,7 @@ type PurchaseFormMaterial struct {
 	MaterialCode      *string `json:"material_code"`
 	AvailableQuantity float64 `json:"available_quantity"`
 	Unit              string  `json:"unit"`
+	TrackingType      string  `json:"tracking_type"`
 }
 
 type PurchaseFormDataResponse struct {
