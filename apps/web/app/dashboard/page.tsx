@@ -42,10 +42,6 @@ const roleCards: Record<string, DashboardCard[]> = {
   ],
   administracija: [
     { title: 'Zaposlenici', description: 'Upravljanje zaposlenicima', icon: '👥', href: '/dashboard/employees' },
-    { title: 'Raspored smjena', description: 'Tjedni raspored radnih smjena', icon: '📅', href: '/dashboard/schedule' },
-    { title: 'Projekti / Gradilišta', description: 'Pregled projekata', icon: '🏗️', href: '/dashboard/projects' },
-    { title: 'Arhiva projekata', description: 'Zatvoreni i arhivirani projekti', icon: '🗄️', href: '/dashboard/projects/archive' },
-    { title: 'Upisi materijala', description: 'Pregled upisa materijala', icon: '📦', href: '/dashboard/material-purchases' },
     { title: 'Stanje robe', description: 'Osobna zadužnica i prijenosi', icon: '🗂️', href: '/dashboard/inventory' },
   ],
   poslovoda: [

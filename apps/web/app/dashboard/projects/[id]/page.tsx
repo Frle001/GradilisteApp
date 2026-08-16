@@ -30,6 +30,10 @@ export default function ProjectDetailPage() {
   const canHardDelete = !!user && user.role === 'direktor'
 
   useEffect(() => {
+    if (!isLoading && user?.role === 'administracija') router.replace('/dashboard')
+  }, [isLoading, user, router])
+
+  useEffect(() => {
     if (!user) return
     apiClient
       .get(`/projects/${id}`)
@@ -75,7 +79,7 @@ export default function ProjectDetailPage() {
   }
 
   if (isLoading) return <LoadingScreen />
-  if (!user) return null
+  if (!user || user.role === 'administracija') return null
 
   const isActive = project?.status === 'active'
 

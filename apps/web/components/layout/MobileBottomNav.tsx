@@ -7,7 +7,6 @@ import {
   FolderOpen,
   FileText,
   Users,
-  ShoppingBag,
   Clock,
   CalendarDays,
 } from 'lucide-react'
@@ -37,10 +36,7 @@ const navByRole: Record<string, NavItem[]> = {
   ],
   administracija: [
     { href: '/dashboard', label: 'Početna', Icon: Home, exact: true },
-    { href: '/dashboard/schedule', label: 'Raspored', Icon: CalendarDays },
     { href: '/dashboard/employees', label: 'Zaposlenici', Icon: Users },
-    { href: '/dashboard/projects', label: 'Projekti', Icon: FolderOpen },
-    { href: '/dashboard/material-purchases', label: 'Materijal', Icon: ShoppingBag },
   ],
   poslovoda: [
     { href: '/dashboard', label: 'Početna', Icon: Home, exact: true },

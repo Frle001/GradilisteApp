@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import LoadingScreen from '@/components/ui/LoadingScreen'
 import LoadingOverlay from '@/components/ui/LoadingOverlay'
@@ -24,6 +24,7 @@ function StatCard({ label, value, sub }: { label: string; value: number | string
 export default function ArchiveSummaryPage() {
   const { id } = useParams<{ id: string }>()
   const { user, employee, isLoading, logout } = useAuth()
+  const router = useRouter()
 
   const [summary, setSummary] = useState<ArchiveSummary | null>(null)
   const [loadingData, setLoadingData] = useState(true)
@@ -31,6 +32,10 @@ export default function ArchiveSummaryPage() {
   const [reactivating, setReactivating] = useState(false)
 
   const canManage = !!user && canManageProjects(user.role)
+
+  useEffect(() => {
+    if (!isLoading && user?.role === 'administracija') router.replace('/dashboard')
+  }, [isLoading, user, router])
 
   useEffect(() => {
     if (!user) return
@@ -68,7 +73,7 @@ export default function ArchiveSummaryPage() {
   }
 
   if (isLoading) return <LoadingScreen />
-  if (!user) return null
+  if (!user || user.role === 'administracija') return null
 
   return (
     <DashboardShell

@@ -11,7 +11,7 @@ func RegisterScheduleRoutes(
 	authRequired gin.HandlerFunc,
 	requireRoles func(...string) gin.HandlerFunc,
 ) {
-	viewRoles := requireRoles("direktor", "inzenjer", "administracija", "poslovoda", "radnik")
+	viewRoles := requireRoles("direktor", "inzenjer", "poslovoda", "radnik")
 	manageRoles := requireRoles("direktor", "inzenjer")
 
 	schedule := api.Group("/schedule", authRequired)

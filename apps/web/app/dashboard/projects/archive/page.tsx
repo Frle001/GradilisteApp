@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import LoadingScreen from '@/components/ui/LoadingScreen'
 import LoadingOverlay from '@/components/ui/LoadingOverlay'
@@ -19,6 +20,7 @@ const inputCls = `
 
 export default function ProjectArchivePage() {
   const { user, employee, isLoading, logout } = useAuth()
+  const router = useRouter()
 
   const [items, setItems] = useState<ArchiveListItem[]>([])
   const [total, setTotal] = useState(0)
@@ -68,6 +70,10 @@ export default function ProjectArchivePage() {
     setPage(1)
   }, [search, statusFilter, dateFrom, dateTo])
 
+  useEffect(() => {
+    if (!isLoading && user?.role === 'administracija') router.replace('/dashboard')
+  }, [isLoading, user, router])
+
   async function handleReactivate(id: string, name: string) {
     if (!confirm(`Reaktivirati projekt "${name}"?`)) return
     setReactivating(id)
@@ -83,7 +89,7 @@ export default function ProjectArchivePage() {
   }
 
   if (isLoading) return <LoadingScreen />
-  if (!user) return null
+  if (!user || user.role === 'administracija') return null
 
   return (
     <DashboardShell

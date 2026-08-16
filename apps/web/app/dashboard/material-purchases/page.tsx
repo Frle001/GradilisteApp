@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import LoadingScreen from '@/components/ui/LoadingScreen'
 import DashboardShell from '@/components/layout/DashboardShell'
@@ -22,6 +23,7 @@ const inputCls = `
 
 export default function MaterialPurchasesPage() {
   const { user, employee, isLoading, logout } = useAuth()
+  const router = useRouter()
 
   const [filter, setFilter] = useState<PurchaseFilter>({ page: 1, per_page: 25 })
   const [data, setData] = useState<PurchaseListResponse | null>(null)
@@ -68,12 +70,16 @@ export default function MaterialPurchasesPage() {
 
   useEffect(() => { fetchData(filter) }, [filter, fetchData])
 
+  useEffect(() => {
+    if (!isLoading && user?.role === 'administracija') router.replace('/dashboard')
+  }, [isLoading, user, router])
+
   function handleFilterChange(patch: Partial<PurchaseFilter>) {
     setFilter(prev => ({ ...prev, ...patch, page: 1 }))
   }
 
   if (isLoading) return <LoadingScreen />
-  if (!user) return null
+  if (!user || user.role === 'administracija') return null
 
   const canCreate = ['direktor', 'inzenjer', 'poslovoda'].includes(user.role)
   const showBuyer = ['direktor', 'inzenjer', 'administracija'].includes(user.role)

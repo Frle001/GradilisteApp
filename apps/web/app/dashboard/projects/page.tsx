@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import LoadingScreen from '@/components/ui/LoadingScreen'
 import LoadingOverlay from '@/components/ui/LoadingOverlay'
@@ -12,6 +13,7 @@ import apiClient from '@/lib/api-client'
 
 export default function ProjectsPage() {
   const { user, employee, isLoading, logout } = useAuth()
+  const router = useRouter()
 
   const [projects, setProjects] = useState<ProjectListItem[]>([])
   const [isLoadingProjects, setIsLoadingProjects] = useState(true)
@@ -41,6 +43,10 @@ export default function ProjectsPage() {
   useEffect(() => {
     fetchProjects()
   }, [fetchProjects])
+
+  useEffect(() => {
+    if (!isLoading && user?.role === 'administracija') router.replace('/dashboard')
+  }, [isLoading, user, router])
 
   async function handleClose(id: string) {
     if (!confirm('Zatvoriti ovaj projekt?')) return
@@ -76,7 +82,7 @@ export default function ProjectsPage() {
   }
 
   if (isLoading) return <LoadingScreen />
-  if (!user) return null
+  if (!user || user.role === 'administracija') return null
 
   const title = 'Projekti / Gradilišta'
 

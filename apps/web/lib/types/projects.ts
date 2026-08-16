@@ -63,11 +63,11 @@ export function canManageProjects(role: string): boolean {
 }
 
 export function canViewProjects(role: string): boolean {
-  return ['direktor', 'inzenjer', 'administracija', 'poslovoda'].includes(role)
+  return ['direktor', 'inzenjer', 'poslovoda', 'radnik'].includes(role)
 }
 
 export function canViewArchive(role: string): boolean {
-  return ['direktor', 'inzenjer', 'administracija'].includes(role)
+  return ['direktor', 'inzenjer'].includes(role)
 }
 
 // ── Archive list ──────────────────────────────────────────────────────────────

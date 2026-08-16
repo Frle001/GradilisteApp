@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from 'react'
 import { ChevronLeft, ChevronRight, Plus, X, Users, Pencil, Ban, Copy, CalendarDays, Search } from 'lucide-react'
+import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import type { MeEmployee } from '@/hooks/useAuth'
 import DashboardShell from '@/components/layout/DashboardShell'
@@ -531,6 +532,7 @@ function ShiftDetailPanel({
 
 export default function SchedulePage() {
   const { user, employee, isLoading, logout } = useAuth()
+  const router = useRouter()
   const canManage = user?.role === 'direktor' || user?.role === 'inzenjer'
 
   const [weekStart, setWeekStart] = useState<Date>(() => getMonday(new Date()))
@@ -596,6 +598,10 @@ export default function SchedulePage() {
       setLoading(false)
     }
   }, [user, dateFrom, dateTo, projectFilter])
+
+  useEffect(() => {
+    if (!isLoading && user?.role === 'administracija') router.replace('/dashboard')
+  }, [isLoading, user, router])
 
   useEffect(() => { if (!isLoading && user) fetchShifts() }, [isLoading, user, fetchShifts])
 
@@ -866,7 +872,7 @@ export default function SchedulePage() {
   // ── Render ────────────────────────────────────────────────────────────────
 
   if (isLoading) return <LoadingScreen />
-  if (!user) return null
+  if (!user || user.role === 'administracija') return null
 
   const hasActiveFilters = !!(projectFilter || employeeFilter || roleFilter || myShiftsOnly)
 

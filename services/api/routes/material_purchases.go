@@ -12,7 +12,7 @@ func RegisterMaterialPurchasesRoutes(
 	authRequired gin.HandlerFunc,
 	requireRoles func(...string) gin.HandlerFunc,
 ) {
-	allRoles := requireRoles("direktor", "inzenjer", "administracija", "poslovoda")
+	allRoles := requireRoles("direktor", "inzenjer", "poslovoda")
 	creators := requireRoles("direktor", "inzenjer", "poslovoda")
 	editors := requireRoles("direktor", "inzenjer")
 

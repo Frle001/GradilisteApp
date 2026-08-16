@@ -12,17 +12,18 @@ func RegisterProjectRoutes(
 	requireRoles func(...string) gin.HandlerFunc,
 ) *gin.RouterGroup {
 	manageRoles := requireRoles("direktor", "inzenjer")
-	archiveRoles := requireRoles("direktor", "inzenjer", "administracija")
+	archiveRoles := requireRoles("direktor", "inzenjer")
+	viewRoles := requireRoles("direktor", "inzenjer", "poslovoda", "radnik")
 	direktorOnly := requireRoles("direktor")
 
 	projects := api.Group("/projects", authRequired)
 	{
 		// Static routes before /:id to prevent "archive" being parsed as an ID
-		projects.GET("", h.List)
+		projects.GET("", viewRoles, h.List)
 		projects.GET("/archive", archiveRoles, h.ListArchive)
 		projects.POST("", manageRoles, h.Create)
 
-		projects.GET("/:id", h.GetByID)
+		projects.GET("/:id", viewRoles, h.GetByID)
 		projects.PUT("/:id", manageRoles, h.Update)
 		projects.DELETE("/:id", direktorOnly, h.Delete)
 
@@ -31,7 +32,7 @@ func RegisterProjectRoutes(
 		projects.PATCH("/:id/archive", manageRoles, h.Archive)
 		projects.PATCH("/:id/reactivate", manageRoles, h.Reactivate)
 
-		projects.GET("/:id/assignments", h.ListAssignments)
+		projects.GET("/:id/assignments", viewRoles, h.ListAssignments)
 		projects.GET("/:id/archive-summary", archiveRoles, h.GetArchiveSummary)
 	}
 	return projects
