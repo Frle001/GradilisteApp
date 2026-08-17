@@ -9,6 +9,7 @@ import {
   Users,
   Clock,
   CalendarDays,
+  Archive,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -37,6 +38,7 @@ const navByRole: Record<string, NavItem[]> = {
   administracija: [
     { href: '/dashboard', label: 'Početna', Icon: Home, exact: true },
     { href: '/dashboard/employees', label: 'Zaposlenici', Icon: Users },
+    { href: '/dashboard/zaduzenja', label: 'Zaduženja', Icon: Archive },
   ],
   poslovoda: [
     { href: '/dashboard', label: 'Početna', Icon: Home, exact: true },
