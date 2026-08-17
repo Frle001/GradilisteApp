@@ -24,23 +24,23 @@ var ValidAssetSizes = map[string]bool{
 // ── Request DTOs ──────────────────────────────────────────────────────────────
 
 type CreateCompanyAssetRequest struct {
-	AssetType             string  `json:"asset_type"             binding:"required"`
-	Name                  string  `json:"name"                   binding:"required"`
-	AssignedEmployeeID    *string `json:"assigned_employee_id"`
-	Notes                 *string `json:"notes"`
+	AssetType          string  `json:"asset_type"             binding:"required"`
+	Name               string  `json:"name"                   binding:"required"`
+	AssignedEmployeeID *string `json:"assigned_employee_id"`
+	Notes              *string `json:"notes"`
 	// alat + oprema
-	PurchasedAt           *string `json:"purchased_at"`
-	WarrantyExpiresAt     *string `json:"warranty_expires_at"`
+	PurchasedAt       *string `json:"purchased_at"`
+	WarrantyExpiresAt *string `json:"warranty_expires_at"`
 	// oprema only
-	Size                  *string `json:"size"`
+	Size *string `json:"size"`
 	// vozilo only
 	RegistrationPlate     *string `json:"registration_plate"`
 	RegistrationDate      *string `json:"registration_date"`
 	RegistrationExpiresAt *string `json:"registration_expires_at"`
 	// vozilo leasing
-	IsLeasing             bool    `json:"is_leasing"`
-	LeasingCompany        *string `json:"leasing_company"`
-	LeasingEndDate        *string `json:"leasing_end_date"`
+	IsLeasing      bool    `json:"is_leasing"`
+	LeasingCompany *string `json:"leasing_company"`
+	LeasingEndDate *string `json:"leasing_end_date"`
 }
 
 type UpdateCompanyAssetRequest struct {
@@ -55,9 +55,9 @@ type UpdateCompanyAssetRequest struct {
 	RegistrationDate      *string `json:"registration_date"`
 	RegistrationExpiresAt *string `json:"registration_expires_at"`
 	// vozilo leasing
-	IsLeasing             bool    `json:"is_leasing"`
-	LeasingCompany        *string `json:"leasing_company"`
-	LeasingEndDate        *string `json:"leasing_end_date"`
+	IsLeasing      bool    `json:"is_leasing"`
+	LeasingCompany *string `json:"leasing_company"`
+	LeasingEndDate *string `json:"leasing_end_date"`
 }
 
 // ── Leasing payment ───────────────────────────────────────────────────────────
@@ -99,21 +99,21 @@ type CompanyAsset struct {
 	RegistrationDate      *string        `json:"registration_date"`
 	RegistrationExpiresAt *string        `json:"registration_expires_at"`
 	// Leasing (vozilo only)
-	IsLeasing             bool           `json:"is_leasing"`
-	LeasingCompany        *string        `json:"leasing_company"`
-	LeasingEndDate        *string        `json:"leasing_end_date"`
-	CreatedAt             time.Time      `json:"created_at"`
-	UpdatedAt             time.Time      `json:"updated_at"`
+	IsLeasing      bool      `json:"is_leasing"`
+	LeasingCompany *string   `json:"leasing_company"`
+	LeasingEndDate *string   `json:"leasing_end_date"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
 }
 
 // ── Notifications ─────────────────────────────────────────────────────────────
 
-type AssetNotificationKind  = string
+type AssetNotificationKind = string
 type AssetNotificationState = string
 
 const (
-	NotificationKindWarranty      AssetNotificationKind = "warranty"
-	NotificationKindRegistration  AssetNotificationKind = "registration"
+	NotificationKindWarranty       AssetNotificationKind = "warranty"
+	NotificationKindRegistration   AssetNotificationKind = "registration"
 	NotificationKindLeasingWarning AssetNotificationKind = "leasing_warning"
 	NotificationKindLeasingOverdue AssetNotificationKind = "leasing_overdue"
 
@@ -123,18 +123,18 @@ const (
 )
 
 type AssetNotification struct {
-	AssetID           string         `json:"asset_id"`
-	AssetName         string         `json:"asset_name"`
-	AssetType         string         `json:"asset_type"`
-	Kind              string         `json:"kind"`
-	State             string         `json:"state"`
-	DaysRemaining     int            `json:"days_remaining"` // negative = overdue
-	ExpiresAt         string         `json:"expires_at"`     // "YYYY-MM-DD" expiry or due date
-	AssignedEmployee  *AssetEmployee `json:"assigned_employee"`
-	Message           string         `json:"message"`
+	AssetID          string         `json:"asset_id"`
+	AssetName        string         `json:"asset_name"`
+	AssetType        string         `json:"asset_type"`
+	Kind             string         `json:"kind"`
+	State            string         `json:"state"`
+	DaysRemaining    int            `json:"days_remaining"` // negative = overdue
+	ExpiresAt        string         `json:"expires_at"`     // "YYYY-MM-DD" expiry or due date
+	AssignedEmployee *AssetEmployee `json:"assigned_employee"`
+	Message          string         `json:"message"`
 	// Leasing-specific (empty for non-leasing notifications)
-	RegistrationPlate *string        `json:"registration_plate,omitempty"`
-	PeriodMonth       string         `json:"period_month,omitempty"` // "YYYY-MM-01" for leasing
+	RegistrationPlate *string `json:"registration_plate,omitempty"`
+	PeriodMonth       string  `json:"period_month,omitempty"` // "YYYY-MM-01" for leasing
 }
 
 type NotificationsResponse struct {

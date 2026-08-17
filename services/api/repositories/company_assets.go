@@ -34,11 +34,11 @@ type CompanyAssetRow struct {
 	RegistrationDate      *time.Time
 	RegistrationExpiresAt *time.Time
 	// Leasing (vozilo only)
-	IsLeasing             bool
-	LeasingCompany        *string
-	LeasingEndDate        *time.Time
-	CreatedAt             time.Time
-	UpdatedAt             time.Time
+	IsLeasing      bool
+	LeasingCompany *string
+	LeasingEndDate *time.Time
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
 }
 
 type AssetEmployeeRow struct {

@@ -13,16 +13,16 @@ import (
 // ── Mock repository ───────────────────────────────────────────────────────────
 
 type mockAssetRepo struct {
-	listFn                         func(ctx context.Context, companyID string, f repositories.CompanyAssetsFilter) ([]repositories.CompanyAssetRow, error)
-	getByIDFn                      func(ctx context.Context, companyID, id string) (*repositories.CompanyAssetRow, error)
-	createFn                       func(ctx context.Context, companyID string, row repositories.CompanyAssetRow) (string, error)
-	updateFn                       func(ctx context.Context, companyID, id string, row repositories.CompanyAssetRow) error
-	deactivateFn                   func(ctx context.Context, companyID, id string) error
-	listActiveEmployeesFn          func(ctx context.Context, companyID string) ([]repositories.AssetEmployeeRow, error)
-	employeeBelongsToCompanyFn     func(ctx context.Context, companyID, employeeID string) (bool, error)
-	createLeasingPaymentFn         func(ctx context.Context, row repositories.LeasingPaymentRow) (*repositories.LeasingPaymentRow, error)
+	listFn                          func(ctx context.Context, companyID string, f repositories.CompanyAssetsFilter) ([]repositories.CompanyAssetRow, error)
+	getByIDFn                       func(ctx context.Context, companyID, id string) (*repositories.CompanyAssetRow, error)
+	createFn                        func(ctx context.Context, companyID string, row repositories.CompanyAssetRow) (string, error)
+	updateFn                        func(ctx context.Context, companyID, id string, row repositories.CompanyAssetRow) error
+	deactivateFn                    func(ctx context.Context, companyID, id string) error
+	listActiveEmployeesFn           func(ctx context.Context, companyID string) ([]repositories.AssetEmployeeRow, error)
+	employeeBelongsToCompanyFn      func(ctx context.Context, companyID, employeeID string) (bool, error)
+	createLeasingPaymentFn          func(ctx context.Context, row repositories.LeasingPaymentRow) (*repositories.LeasingPaymentRow, error)
 	listCompletedLeasingForPeriodFn func(ctx context.Context, companyID string, periodMonth time.Time) (map[string]bool, error)
-	getLeasingPaymentsByAssetFn    func(ctx context.Context, companyID, assetID string) ([]repositories.LeasingPaymentRow, error)
+	getLeasingPaymentsByAssetFn     func(ctx context.Context, companyID, assetID string) ([]repositories.LeasingPaymentRow, error)
 }
 
 func (m *mockAssetRepo) List(ctx context.Context, companyID string, f repositories.CompanyAssetsFilter) ([]repositories.CompanyAssetRow, error) {
