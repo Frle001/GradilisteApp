@@ -44,6 +44,7 @@ const roleCards: Record<string, DashboardCard[]> = {
     { title: 'Zaposlenici', description: 'Upravljanje zaposlenicima', icon: '👥', href: '/dashboard/employees' },
     { title: 'Stanje robe', description: 'Osobna zadužnica i prijenosi', icon: '🗂️', href: '/dashboard/inventory' },
     { title: 'Zaduženja', description: 'Evidencija alata, opreme i vozila', icon: '🔧', href: '/dashboard/zaduzenja' },
+    { title: 'Dokumentacija', description: 'HR dokumenti i compliance zaposlenika', icon: '📋', href: '/dashboard/dokumentacija' },
   ],
   poslovoda: [
     { title: 'Moj tim', description: 'Pregled vaših zaposlenika', icon: '👥', href: '/dashboard/employees' },

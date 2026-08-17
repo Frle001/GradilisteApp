@@ -10,6 +10,7 @@ import {
   Clock,
   CalendarDays,
   Archive,
+  ClipboardList,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -39,6 +40,7 @@ const navByRole: Record<string, NavItem[]> = {
     { href: '/dashboard', label: 'Početna', Icon: Home, exact: true },
     { href: '/dashboard/employees', label: 'Zaposlenici', Icon: Users },
     { href: '/dashboard/zaduzenja', label: 'Zaduženja', Icon: Archive },
+    { href: '/dashboard/dokumentacija', label: 'Dokumentacija', Icon: ClipboardList },
   ],
   poslovoda: [
     { href: '/dashboard', label: 'Početna', Icon: Home, exact: true },

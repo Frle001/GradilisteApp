@@ -106,6 +106,10 @@ func main() {
 	caSvc := services.NewCompanyAssetsService(caRepo)
 	caHandler := handlers.NewCompanyAssetsHandler(caSvc)
 
+	empDocRepo := repositories.NewDocumentationRepository(db)
+	empDocSvc := services.NewDocumentationService(empDocRepo, storageSvc)
+	empDocHandler := handlers.NewDocumentationHandler(empDocSvc)
+
 	docRepo := repositories.NewProjectDocumentsRepository(db)
 	docSvc := services.NewProjectDocumentsService(docRepo, storageSvc)
 
@@ -201,6 +205,7 @@ func main() {
 	routes.RegisterWorkerHoursRoutes(api, whHandler, AuthRequired(), RequireRoles)
 	routes.RegisterScheduleRoutes(api, scheduleHandler, AuthRequired(), RequireRoles)
 	routes.RegisterCompanyAssetsRoutes(api, caHandler, AuthRequired(), RequireRoles)
+	routes.RegisterDocumentationRoutes(api, empDocHandler, AuthRequired(), RequireRoles)
 	routes.RegisterProjectDocumentRoutes(projectsGroup, docHandler, folderHandler, RequireRoles)
 
 	// Batch upload is registered on a separate group without the standard 10 MB body limit.
