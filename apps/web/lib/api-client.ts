@@ -12,11 +12,16 @@ const apiClient: AxiosInstance = axios.create({
   },
 })
 
-// Attach Bearer access token on every request
+// Attach Bearer access token on every request.
+// For FormData bodies the browser must set Content-Type with its own boundary;
+// delete the global application/json default so it doesn't interfere.
 apiClient.interceptors.request.use((config) => {
   const token = getToken()
   if (token) {
     config.headers.Authorization = `Bearer ${token}`
+  }
+  if (config.data instanceof FormData) {
+    delete config.headers['Content-Type']
   }
   return config
 })

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"mime/multipart"
 	"time"
 
@@ -67,6 +68,7 @@ type documentationRepoIface interface {
 
 type docStorageIface interface {
 	SaveEmployeeDocFile(ctx context.Context, file multipart.File, header *multipart.FileHeader, companyID, employeeID string) (fileKey, contentType string, fileSize int64, err error)
+	ReadEmployeeDocFile(ctx context.Context, fileKey string) (io.ReadCloser, string, error)
 }
 
 // ── Service ───────────────────────────────────────────────────────────────────
@@ -135,6 +137,26 @@ func (s *DocumentationService) UploadDocFile(ctx context.Context, companyID, cal
 		return "", fmt.Errorf("doc upload: create record: %w", err)
 	}
 	return fileID, nil
+}
+
+// DownloadDocFile streams a previously uploaded employee document to the caller.
+// Returns reader, contentType, originalFilename, error.
+func (s *DocumentationService) DownloadDocFile(ctx context.Context, companyID, callerRole, fileID string) (io.ReadCloser, string, string, error) {
+	if err := s.requireAdmin(callerRole); err != nil {
+		return nil, "", "", err
+	}
+	row, err := s.repo.GetDocFile(ctx, companyID, fileID)
+	if err != nil {
+		return nil, "", "", ErrNotFound
+	}
+	reader, ct, err := s.storage.ReadEmployeeDocFile(ctx, row.StorageKey)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("doc.DownloadDocFile: %w", err)
+	}
+	if ct == "" {
+		ct = row.MimeType
+	}
+	return reader, ct, row.OriginalFilename, nil
 }
 
 // ── Medical exams ─────────────────────────────────────────────────────────────

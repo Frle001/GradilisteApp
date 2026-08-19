@@ -170,6 +170,15 @@ func (m *mockStorage) SaveReportPhotoFile(_ context.Context, _ multipart.File, _
 func (m *mockStorage) SaveEmployeeDocFile(_ context.Context, _ multipart.File, _ *multipart.FileHeader, _, _ string) (string, string, int64, error) {
 	return "", "", 0, errors.New("not implemented")
 }
+func (m *mockStorage) SaveFinanceDocFile(_ context.Context, _ multipart.File, _ *multipart.FileHeader, _, _ string) (string, string, int64, error) {
+	return "", "", 0, errors.New("not implemented")
+}
+func (m *mockStorage) ReadFinanceDocFile(_ context.Context, _ string) (io.ReadCloser, string, error) {
+	return nil, "", errors.New("not implemented")
+}
+func (m *mockStorage) ReadEmployeeDocFile(_ context.Context, _ string) (io.ReadCloser, string, error) {
+	return nil, "", errors.New("not implemented")
+}
 func (m *mockStorage) CheckHealth(_ context.Context) error { return nil }
 
 // mockFile is a minimal multipart.File that returns empty reads.

@@ -24,6 +24,8 @@ const roleCards: Record<string, DashboardCard[]> = {
     { title: 'Upisi materijala', description: 'Evidencija kupljenog materijala', icon: '📦', href: '/dashboard/material-purchases' },
     { title: 'Stanje robe', description: 'Osobna zadužnica i prijenosi', icon: '🗂️', href: '/dashboard/inventory' },
     { title: 'Sati zaposlenika', description: 'Pregled i ispravak upisanih radnih sati', icon: '⏱️', href: '/dashboard/worker-hours' },
+    { title: 'Računi', description: 'Evidencija ulaznih računa tvrtke', icon: '🧾', href: '/dashboard/racuni' },
+    { title: 'R1 računi', description: 'Osobni R1 računi zaposlenika', icon: '📄', href: '/dashboard/r1' },
     { title: 'Građevinski dnevnik', description: 'Evidencija radnih sati po gradilištu', icon: '📓', href: '/dashboard/reports/gradevinski-dnevnik' },
     { title: 'Građevinska knjiga', description: 'Aktivnosti i utrošak materijala', icon: '📚', href: '/dashboard/reports/gradevinska-knjiga' },
   ],
@@ -37,6 +39,7 @@ const roleCards: Record<string, DashboardCard[]> = {
     { title: 'Upisi materijala', description: 'Evidencija kupljenog materijala', icon: '📦', href: '/dashboard/material-purchases' },
     { title: 'Stanje robe', description: 'Osobna zadužnica i prijenosi', icon: '🗂️', href: '/dashboard/inventory' },
     { title: 'Sati zaposlenika', description: 'Pregled i ispravak upisanih radnih sati', icon: '⏱️', href: '/dashboard/worker-hours' },
+    { title: 'Moji R1 računi', description: 'Unos i pregled R1 računa', icon: '📄', href: '/dashboard/r1' },
     { title: 'Građevinski dnevnik', description: 'Evidencija radnih sati po gradilištu', icon: '📓', href: '/dashboard/reports/gradevinski-dnevnik' },
     { title: 'Građevinska knjiga', description: 'Aktivnosti i utrošak materijala', icon: '📚', href: '/dashboard/reports/gradevinska-knjiga' },
   ],
@@ -45,6 +48,7 @@ const roleCards: Record<string, DashboardCard[]> = {
     { title: 'Stanje robe', description: 'Osobna zadužnica i prijenosi', icon: '🗂️', href: '/dashboard/inventory' },
     { title: 'Zaduženja', description: 'Evidencija alata, opreme i vozila', icon: '🔧', href: '/dashboard/zaduzenja' },
     { title: 'Dokumentacija', description: 'HR dokumenti i compliance zaposlenika', icon: '📋', href: '/dashboard/dokumentacija' },
+    { title: 'Računi', description: 'Evidencija ulaznih računa tvrtke', icon: '🧾', href: '/dashboard/racuni' },
   ],
   poslovoda: [
     { title: 'Moj tim', description: 'Pregled vaših zaposlenika', icon: '👥', href: '/dashboard/employees' },
@@ -55,6 +59,7 @@ const roleCards: Record<string, DashboardCard[]> = {
     { title: 'Upis materijala', description: 'Evidentiranje kupljenog materijala', icon: '📦', href: '/dashboard/material-purchases/new' },
     { title: 'Moji upisi', description: 'Pregled vaših upisa materijala', icon: '🛒', href: '/dashboard/material-purchases' },
     { title: 'Osobno stanje robe', description: 'Zadužnica, oprema i prijenosi', icon: '🗂️', href: '/dashboard/inventory' },
+    { title: 'Moji R1 računi', description: 'Unos i pregled R1 računa', icon: '📄', href: '/dashboard/r1' },
     { title: 'Građevinski dnevnik', description: 'Evidencija radnih sati', icon: '📓', href: '/dashboard/reports/gradevinski-dnevnik' },
     { title: 'Građevinska knjiga', description: 'Aktivnosti i utrošak materijala', icon: '📚', href: '/dashboard/reports/gradevinska-knjiga' },
   ],
@@ -62,6 +67,7 @@ const roleCards: Record<string, DashboardCard[]> = {
     { title: 'Raspored smjena', description: 'Moje smjene i raspored', icon: '📅', href: '/dashboard/schedule' },
     { title: 'Moji sati', description: 'Unos vlastitih dnevnih radnih sati po projektu.', icon: '⏱️', href: '/dashboard/my-hours' },
     { title: 'Projekti / Gradilišta', description: 'Pregled projekata tvrtke', icon: '🏗️', href: '/dashboard/projects' },
+    { title: 'Moji R1 računi', description: 'Unos i pregled R1 računa', icon: '📄', href: '/dashboard/r1' },
   ],
 }
 

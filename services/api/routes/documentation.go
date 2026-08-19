@@ -64,5 +64,8 @@ func RegisterDocumentationRoutes(
 
 		// Contract termination (contract-level, not employee-level)
 		rg.POST("/contracts/:contractId/terminate", h.TerminateContract)
+
+		// File download by file ID (company-scoped)
+		rg.GET("/files/:fileId/download", h.DownloadDocFile)
 	}
 }

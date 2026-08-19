@@ -28,6 +28,11 @@ type StorageService interface {
 	// SaveEmployeeDocFile stores an HR/compliance document for an employee.
 	// Key path: employee-docs/<companyID>/<employeeID>/<randomID><ext>
 	SaveEmployeeDocFile(ctx context.Context, file multipart.File, header *multipart.FileHeader, companyID, employeeID string) (fileKey, contentType string, fileSize int64, err error)
+	// SaveFinanceDocFile stores a finance document (invoice or R1 receipt).
+	// Key path: finance-docs/<companyID>/<subdir>/<randomID><ext>  (subdir: "racuni" or "r1")
+	SaveFinanceDocFile(ctx context.Context, file multipart.File, header *multipart.FileHeader, companyID, subdir string) (fileKey, contentType string, fileSize int64, err error)
+	ReadFinanceDocFile(ctx context.Context, fileKey string) (io.ReadCloser, string, error)
+	ReadEmployeeDocFile(ctx context.Context, fileKey string) (io.ReadCloser, string, error)
 	CheckHealth(ctx context.Context) error
 }
 
@@ -317,6 +322,53 @@ func (s *LocalStorageService) SaveEmployeeDocFile(
 	return relPath, ct, n, nil
 }
 
+func (s *LocalStorageService) SaveFinanceDocFile(
+	ctx context.Context,
+	file multipart.File,
+	header *multipart.FileHeader,
+	companyID, subdir string,
+) (string, string, int64, error) {
+	ct := header.Header.Get("Content-Type")
+	if idx := strings.Index(ct, ";"); idx != -1 {
+		ct = strings.TrimSpace(ct[:idx])
+	}
+	ct = NormalizeDocumentMIME(ct, header.Filename)
+	ext := AllowedDocumentMIMEs[ct]
+	if ext == "" {
+		ext = strings.ToLower(filepath.Ext(header.Filename))
+		if ext == "" {
+			ext = ".bin"
+		}
+	}
+	id, err := randomHex(16)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("generate file id: %w", err)
+	}
+	relPath := filepath.Join("finance-docs", companyID, subdir, id+ext)
+	absPath := filepath.Join(s.basePath, relPath)
+	if err := os.MkdirAll(filepath.Dir(absPath), 0755); err != nil {
+		return "", "", 0, fmt.Errorf("create upload dir: %w", err)
+	}
+	dst, err := os.Create(absPath)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("create file: %w", err)
+	}
+	defer dst.Close()
+	n, err := io.Copy(dst, file)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("write file: %w", err)
+	}
+	return relPath, ct, n, nil
+}
+
+func (s *LocalStorageService) ReadFinanceDocFile(ctx context.Context, fileKey string) (io.ReadCloser, string, error) {
+	return s.ReadReceiptFile(ctx, fileKey)
+}
+
+func (s *LocalStorageService) ReadEmployeeDocFile(ctx context.Context, fileKey string) (io.ReadCloser, string, error) {
+	return s.ReadReceiptFile(ctx, fileKey)
+}
+
 func (s *LocalStorageService) SaveReportPhotoFile(
 	ctx context.Context,
 	file multipart.File,
@@ -565,6 +617,55 @@ func (s *S3StorageService) SaveEmployeeDocFile(
 		return "", "", 0, fmt.Errorf("upload to S3: %w", err)
 	}
 	return key, ct, size, nil
+}
+
+func (s *S3StorageService) SaveFinanceDocFile(
+	ctx context.Context,
+	file multipart.File,
+	header *multipart.FileHeader,
+	companyID, subdir string,
+) (string, string, int64, error) {
+	ct := header.Header.Get("Content-Type")
+	if idx := strings.Index(ct, ";"); idx != -1 {
+		ct = strings.TrimSpace(ct[:idx])
+	}
+	ct = NormalizeDocumentMIME(ct, header.Filename)
+	ext := AllowedDocumentMIMEs[ct]
+	if ext == "" {
+		ext = strings.ToLower(filepath.Ext(header.Filename))
+		if ext == "" {
+			ext = ".bin"
+		}
+	}
+	id, err := randomHex(16)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("generate file id: %w", err)
+	}
+	key := "finance-docs/" + companyID + "/" + subdir + "/" + id + ext
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return "", "", 0, fmt.Errorf("read upload: %w", err)
+	}
+	size := int64(len(data))
+	_, err = s.client.PutObject(ctx, &s3.PutObjectInput{
+		Bucket:        aws.String(s.bucket),
+		Key:           aws.String(key),
+		Body:          bytes.NewReader(data),
+		ContentType:   aws.String(ct),
+		ContentLength: &size,
+	})
+	if err != nil {
+		return "", "", 0, fmt.Errorf("upload to S3: %w", err)
+	}
+	return key, ct, size, nil
+}
+
+func (s *S3StorageService) ReadFinanceDocFile(ctx context.Context, fileKey string) (io.ReadCloser, string, error) {
+	return s.ReadReceiptFile(ctx, fileKey)
+}
+
+func (s *S3StorageService) ReadEmployeeDocFile(ctx context.Context, fileKey string) (io.ReadCloser, string, error) {
+	return s.ReadReceiptFile(ctx, fileKey)
 }
 
 func (s *S3StorageService) SaveReportPhotoFile(

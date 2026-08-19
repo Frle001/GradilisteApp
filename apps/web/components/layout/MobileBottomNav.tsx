@@ -11,6 +11,7 @@ import {
   CalendarDays,
   Archive,
   ClipboardList,
+  Receipt,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -41,6 +42,7 @@ const navByRole: Record<string, NavItem[]> = {
     { href: '/dashboard/employees', label: 'Zaposlenici', Icon: Users },
     { href: '/dashboard/zaduzenja', label: 'Zaduženja', Icon: Archive },
     { href: '/dashboard/dokumentacija', label: 'Dokumentacija', Icon: ClipboardList },
+    { href: '/dashboard/racuni', label: 'Računi', Icon: Receipt },
   ],
   poslovoda: [
     { href: '/dashboard', label: 'Početna', Icon: Home, exact: true },
@@ -54,6 +56,7 @@ const navByRole: Record<string, NavItem[]> = {
     { href: '/dashboard/schedule', label: 'Raspored', Icon: CalendarDays },
     { href: '/dashboard/my-hours', label: 'Moji sati', Icon: Clock },
     { href: '/dashboard/projects', label: 'Projekti', Icon: FolderOpen },
+    { href: '/dashboard/r1', label: 'R1', Icon: Receipt },
   ],
 }
 

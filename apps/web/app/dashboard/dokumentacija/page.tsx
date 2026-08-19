@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import LoadingScreen from '@/components/ui/LoadingScreen'
 import DashboardShell from '@/components/layout/DashboardShell'
+import DocumentPreviewDialog from '@/components/ui/DocumentPreviewDialog'
 import apiClient from '@/lib/api-client'
 import type {
   DocEmployee,
@@ -90,6 +91,16 @@ function errMsg(e: unknown): string {
   return (e as { response?: { data?: { error?: string } } })?.response?.data?.error ?? 'Neočekivana greška'
 }
 
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
+
+function docPreviewUrl(fileId: string) {
+  return `/documentation/files/${fileId}/download`
+}
+
 // ── Shared UI pieces ──────────────────────────────────────────────────────────
 
 function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
@@ -104,13 +115,52 @@ function SectionCard({ title, children }: { title: string; children: React.React
 function FileInput({ file, onChange }: { file: File | null; onChange: (f: File | null) => void }) {
   const ref = useRef<HTMLInputElement>(null)
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <input ref={ref} type="file" className="hidden" onChange={e => onChange(e.target.files?.[0] ?? null)} />
       <button type="button" onClick={() => ref.current?.click()} className={btnSecondary}>
         {file ? 'Promijeni datoteku' : 'Odaberi datoteku'}
       </button>
-      {file && <span className="text-xs text-zinc-400 truncate max-w-[160px]">{file.name}</span>}
+      {file && (
+        <>
+          <span className="text-xs text-zinc-400 truncate max-w-[140px]">
+            {file.name} <span className="text-zinc-500">({formatFileSize(file.size)})</span>
+          </span>
+          <DocumentPreviewDialog
+            file={file}
+            filename={file.name}
+            mimeType={file.type || 'application/octet-stream'}
+          />
+        </>
+      )}
     </div>
+  )
+}
+
+// ShowMoreList renders up to `limit` items with a "Prikaži još N" button.
+function ShowMoreList<T>({
+  items,
+  limit = 6,
+  render,
+}: {
+  items: T[]
+  limit?: number
+  render: (item: T) => React.ReactNode
+}) {
+  const [showAll, setShowAll] = useState(false)
+  const visible = showAll ? items : items.slice(0, limit)
+  return (
+    <>
+      {visible.map(render)}
+      {items.length > limit && !showAll && (
+        <button
+          type="button"
+          onClick={() => setShowAll(true)}
+          className="mt-1 text-xs text-violet-400 hover:underline"
+        >
+          Prikaži još {items.length - limit}
+        </button>
+      )}
+    </>
   )
 }
 
@@ -160,7 +210,16 @@ function MedicalSection({ employeeId, initial, onRefresh }: {
   return (
     <SectionCard title="Liječnički pregled">
       {initial
-        ? <p className="text-sm text-zinc-200 mb-2">Istječe: <span className="font-medium">{formatDate(initial.expires_at)}</span></p>
+        ? <div className="text-sm text-zinc-200 mb-2 flex items-center gap-2 flex-wrap">
+            <span>Istječe: <span className="font-medium">{formatDate(initial.expires_at)}</span></span>
+            {initial.document && (
+              <DocumentPreviewDialog
+                fetchUrl={docPreviewUrl(initial.document.id)}
+                filename={initial.document.original_filename}
+                mimeType={initial.document.mime_type}
+              />
+            )}
+          </div>
         : <p className="text-sm text-zinc-400 italic mb-2">Nema evidencije</p>}
       <div className="flex flex-wrap items-center gap-2 mb-2">
         <button onClick={() => setFormOpen(v => !v)} className={btnPrimary}>
@@ -195,14 +254,26 @@ function MedicalSection({ employeeId, initial, onRefresh }: {
         </form>
       )}
       {historyOpen && (
-        <div className="mt-2 space-y-1 max-h-40 overflow-y-auto">
+        <div className="mt-2 space-y-1">
           {historyLoading && <p className="text-xs text-zinc-500">Učitavanje...</p>}
-          {exams.map(ex => (
-            <div key={ex.id} className="flex justify-between text-xs text-zinc-300">
-              <span>{formatDate(ex.completed_date)}</span>
-              <span className="text-zinc-400">istj. {formatDate(ex.expires_at)}</span>
-            </div>
-          ))}
+          <ShowMoreList
+            items={exams}
+            render={(ex) => (
+              <div key={ex.id} className="flex flex-wrap justify-between text-xs text-zinc-300 gap-x-2">
+                <span>{formatDate(ex.completed_date)}</span>
+                <span className="text-zinc-400 flex items-center gap-2">
+                  istj. {formatDate(ex.expires_at)}
+                  {ex.document && (
+                    <DocumentPreviewDialog
+                      fetchUrl={docPreviewUrl(ex.document.id)}
+                      filename={ex.document.original_filename}
+                      mimeType={ex.document.mime_type}
+                    />
+                  )}
+                </span>
+              </div>
+            )}
+          />
           {!historyLoading && exams.length === 0 && <p className="text-xs text-zinc-500">Nema evidencije</p>}
         </div>
       )}
@@ -245,9 +316,16 @@ function SafetySection({ employeeId, record, isRadnik, onRefresh }: {
   return (
     <SectionCard title="Zaštita na radu">
       {record
-        ? <div className="flex items-center gap-2 mb-2">
+        ? <div className="flex flex-wrap items-center gap-2 mb-2">
             {statusBadge(record.status)}
             {record.verified_at && <span className="text-xs text-zinc-400">verificirano {formatDate(record.verified_at)}</span>}
+            {record.document && (
+              <DocumentPreviewDialog
+                fetchUrl={docPreviewUrl(record.document.id)}
+                filename={record.document.original_filename}
+                mimeType={record.document.mime_type}
+              />
+            )}
           </div>
         : <p className="text-sm text-zinc-400 italic mb-2">Nema evidencije</p>}
       <div className="space-y-2">
@@ -341,6 +419,24 @@ function ContractSection({ employeeId, initial, onRefresh }: {
             <p>Tip: <span className="font-medium">{initial.contract_type === 'odredeno' ? 'Na određeno' : 'Na neodređeno'}</span></p>
             {initial.expires_at && <p>Istječe: <span className="font-medium">{formatDate(initial.expires_at)}</span></p>}
             {initial.terminated_at && <p className="text-red-400">Raskinut: {formatDate(initial.terminated_at)}</p>}
+            <div className="flex gap-3 flex-wrap">
+              {initial.document && (
+                <DocumentPreviewDialog
+                  fetchUrl={docPreviewUrl(initial.document.id)}
+                  filename={initial.document.original_filename}
+                  mimeType={initial.document.mime_type}
+                  triggerLabel="Pregledaj ugovor"
+                />
+              )}
+              {initial.termination_document && (
+                <DocumentPreviewDialog
+                  fetchUrl={docPreviewUrl(initial.termination_document.id)}
+                  filename={initial.termination_document.original_filename}
+                  mimeType={initial.termination_document.mime_type}
+                  triggerLabel="Pregledaj raskid"
+                />
+              )}
+            </div>
           </div>
         : <p className="text-sm text-zinc-400 italic mb-2">Nema aktivnog ugovora</p>}
       <div className="flex flex-wrap items-center gap-2 mb-2">
@@ -404,15 +500,38 @@ function ContractSection({ employeeId, initial, onRefresh }: {
         </form>
       )}
       {historyOpen && (
-        <div className="mt-2 space-y-1 max-h-40 overflow-y-auto">
+        <div className="mt-2 space-y-1.5">
           {historyLoading && <p className="text-xs text-zinc-500">Učitavanje...</p>}
-          {contracts.map(c => (
-            <div key={c.id} className="text-xs text-zinc-300">
-              {c.contract_type === 'odredeno' ? 'Na određeno' : 'Na neodređeno'}
-              {c.expires_at && ` · istj. ${formatDate(c.expires_at)}`}
-              {c.terminated_at && <span className="text-red-400"> · Raskinut {formatDate(c.terminated_at)}</span>}
-            </div>
-          ))}
+          <ShowMoreList
+            items={contracts}
+            render={(c) => (
+              <div key={c.id} className="text-xs text-zinc-300 space-y-0.5">
+                <div>
+                  {c.contract_type === 'odredeno' ? 'Na određeno' : 'Na neodređeno'}
+                  {c.expires_at && ` · istj. ${formatDate(c.expires_at)}`}
+                  {c.terminated_at && <span className="text-red-400"> · Raskinut {formatDate(c.terminated_at)}</span>}
+                </div>
+                <div className="flex gap-3">
+                  {c.document && (
+                    <DocumentPreviewDialog
+                      fetchUrl={docPreviewUrl(c.document.id)}
+                      filename={c.document.original_filename}
+                      mimeType={c.document.mime_type}
+                      triggerLabel="Ugovor"
+                    />
+                  )}
+                  {c.termination_document && (
+                    <DocumentPreviewDialog
+                      fetchUrl={docPreviewUrl(c.termination_document.id)}
+                      filename={c.termination_document.original_filename}
+                      mimeType={c.termination_document.mime_type}
+                      triggerLabel="Raskid"
+                    />
+                  )}
+                </div>
+              </div>
+            )}
+          />
           {!historyLoading && contracts.length === 0 && <p className="text-xs text-zinc-500">Nema evidencije</p>}
         </div>
       )}
@@ -487,17 +606,27 @@ function ObligationsSection({ employeeId, isRadnik, onRefresh }: {
   const timesheet = obls.filter(o => o.obligation_type === 'evidencija_radnika')
 
   const oblList = (items: MonthlyObligation[], type: 'platna' | 'timesheet') => (
-    <div className="mt-2 space-y-1 max-h-40 overflow-y-auto">
+    <div className="mt-2 space-y-1">
       {oblLoading && <p className="text-xs text-zinc-500">Učitavanje...</p>}
-      {items.map(o => (
-        <div key={o.id} className="flex justify-between text-xs text-zinc-300">
-          <span>{HR_MONTHS[o.month]} {o.year}</span>
-          <div className="flex items-center gap-2">
-            {type === 'timesheet' && o.hours != null && <span className="text-zinc-400">{o.hours}h</span>}
-            {statusBadge(o.status)}
+      <ShowMoreList
+        items={items}
+        render={(o) => (
+          <div key={o.id} className="flex flex-wrap justify-between text-xs text-zinc-300 gap-x-2">
+            <span>{HR_MONTHS[o.month]} {o.year}</span>
+            <div className="flex items-center gap-2">
+              {type === 'timesheet' && o.hours != null && <span className="text-zinc-400">{o.hours}h</span>}
+              {statusBadge(o.status)}
+              {o.document && (
+                <DocumentPreviewDialog
+                  fetchUrl={docPreviewUrl(o.document.id)}
+                  filename={o.document.original_filename}
+                  mimeType={o.document.mime_type}
+                />
+              )}
+            </div>
           </div>
-        </div>
-      ))}
+        )}
+      />
       {!oblLoading && items.length === 0 && <p className="text-xs text-zinc-500">Nema evidencije</p>}
     </div>
   )
@@ -619,7 +748,16 @@ function PermitSection({ employeeId, initial, onRefresh }: {
   return (
     <SectionCard title="Radna dozvola">
       {initial
-        ? <p className="text-sm text-zinc-200 mb-2">Istječe: <span className="font-medium">{formatDate(initial.expires_at)}</span></p>
+        ? <div className="text-sm text-zinc-200 mb-2 flex flex-wrap items-center gap-2">
+            <span>Istječe: <span className="font-medium">{formatDate(initial.expires_at)}</span></span>
+            {initial.document && (
+              <DocumentPreviewDialog
+                fetchUrl={docPreviewUrl(initial.document.id)}
+                filename={initial.document.original_filename}
+                mimeType={initial.document.mime_type}
+              />
+            )}
+          </div>
         : <p className="text-sm text-zinc-400 italic mb-2">Nema evidencije</p>}
       <div className="flex flex-wrap items-center gap-2 mb-2">
         <button onClick={() => setFormOpen(v => !v)} className={btnPrimary}>
@@ -654,14 +792,26 @@ function PermitSection({ employeeId, initial, onRefresh }: {
         </form>
       )}
       {historyOpen && (
-        <div className="mt-2 space-y-1 max-h-40 overflow-y-auto">
+        <div className="mt-2 space-y-1">
           {historyLoading && <p className="text-xs text-zinc-500">Učitavanje...</p>}
-          {permits.map(p => (
-            <div key={p.id} className="flex justify-between text-xs text-zinc-300">
-              <span>Ulaz: {formatDate(p.entered_at)}</span>
-              <span className="text-zinc-400">istj. {formatDate(p.expires_at)}</span>
-            </div>
-          ))}
+          <ShowMoreList
+            items={permits}
+            render={(p) => (
+              <div key={p.id} className="flex flex-wrap justify-between text-xs text-zinc-300 gap-x-2">
+                <span>Ulaz: {formatDate(p.entered_at)}</span>
+                <span className="text-zinc-400 flex items-center gap-2">
+                  istj. {formatDate(p.expires_at)}
+                  {p.document && (
+                    <DocumentPreviewDialog
+                      fetchUrl={docPreviewUrl(p.document.id)}
+                      filename={p.document.original_filename}
+                      mimeType={p.document.mime_type}
+                    />
+                  )}
+                </span>
+              </div>
+            )}
+          />
           {!historyLoading && permits.length === 0 && <p className="text-xs text-zinc-500">Nema evidencije</p>}
         </div>
       )}
@@ -704,9 +854,16 @@ function PensionSection({ employeeId, record, isRadnik, onRefresh }: {
   return (
     <SectionCard title="Mirovinsko osiguranje">
       {record
-        ? <div className="flex items-center gap-2 mb-2">
+        ? <div className="flex flex-wrap items-center gap-2 mb-2">
             {statusBadge(record.status)}
             {record.verified_at && <span className="text-xs text-zinc-400">verificirano {formatDate(record.verified_at)}</span>}
+            {record.document && (
+              <DocumentPreviewDialog
+                fetchUrl={docPreviewUrl(record.document.id)}
+                filename={record.document.original_filename}
+                mimeType={record.document.mime_type}
+              />
+            )}
           </div>
         : <p className="text-sm text-zinc-400 italic mb-2">Nema evidencije</p>}
       <div className="space-y-2">
@@ -764,9 +921,16 @@ function HealthSection({ employeeId, record, isRadnik, onRefresh }: {
   return (
     <SectionCard title="Zdravstveno osiguranje">
       {record
-        ? <div className="flex items-center gap-2 mb-2">
+        ? <div className="flex flex-wrap items-center gap-2 mb-2">
             {statusBadge(record.status)}
             {record.verified_at && <span className="text-xs text-zinc-400">verificirano {formatDate(record.verified_at)}</span>}
+            {record.document && (
+              <DocumentPreviewDialog
+                fetchUrl={docPreviewUrl(record.document.id)}
+                filename={record.document.original_filename}
+                mimeType={record.document.mime_type}
+              />
+            )}
           </div>
         : <p className="text-sm text-zinc-400 italic mb-2">Nema evidencije</p>}
       <div className="space-y-2">
@@ -864,14 +1028,26 @@ function AnnualLeaveSection({ employeeId, onRefresh }: { employeeId: string; onR
         </form>
       )}
       {open && (
-        <div className="mt-2 space-y-1 max-h-40 overflow-y-auto">
+        <div className="mt-2 space-y-1">
           {loading && <p className="text-xs text-zinc-500">Učitavanje...</p>}
-          {leaves.map(l => (
-            <div key={l.id} className="text-xs text-zinc-300">
-              {l.date_from ? formatDate(l.date_from) : '—'}
-              {l.date_to ? ` → ${formatDate(l.date_to)}` : ''}
-            </div>
-          ))}
+          <ShowMoreList
+            items={leaves}
+            render={(l) => (
+              <div key={l.id} className="flex flex-wrap items-center justify-between text-xs text-zinc-300 gap-x-2">
+                <span>
+                  {l.date_from ? formatDate(l.date_from) : '—'}
+                  {l.date_to ? ` → ${formatDate(l.date_to)}` : ''}
+                </span>
+                {l.document && (
+                  <DocumentPreviewDialog
+                    fetchUrl={docPreviewUrl(l.document.id)}
+                    filename={l.document.original_filename}
+                    mimeType={l.document.mime_type}
+                  />
+                )}
+              </div>
+            )}
+          />
           {!loading && leaves.length === 0 && <p className="text-xs text-zinc-500">Nema evidencije</p>}
         </div>
       )}

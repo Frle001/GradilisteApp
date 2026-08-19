@@ -416,6 +416,19 @@ func (h *DocumentationHandler) VerifyHealthRecord(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"record": rec})
 }
 
+// GET /api/documentation/files/:fileId/download
+func (h *DocumentationHandler) DownloadDocFile(c *gin.Context) {
+	u := appctx.GetAuthUser(c)
+	reader, ct, filename, err := h.svc.DownloadDocFile(c.Request.Context(), u.CompanyID, u.Role, c.Param("fileId"))
+	if err != nil {
+		respondDocError(c, err)
+		return
+	}
+	defer reader.Close()
+	c.Header("Content-Disposition", `attachment; filename="`+filename+`"`)
+	c.DataFromReader(http.StatusOK, -1, ct, reader, nil)
+}
+
 // ── Error mapping ─────────────────────────────────────────────────────────────
 
 func respondDocError(c *gin.Context, err error) {
