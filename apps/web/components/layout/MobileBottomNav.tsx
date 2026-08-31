@@ -12,6 +12,7 @@ import {
   Archive,
   ClipboardList,
   Receipt,
+  BarChart2,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -26,15 +27,15 @@ const navByRole: Record<string, NavItem[]> = {
   direktor: [
     { href: '/dashboard', label: 'Početna', Icon: Home, exact: true },
     { href: '/dashboard/projects', label: 'Projekti', Icon: FolderOpen },
-    { href: '/dashboard/schedule', label: 'Raspored', Icon: CalendarDays },
     { href: '/dashboard/daily-reports', label: 'Izvještaji', Icon: FileText },
+    { href: '/dashboard/analytics', label: 'Analitika', Icon: BarChart2 },
     { href: '/dashboard/employees', label: 'Zaposlenici', Icon: Users },
   ],
   inzenjer: [
     { href: '/dashboard', label: 'Početna', Icon: Home, exact: true },
     { href: '/dashboard/projects', label: 'Projekti', Icon: FolderOpen },
-    { href: '/dashboard/schedule', label: 'Raspored', Icon: CalendarDays },
     { href: '/dashboard/daily-reports', label: 'Izvještaji', Icon: FileText },
+    { href: '/dashboard/analytics', label: 'Analitika', Icon: BarChart2 },
     { href: '/dashboard/employees', label: 'Zaposlenici', Icon: Users },
   ],
   administracija: [

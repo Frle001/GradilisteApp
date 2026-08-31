@@ -114,6 +114,10 @@ func main() {
 	financeSvc := services.NewFinanceService(financeRepo, storageSvc)
 	financeHandler := handlers.NewFinanceHandler(financeSvc)
 
+	analyticsRepo := repositories.NewAnalyticsRepository(db)
+	analyticsSvc := services.NewAnalyticsService(analyticsRepo)
+	analyticsHandler := handlers.NewAnalyticsHandler(analyticsSvc)
+
 	docRepo := repositories.NewProjectDocumentsRepository(db)
 	docSvc := services.NewProjectDocumentsService(docRepo, storageSvc)
 
@@ -211,6 +215,7 @@ func main() {
 	routes.RegisterCompanyAssetsRoutes(api, caHandler, AuthRequired(), RequireRoles)
 	routes.RegisterDocumentationRoutes(api, empDocHandler, AuthRequired(), RequireRoles)
 	routes.RegisterFinanceRoutes(api, financeHandler, AuthRequired(), RequireRoles)
+	routes.RegisterAnalyticsRoutes(api, analyticsHandler, AuthRequired(), RequireRoles)
 	routes.RegisterProjectDocumentRoutes(projectsGroup, docHandler, folderHandler, RequireRoles)
 
 	// Batch upload is registered on a separate group without the standard 10 MB body limit.
