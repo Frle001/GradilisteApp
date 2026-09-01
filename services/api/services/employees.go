@@ -60,6 +60,23 @@ var validAssetTypes = map[string]bool{
 
 // ── Service ───────────────────────────────────────────────────────────────────
 
+type auditRepoIface interface {
+	Log(ctx context.Context, p repositories.AuditParams)
+}
+
+type userRepoIface interface {
+	CreateWithTx(ctx context.Context, tx pgx.Tx, companyID, employeeID, email, passwordHash, role string) error
+	// ResetPasswordAndInvalidateSessions atomically updates the password, increments
+	// auth_version, and revokes all refresh tokens in one transaction.
+	ResetPasswordAndInvalidateSessions(ctx context.Context, companyID, employeeID, newHash string) error
+	DeleteByEmployeeIDWithTx(ctx context.Context, tx pgx.Tx, companyID, employeeID string) error
+	// DeactivateEmployeeWithInvalidation and ActivateEmployeeAccount are the ONLY
+	// correct paths for toggling employee active status — both update employees AND
+	// users in one transaction so the state is always consistent.
+	DeactivateEmployeeWithInvalidation(ctx context.Context, companyID, employeeID string) error
+	ActivateEmployeeAccount(ctx context.Context, companyID, employeeID string) error
+}
+
 type empRepoIface interface {
 	List(ctx context.Context, companyID string, f repositories.EmployeeListFilter) ([]repositories.Employee, error)
 	GetByID(ctx context.Context, companyID, id string) (*repositories.Employee, error)
@@ -78,8 +95,8 @@ type EmployeeService struct {
 	db           *pgxpool.Pool
 	empRepo      empRepoIface
 	assetRepo    *repositories.EmployeeAssetRepository
-	auditRepo    *repositories.AuditRepository
-	userRepo     *repositories.UserRepository
+	auditRepo    auditRepoIface
+	userRepo     userRepoIface
 	hashPassword func(password string) (string, error)
 }
 
@@ -311,7 +328,17 @@ func (s *EmployeeService) Update(ctx context.Context, companyID, callerUserID, i
 // ── Employee: SetActive ───────────────────────────────────────────────────────
 
 func (s *EmployeeService) SetActive(ctx context.Context, companyID, callerUserID, ip, ua, id string, active bool) error {
-	err := s.empRepo.SetActive(ctx, companyID, id, active)
+	var err error
+	if active {
+		// Activation: restore employees.active + users.active in one transaction.
+		// auth_version is deliberately left unchanged — pre-deactivation tokens remain invalid.
+		err = s.userRepo.ActivateEmployeeAccount(ctx, companyID, id)
+	} else {
+		// Deactivation: single transaction covering employees.active=false,
+		// users.active=false, users.auth_version++, and all refresh token revocations.
+		// A partial failure rolls back everything — no inconsistent intermediate state.
+		err = s.userRepo.DeactivateEmployeeWithInvalidation(ctx, companyID, id)
+	}
 	if errors.Is(err, repositories.ErrNotFound) {
 		return ErrNotFound
 	}
@@ -364,7 +391,7 @@ func (s *EmployeeService) ResetPassword(ctx context.Context, companyID, callerUs
 		return "", fmt.Errorf("hash temp password: %w", err)
 	}
 
-	if err := s.userRepo.ResetPasswordByEmployeeID(ctx, companyID, employeeID, hash); err != nil {
+	if err := s.userRepo.ResetPasswordAndInvalidateSessions(ctx, companyID, employeeID, hash); err != nil {
 		if errors.Is(err, repositories.ErrNotFound) {
 			return "", validationErr("This employee does not have a login account")
 		}

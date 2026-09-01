@@ -42,6 +42,7 @@ func LoginHandler(c *gin.Context) {
 		role               string
 		active             bool
 		mustChangePassword bool
+		authVersion        int
 	)
 
 	err := db.QueryRow(ctx, `
@@ -53,10 +54,11 @@ func LoginHandler(c *gin.Context) {
 			password_hash,
 			role,
 			active,
-			must_change_password
+			must_change_password,
+			auth_version
 		FROM users
 		WHERE email = $1
-	`, req.Email).Scan(&userID, &companyID, &employeeID, &email, &passwordHash, &role, &active, &mustChangePassword)
+	`, req.Email).Scan(&userID, &companyID, &employeeID, &email, &passwordHash, &role, &active, &mustChangePassword, &authVersion)
 
 	if errors.Is(err, pgx.ErrNoRows) {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid email or password"})
@@ -88,7 +90,7 @@ func LoginHandler(c *gin.Context) {
 		empID = *employeeID
 	}
 
-	accessToken, err := GenerateAccessToken(userID, companyID, empID, role, email)
+	accessToken, err := GenerateAccessToken(userID, companyID, empID, role, email, authVersion)
 	if err != nil {
 		slog.Error("login: access token generation failed", "user_id", userID, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
@@ -188,12 +190,13 @@ func RefreshHandler(c *gin.Context) {
 		role               string
 		active             bool
 		mustChangePassword bool
+		authVersion        int
 	)
 	err = db.QueryRow(ctx, `
-		SELECT employee_id::text, email, role, active, must_change_password
+		SELECT employee_id::text, email, role, active, must_change_password, auth_version
 		FROM users
 		WHERE id = $1::uuid AND company_id = $2::uuid
-	`, userID, companyID).Scan(&employeeID, &email, &role, &active, &mustChangePassword)
+	`, userID, companyID).Scan(&employeeID, &email, &role, &active, &mustChangePassword, &authVersion)
 	if errors.Is(err, pgx.ErrNoRows) || !active {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "User not found or inactive"})
 		return
@@ -232,7 +235,7 @@ func RefreshHandler(c *gin.Context) {
 		return
 	}
 
-	accessToken, err := GenerateAccessToken(userID, companyID, empID, role, email)
+	accessToken, err := GenerateAccessToken(userID, companyID, empID, role, email, authVersion)
 	if err != nil {
 		slog.Error("refresh: access token generation failed", "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
@@ -346,10 +349,37 @@ func ChangePasswordHandler(c *gin.Context) {
 		return
 	}
 
-	if _, err := db.Exec(ctx, `
-		UPDATE users SET password_hash = $1, must_change_password = false WHERE id = $2::uuid
+	// Single transaction: password update + auth_version increment + token revocation.
+	// All three must succeed together; any failure rolls back all changes.
+	tx, txErr := db.Begin(ctx)
+	if txErr != nil {
+		slog.Error("change-password: begin tx failed", "user_id", u.UserID, "error", txErr)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		return
+	}
+	defer tx.Rollback(ctx)
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE users
+		SET password_hash = $1, must_change_password = false, auth_version = auth_version + 1
+		WHERE id = $2::uuid
 	`, newHash, u.UserID); err != nil {
 		slog.Error("change-password: update failed", "user_id", u.UserID, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		return
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE refresh_tokens SET revoked_at = NOW()
+		WHERE user_id = $1::uuid AND revoked_at IS NULL
+	`, u.UserID); err != nil {
+		slog.Error("change-password: revoke tokens failed", "user_id", u.UserID, "error", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		return
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		slog.Error("change-password: commit failed", "user_id", u.UserID, "error", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
 		return
 	}

@@ -97,6 +97,9 @@ apiClient.interceptors.response.use(
       const refreshStatus = (refreshErr as { response?: { status?: number } })?.response?.status
       if (refreshStatus === 401) {
         clearAuth()
+        if (typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
+          window.location.replace('/login')
+        }
       }
       return Promise.reject(refreshErr)
     } finally {

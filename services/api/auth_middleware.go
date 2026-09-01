@@ -1,31 +1,51 @@
 package main
 
 import (
+	"context"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/gradiliste/api/appctx"
+	"github.com/gradiliste/api/repositories"
 )
 
-// AuthRequired validates the Bearer token and injects AuthContext into the Gin context.
-// Returns 401 for missing, invalid, or expired tokens.
-func AuthRequired() gin.HandlerFunc {
+// authStateChecker is satisfied by *repositories.UserRepository.
+type authStateChecker interface {
+	GetAuthState(ctx context.Context, userID string) (*repositories.AuthState, error)
+}
+
+// checkAuthVersionAllowed returns true when the JWT's auth_version is current.
+// A JWT with AuthVersion == 0 is a legacy token (issued before this field was added);
+// it is treated as version 1 and accepted only when the DB version is also 1.
+func checkAuthVersionAllowed(jwtVersion, dbVersion int) bool {
+	if jwtVersion == 0 {
+		jwtVersion = 1
+	}
+	return jwtVersion == dbVersion
+}
+
+// AuthRequired validates the Bearer token and then verifies the user is still
+// active and that the token's auth_version matches the DB. Returns 401 for any
+// failure so the client knows to re-authenticate.
+func AuthRequired(repo authStateChecker) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		authHeader := c.GetHeader("Authorization")
 		if !strings.HasPrefix(authHeader, "Bearer ") {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "Authorization header required (Bearer token)",
-			})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
 
 		tokenStr := strings.TrimPrefix(authHeader, "Bearer ")
 		claims, err := ValidateAccessToken(tokenStr)
 		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{
-				"error": "Invalid or expired token",
-			})
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
+			return
+		}
+
+		state, err := repo.GetAuthState(c.Request.Context(), claims.UserID)
+		if err != nil || !state.Active || !checkAuthVersionAllowed(claims.AuthVersion, state.AuthVersion) {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "unauthorized"})
 			return
 		}
 

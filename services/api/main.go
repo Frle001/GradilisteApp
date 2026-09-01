@@ -188,13 +188,13 @@ func main() {
 		auth.POST("/login", authRL, LoginHandler)
 		auth.POST("/refresh", authRL, RefreshHandler)
 		auth.POST("/register", RegisterHandler) // always returns 403
-		auth.GET("/me", AuthRequired(), MeHandler)
-		auth.POST("/logout", AuthRequired(), LogoutHandler)
-		auth.PATCH("/change-password", AuthRequired(), ChangePasswordHandler)
+		auth.GET("/me", AuthRequired(userRepo), MeHandler)
+		auth.POST("/logout", AuthRequired(userRepo), LogoutHandler)
+		auth.PATCH("/change-password", AuthRequired(userRepo), ChangePasswordHandler)
 	}
 
 	// ── Protected test routes ─────────────────────────────────────────────────
-	protected := api.Group("/protected", AuthRequired())
+	protected := api.Group("/protected", AuthRequired(userRepo))
 	{
 		protected.GET("/me", ProtectedMeHandler)
 		protected.GET("/director-engineer", RequireRoles("direktor", "inzenjer"), ProtectedDirectorEngineerHandler)
@@ -203,26 +203,26 @@ func main() {
 	}
 
 	// ── Business modules ──────────────────────────────────────────────────────
-	routes.RegisterEmployeeRoutes(api, empHandler, AuthRequired(), RequireRoles)
-	projectsGroup := routes.RegisterProjectRoutes(api, projHandler, AuthRequired(), RequireRoles)
+	routes.RegisterEmployeeRoutes(api, empHandler, AuthRequired(userRepo), RequireRoles)
+	projectsGroup := routes.RegisterProjectRoutes(api, projHandler, AuthRequired(userRepo), RequireRoles)
 	routes.RegisterProjectMaterialRoutes(projectsGroup, matHandler, RequireRoles)
-	routes.RegisterDailyReportRoutes(api, drHandler, attachHandler, AuthRequired(), RequireRoles)
-	routes.RegisterReportsRoutes(api, reportsHandler, AuthRequired(), RequireRoles)
-	routes.RegisterMaterialPurchasesRoutes(api, mpHandler, AuthRequired(), RequireRoles)
-	routes.RegisterInventoryRoutes(api, invHandler, AuthRequired(), RequireRoles)
-	routes.RegisterWorkerHoursRoutes(api, whHandler, AuthRequired(), RequireRoles)
-	routes.RegisterScheduleRoutes(api, scheduleHandler, AuthRequired(), RequireRoles)
-	routes.RegisterCompanyAssetsRoutes(api, caHandler, AuthRequired(), RequireRoles)
-	routes.RegisterDocumentationRoutes(api, empDocHandler, AuthRequired(), RequireRoles)
-	routes.RegisterFinanceRoutes(api, financeHandler, AuthRequired(), RequireRoles)
-	routes.RegisterAnalyticsRoutes(api, analyticsHandler, AuthRequired(), RequireRoles)
+	routes.RegisterDailyReportRoutes(api, drHandler, attachHandler, AuthRequired(userRepo), RequireRoles)
+	routes.RegisterReportsRoutes(api, reportsHandler, AuthRequired(userRepo), RequireRoles)
+	routes.RegisterMaterialPurchasesRoutes(api, mpHandler, AuthRequired(userRepo), RequireRoles)
+	routes.RegisterInventoryRoutes(api, invHandler, AuthRequired(userRepo), RequireRoles)
+	routes.RegisterWorkerHoursRoutes(api, whHandler, AuthRequired(userRepo), RequireRoles)
+	routes.RegisterScheduleRoutes(api, scheduleHandler, AuthRequired(userRepo), RequireRoles)
+	routes.RegisterCompanyAssetsRoutes(api, caHandler, AuthRequired(userRepo), RequireRoles)
+	routes.RegisterDocumentationRoutes(api, empDocHandler, AuthRequired(userRepo), RequireRoles)
+	routes.RegisterFinanceRoutes(api, financeHandler, AuthRequired(userRepo), RequireRoles)
+	routes.RegisterAnalyticsRoutes(api, analyticsHandler, AuthRequired(userRepo), RequireRoles)
 	routes.RegisterProjectDocumentRoutes(projectsGroup, docHandler, folderHandler, RequireRoles)
 
 	// Batch upload is registered on a separate group without the standard 10 MB body limit.
 	// It applies its own 512 MB limit and requires the same auth/role middleware.
 	batchGroup := router.Group("/api/projects",
 		BodySizeLimitMiddleware(Config.MaxBatchUploadSizeMB<<20),
-		AuthRequired(),
+		AuthRequired(userRepo),
 		RequireRoles("direktor", "inzenjer"),
 	)
 	batchGroup.POST("/:id/documents/folder-upload", folderHandler.BatchUpload)

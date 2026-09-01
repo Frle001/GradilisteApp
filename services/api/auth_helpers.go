@@ -14,11 +14,12 @@ import (
 // JWTClaims contains all claims embedded in the access token.
 // Always derive role, company, and user identity from these — never trust the frontend.
 type JWTClaims struct {
-	UserID     string `json:"user_id"`
-	CompanyID  string `json:"company_id"`
-	EmployeeID string `json:"employee_id,omitempty"` // empty string when user has no employee record
-	Role       string `json:"role"`
-	Email      string `json:"email"`
+	UserID      string `json:"user_id"`
+	CompanyID   string `json:"company_id"`
+	EmployeeID  string `json:"employee_id,omitempty"` // empty string when user has no employee record
+	Role        string `json:"role"`
+	Email       string `json:"email"`
+	AuthVersion int    `json:"auth_version,omitempty"` // 0 means legacy token (treat as 1)
 	jwt.RegisteredClaims
 }
 
@@ -34,18 +35,19 @@ func CheckPassword(password, hash string) bool {
 	return bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) == nil
 }
 
-func GenerateAccessToken(userID, companyID, employeeID, role, email string) (string, error) {
+func GenerateAccessToken(userID, companyID, employeeID, role, email string, authVersion int) (string, error) {
 	expiry, err := time.ParseDuration(Config.JWTExpiresIn)
 	if err != nil {
 		expiry = 15 * time.Minute
 	}
 
 	claims := JWTClaims{
-		UserID:     userID,
-		CompanyID:  companyID,
-		EmployeeID: employeeID,
-		Role:       role,
-		Email:      email,
+		UserID:      userID,
+		CompanyID:   companyID,
+		EmployeeID:  employeeID,
+		Role:        role,
+		Email:       email,
+		AuthVersion: authVersion,
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(expiry)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),

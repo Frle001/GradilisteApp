@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"github.com/jackc/pgx/v5"
@@ -12,7 +13,8 @@ import (
 // ── Mock employee repository ──────────────────────────────────────────────────
 
 type mockEmpRepo struct {
-	listFn func(ctx context.Context, companyID string, f repositories.EmployeeListFilter) ([]repositories.Employee, error)
+	listFn    func(ctx context.Context, companyID string, f repositories.EmployeeListFilter) ([]repositories.Employee, error)
+	getByIDFn func(ctx context.Context, companyID, id string) (*repositories.Employee, error)
 }
 
 func (m *mockEmpRepo) List(ctx context.Context, companyID string, f repositories.EmployeeListFilter) ([]repositories.Employee, error) {
@@ -22,7 +24,10 @@ func (m *mockEmpRepo) List(ctx context.Context, companyID string, f repositories
 	return nil, nil
 }
 
-func (m *mockEmpRepo) GetByID(_ context.Context, _, _ string) (*repositories.Employee, error) {
+func (m *mockEmpRepo) GetByID(ctx context.Context, companyID, id string) (*repositories.Employee, error) {
+	if m.getByIDFn != nil {
+		return m.getByIDFn(ctx, companyID, id)
+	}
 	return nil, repositories.ErrNotFound
 }
 
@@ -51,6 +56,44 @@ func (m *mockEmpRepo) CountActiveDirectors(_ context.Context, _ string) (int64, 
 func (m *mockEmpRepo) HardDeleteCheck(_ context.Context, _, _ string) error { return nil }
 
 func (m *mockEmpRepo) HardDeleteWithTx(_ context.Context, _ pgx.Tx, _, _ string) error { return nil }
+
+// ── Mock audit repository ─────────────────────────────────────────────────────
+
+type mockAuditRepo struct{}
+
+func (m *mockAuditRepo) Log(_ context.Context, _ repositories.AuditParams) {}
+
+// ── Mock user repository ──────────────────────────────────────────────────────
+
+type mockUserRepo struct {
+	deactivateCalled         bool
+	activateCalled           bool
+	resetAndInvalidateCalled bool
+	resetAndInvalidateError  error
+}
+
+func (m *mockUserRepo) CreateWithTx(_ context.Context, _ pgx.Tx, _, _, _, _, _ string) error {
+	return nil
+}
+
+func (m *mockUserRepo) ResetPasswordAndInvalidateSessions(_ context.Context, _, _, _ string) error {
+	m.resetAndInvalidateCalled = true
+	return m.resetAndInvalidateError
+}
+
+func (m *mockUserRepo) DeleteByEmployeeIDWithTx(_ context.Context, _ pgx.Tx, _, _ string) error {
+	return nil
+}
+
+func (m *mockUserRepo) DeactivateEmployeeWithInvalidation(_ context.Context, _, _ string) error {
+	m.deactivateCalled = true
+	return nil
+}
+
+func (m *mockUserRepo) ActivateEmployeeAccount(_ context.Context, _, _ string) error {
+	m.activateCalled = true
+	return nil
+}
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 
@@ -148,4 +191,101 @@ func TestEmployeeList_CrossCompanyIsolation(t *testing.T) {
 func TestEmployeeList_PoslovodaMutationForbidden(_ *testing.T) {
 	// Intentionally empty: enforcement is in routes/schedule.go via
 	// requireRoles("direktor", "inzenjer").
+}
+
+// ── Session revocation tests ──────────────────────────────────────────────────
+
+// TestDeactivate_CallsAtomicInvalidation: deactivating an employee must call
+// DeactivateEmployeeWithInvalidation — the single atomic path that sets employees.active=false,
+// users.active=false, increments auth_version, and revokes refresh tokens in one transaction.
+func TestDeactivate_CallsAtomicInvalidation(t *testing.T) {
+	userRepo := &mockUserRepo{}
+	svc := &EmployeeService{
+		empRepo:   &mockEmpRepo{},
+		userRepo:  userRepo,
+		auditRepo: &mockAuditRepo{},
+	}
+
+	err := svc.SetActive(context.Background(), "co-1", "caller-1", "", "", "emp-1", false)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if !userRepo.deactivateCalled {
+		t.Error("deactivation must use DeactivateEmployeeWithInvalidation (atomic transaction)")
+	}
+	if userRepo.activateCalled {
+		t.Error("deactivation must not call ActivateEmployeeAccount")
+	}
+}
+
+// TestActivate_DoesNotResetAuthVersion: activating must call ActivateEmployeeAccount,
+// which sets users.active=true but leaves auth_version unchanged.
+// Pre-deactivation tokens issued with the old auth_version remain invalid.
+func TestActivate_DoesNotResetAuthVersion(t *testing.T) {
+	userRepo := &mockUserRepo{}
+	svc := &EmployeeService{
+		empRepo:   &mockEmpRepo{},
+		userRepo:  userRepo,
+		auditRepo: &mockAuditRepo{},
+	}
+
+	err := svc.SetActive(context.Background(), "co-1", "caller-1", "", "", "emp-1", true)
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if !userRepo.activateCalled {
+		t.Error("activation must use ActivateEmployeeAccount")
+	}
+	if userRepo.deactivateCalled {
+		t.Error("activation must not call DeactivateEmployeeWithInvalidation")
+	}
+}
+
+// TestResetPassword_IsAtomic: resetting an employee's password must call
+// ResetPasswordAndInvalidateSessions — the single atomic method that updates the
+// password hash, increments auth_version, and revokes refresh tokens in one transaction.
+func TestResetPassword_IsAtomic(t *testing.T) {
+	emp := testEmpRow("emp-1", "co-1", "Ivo", "Ivić", "inzenjer")
+	userRepo := &mockUserRepo{}
+	svc := &EmployeeService{
+		empRepo: &mockEmpRepo{
+			getByIDFn: func(_ context.Context, _, _ string) (*repositories.Employee, error) {
+				return &emp, nil
+			},
+		},
+		userRepo:     userRepo,
+		auditRepo:    &mockAuditRepo{},
+		hashPassword: func(_ string) (string, error) { return "hash", nil },
+	}
+
+	_, err := svc.ResetPassword(context.Background(), "co-1", "caller-1", "", "", "emp-1")
+	if err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if !userRepo.resetAndInvalidateCalled {
+		t.Error("password reset must use ResetPasswordAndInvalidateSessions (atomic transaction)")
+	}
+}
+
+// TestResetPassword_RepoFailureIsReturned: a repository error from the atomic
+// reset must propagate as a service error, not be swallowed.
+func TestResetPassword_RepoFailureIsReturned(t *testing.T) {
+	emp := testEmpRow("emp-1", "co-1", "Ivo", "Ivić", "inzenjer")
+	repoErr := errors.New("db unavailable")
+	userRepo := &mockUserRepo{resetAndInvalidateError: repoErr}
+	svc := &EmployeeService{
+		empRepo: &mockEmpRepo{
+			getByIDFn: func(_ context.Context, _, _ string) (*repositories.Employee, error) {
+				return &emp, nil
+			},
+		},
+		userRepo:     userRepo,
+		auditRepo:    &mockAuditRepo{},
+		hashPassword: func(_ string) (string, error) { return "hash", nil },
+	}
+
+	_, err := svc.ResetPassword(context.Background(), "co-1", "caller-1", "", "", "emp-1")
+	if err == nil {
+		t.Fatal("expected error when repo fails, got nil")
+	}
 }

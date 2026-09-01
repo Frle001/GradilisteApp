@@ -14,6 +14,7 @@ import apiClient from '@/lib/api-client'
 
 type ResetState = 'idle' | 'confirming' | 'loading' | 'done'
 type HardDeleteState = 'idle' | 'confirming' | 'loading'
+type DeactivateState = 'idle' | 'confirming' | 'loading'
 
 export default function EmployeeDetailPage() {
   const params = useParams()
@@ -34,6 +35,9 @@ export default function EmployeeDetailPage() {
   const [hardDeleteState, setHardDeleteState] = useState<HardDeleteState>('idle')
   const [hardDeleteInput, setHardDeleteInput] = useState('')
   const [hardDeleteError, setHardDeleteError] = useState<string | null>(null)
+
+  const [deactivateState, setDeactivateState] = useState<DeactivateState>('idle')
+  const [deactivateError, setDeactivateError] = useState<string | null>(null)
 
   const fetchEmployee = () => {
     setError(null)
@@ -64,15 +68,28 @@ export default function EmployeeDetailPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isLoading, user, id])
 
-  async function handleToggleActive() {
+  async function handleActivate() {
     if (!emp) return
     setActionError(null)
-    const endpoint = emp.active ? 'deactivate' : 'activate'
     try {
-      await apiClient.patch(`/employees/${id}/${endpoint}`)
+      await apiClient.patch(`/employees/${id}/activate`)
       await fetchEmployee()
     } catch {
-      setActionError('Greška pri promjeni statusa.')
+      setActionError('Greška pri aktiviranju zaposlenika.')
+    }
+  }
+
+  async function handleDeactivateConfirmed() {
+    if (!emp) return
+    setDeactivateState('loading')
+    setDeactivateError(null)
+    try {
+      await apiClient.patch(`/employees/${id}/deactivate`)
+      setDeactivateState('idle')
+      await fetchEmployee()
+    } catch {
+      setDeactivateError('Greška pri deaktivaciji zaposlenika.')
+      setDeactivateState('confirming')
     }
   }
 
@@ -172,7 +189,14 @@ export default function EmployeeDetailPage() {
               )}
               {canManage && (
                 <button
-                  onClick={handleToggleActive}
+                  onClick={() => {
+                    if (emp.active) {
+                      setDeactivateState('confirming')
+                      setDeactivateError(null)
+                    } else {
+                      handleActivate()
+                    }
+                  }}
                   className={`text-sm border px-3 py-1.5 rounded-lg transition ${
                     emp.active
                       ? 'border-red-800 text-red-400 hover:bg-red-950'
@@ -228,6 +252,36 @@ export default function EmployeeDetailPage() {
 
           {resetState === 'loading' && (
             <p className="text-slate-400 text-sm">Resetiranje lozinke...</p>
+          )}
+
+          {/* Deactivation confirmation */}
+          {deactivateState !== 'idle' && (
+            <div className="bg-red-950/30 border border-red-800/60 rounded-lg px-4 py-3 space-y-3">
+              <p className="text-red-200 text-sm font-medium">Deaktivirati zaposlenika?</p>
+              <p className="text-red-300/70 text-xs">
+                Zaposleniku će odmah biti ukinut pristup aplikaciji na svim uređajima. Više se neće moći prijaviti
+                niti pristupati podacima tvrtke dok ponovno ne aktivirate račun.
+              </p>
+              {deactivateError && (
+                <p className="text-red-400 text-xs">{deactivateError}</p>
+              )}
+              <div className="flex gap-2">
+                <button
+                  onClick={handleDeactivateConfirmed}
+                  disabled={deactivateState === 'loading'}
+                  className="text-sm bg-red-700 hover:bg-red-600 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium px-3 py-1.5 rounded-lg transition"
+                >
+                  {deactivateState === 'loading' ? 'Deaktiviranje...' : 'Deaktiviraj i odjavi'}
+                </button>
+                <button
+                  onClick={() => setDeactivateState('idle')}
+                  disabled={deactivateState === 'loading'}
+                  className="text-sm border border-slate-700 text-slate-400 hover:bg-slate-800 px-3 py-1.5 rounded-lg transition disabled:opacity-40"
+                >
+                  Odustani
+                </button>
+              </div>
+            </div>
           )}
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
