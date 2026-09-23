@@ -51,6 +51,26 @@ func (r *DailyReportRepository) GetWorkerInfo(ctx context.Context, workerID, com
 	return role, supervisorID, err
 }
 
+// GetMaterialAvailableQuantity returns the available_quantity and tracking_type
+// for an active project material. Returns ErrMaterialNotFound if the material
+// is absent or inactive in this project/company scope.
+func (r *DailyReportRepository) GetMaterialAvailableQuantity(ctx context.Context, materialID, projectID, companyID string) (float64, string, error) {
+	var qty float64
+	var trackingType string
+	err := r.db.QueryRow(ctx, `
+		SELECT available_quantity, tracking_type
+		FROM project_materials
+		WHERE id = $1::uuid AND project_id = $2::uuid AND company_id = $3::uuid AND active = true
+	`, materialID, projectID, companyID).Scan(&qty, &trackingType)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return 0, "", ErrMaterialNotFound
+	}
+	if err != nil {
+		return 0, "", fmt.Errorf("daily_reports.GetMaterialAvailableQuantity: %w", err)
+	}
+	return qty, trackingType, nil
+}
+
 // IsMaterialInProject checks if a material belongs to the given project and is active.
 func (r *DailyReportRepository) IsMaterialInProject(ctx context.Context, materialID, projectID, companyID string) (bool, error) {
 	var exists bool

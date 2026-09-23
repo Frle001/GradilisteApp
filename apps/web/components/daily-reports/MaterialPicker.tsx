@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, Fragment } from 'react'
 import { type FormDataMaterial } from '@/lib/types/daily-reports'
 
 const MAX_VISIBLE = 20
@@ -14,6 +14,10 @@ interface Props {
   onChange: (id: string, unit: string) => void
   disabled?: boolean
   placeholder?: string
+  /** Message shown when the materials list is empty. */
+  emptyMessage?: string
+  /** When provided, items matching this predicate are shown but not selectable. */
+  isItemDisabled?: (m: FormDataMaterial) => boolean
   /** When provided, a "Dodaj novi materijal" option is shown for unmatched queries. */
   onCreateNew?: (name: string) => void
 }
@@ -25,6 +29,8 @@ export default function MaterialPicker({
   onChange,
   disabled = false,
   placeholder = 'Odaberi materijal…',
+  emptyMessage = 'Nema dostupnog materijala na projektu.',
+  isItemDisabled,
   onCreateNew,
 }: Props) {
   const [open, setOpen] = useState(false)
@@ -114,7 +120,8 @@ export default function MaterialPicker({
       case 'Enter':
         e.preventDefault()
         if (highlighted < filtered.length && filtered[highlighted]) {
-          select(filtered[highlighted])
+          const item = filtered[highlighted]
+          if (!isItemDisabled?.(item)) select(item)
         } else if (showCreate && highlighted === filtered.length) {
           onCreateNew!(trimmedQuery)
           setOpen(false)
@@ -127,6 +134,11 @@ export default function MaterialPicker({
         break
     }
   }
+
+  // Index of the first disabled item in filtered (used to render the "Nema na stanju" separator).
+  const firstDisabledIdx = isItemDisabled
+    ? filtered.findIndex(m => isItemDisabled(m))
+    : -1
 
   return (
     <div ref={containerRef} className="relative w-full">
@@ -190,7 +202,7 @@ export default function MaterialPicker({
         <div className="absolute z-50 left-0 right-0 mt-1 bg-slate-900 border border-slate-700 rounded-lg shadow-2xl overflow-hidden">
           {materials.length === 0 && !showCreate ? (
             <p className="px-3 py-2.5 text-sm text-slate-500">
-              Projekt nema dodanih materijala.
+              {emptyMessage}
             </p>
           ) : filtered.length === 0 && !showCreate ? (
             <p className="px-3 py-2.5 text-sm text-slate-500">
@@ -203,31 +215,47 @@ export default function MaterialPicker({
               aria-label="Popis materijala"
               className="max-h-56 overflow-y-auto divide-y divide-slate-800/60"
             >
-              {filtered.map((m, idx) => (
-                <li
-                  key={m.id}
-                  role="option"
-                  aria-selected={m.id === value}
-                  onClick={() => select(m)}
-                  onMouseEnter={() => setHighlighted(idx)}
-                  className={[
-                    'px-3 py-2.5 cursor-pointer transition-colors',
-                    idx === highlighted ? 'bg-blue-600/20' : 'hover:bg-slate-800',
-                    m.id === value ? 'bg-blue-900/30' : '',
-                  ].join(' ')}
-                >
-                  <p className="text-sm text-slate-100 leading-snug break-words line-clamp-2">
-                    {m.material_name}
-                  </p>
-                  <p className="text-xs text-slate-500 mt-0.5 truncate">
-                    {m.unit}
-                    {m.material_code ? ` · ${m.material_code}` : ''}
-                    {m.tracking_type === 'work'
-                      ? <span className="text-emerald-600"> · radna aktivnost</span>
-                      : ` · kol: ${m.available_quantity}`}
-                  </p>
-                </li>
-              ))}
+              {filtered.map((m, idx) => {
+                const itemDisabled = isItemDisabled ? isItemDisabled(m) : false
+                const showSeparator = idx === firstDisabledIdx && firstDisabledIdx > 0
+                return (
+                  <Fragment key={m.id}>
+                    {showSeparator && (
+                      <li
+                        role="separator"
+                        className="px-3 py-1.5 text-xs font-medium text-slate-400 uppercase tracking-wider bg-slate-800/60 border-t border-slate-700/60 select-none pointer-events-none"
+                      >
+                        Nema na stanju
+                      </li>
+                    )}
+                    <li
+                      role="option"
+                      aria-selected={m.id === value}
+                      aria-disabled={itemDisabled}
+                      onClick={() => { if (!itemDisabled) select(m) }}
+                      onMouseEnter={() => setHighlighted(idx)}
+                      className={[
+                        'px-3 py-2.5 transition-colors',
+                        itemDisabled
+                          ? 'opacity-50 cursor-not-allowed'
+                          : ['cursor-pointer', idx === highlighted ? 'bg-blue-600/20' : 'hover:bg-slate-800'].join(' '),
+                        m.id === value ? 'bg-blue-900/30' : '',
+                      ].join(' ')}
+                    >
+                      <p className="text-sm text-slate-100 leading-snug break-words line-clamp-2">
+                        {m.material_name}
+                      </p>
+                      <p className="text-xs text-slate-500 mt-0.5 truncate">
+                        {m.unit}
+                        {m.material_code ? ` · ${m.material_code}` : ''}
+                        {m.tracking_type === 'work'
+                          ? <span className="text-emerald-600"> · radna aktivnost</span>
+                          : ` · kol: ${m.available_quantity}`}
+                      </p>
+                    </li>
+                  </Fragment>
+                )
+              })}
               {showCreate && (
                 <li
                   role="option"

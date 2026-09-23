@@ -17,6 +17,7 @@ import (
 var ErrDailyReportForbidden = errors.New("access denied to this daily report")
 var ErrDailyReportNotEditable = errors.New("report cannot be edited in its current status")
 var ErrDailyReportInvalidStatus = errors.New("report is not in a state that allows this action")
+var ErrInsufficientMaterialStock = errors.New("Nema dovoljno dostupnog materijala.")
 
 type drRepoIface interface {
 	List(ctx context.Context, companyID string, f dto.DailyReportFilter) ([]dto.DailyReportListItem, error)
@@ -29,6 +30,7 @@ type drRepoIface interface {
 	GetProjectStatus(ctx context.Context, projectID, companyID string) (string, error)
 	GetWorkerInfo(ctx context.Context, workerID, companyID string) (string, *string, error)
 	IsMaterialInProject(ctx context.Context, materialID, projectID, companyID string) (bool, error)
+	GetMaterialAvailableQuantity(ctx context.Context, materialID, projectID, companyID string) (float64, string, error)
 	GetActiveProjects(ctx context.Context, companyID string) ([]dto.FormDataProject, error)
 	GetWorkersForPoslovoda(ctx context.Context, poslovodaEmpID, companyID string) ([]dto.FormDataWorker, error)
 	GetAllActiveWorkers(ctx context.Context, companyID string) ([]dto.FormDataWorker, error)
@@ -392,6 +394,15 @@ func (s *DailyReportService) validateReport(ctx context.Context, companyID, proj
 			}
 			if !ok {
 				return fmt.Errorf("aktivnost %d: materijal ne pripada odabranom projektu", i+1)
+			}
+			if a.ActivityType == "montaza" {
+				availQty, trackingType, err := s.drRepo.GetMaterialAvailableQuantity(ctx, *a.ProjectMaterialID, projectID, companyID)
+				if err != nil {
+					return err
+				}
+				if trackingType == "stock" && availQty < a.Quantity {
+					return ErrInsufficientMaterialStock
+				}
 			}
 		}
 	}

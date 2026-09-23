@@ -16,20 +16,21 @@ import (
 // ── Mock daily-report repository ──────────────────────────────────────────────
 
 type mockDrRepo struct {
-	listFn                     func(context.Context, string, dto.DailyReportFilter) ([]dto.DailyReportListItem, error)
-	getByIDFn                  func(context.Context, string, string) (*dto.DailyReportDetail, error)
-	getByIDForEditFn           func(context.Context, string, string) (string, string, string, error)
-	getActivitiesForApprovalFn func(context.Context, string, string) ([]repositories.ActivityForApproval, error)
-	createFn                   func(context.Context, pgx.Tx, string, string, string, string, dto.CreateDailyReportRequest) (string, error)
-	updateFn                   func(context.Context, pgx.Tx, string, string, dto.CreateDailyReportRequest) error
-	setStatusFn                func(context.Context, pgx.Tx, string, string, string, *string) error
-	getProjectStatusFn         func(context.Context, string, string) (string, error)
-	getWorkerInfoFn            func(context.Context, string, string) (string, *string, error)
-	isMaterialInProjectFn      func(context.Context, string, string, string) (bool, error)
-	getActiveProjectsFn        func(context.Context, string) ([]dto.FormDataProject, error)
-	getWorkersForPoslovodaFn   func(context.Context, string, string) ([]dto.FormDataWorker, error)
-	getAllActiveWorkersFn      func(context.Context, string) ([]dto.FormDataWorker, error)
-	getMaterialsForProjectFn   func(context.Context, string, string) ([]dto.FormDataMaterial, error)
+	listFn                         func(context.Context, string, dto.DailyReportFilter) ([]dto.DailyReportListItem, error)
+	getByIDFn                      func(context.Context, string, string) (*dto.DailyReportDetail, error)
+	getByIDForEditFn               func(context.Context, string, string) (string, string, string, error)
+	getActivitiesForApprovalFn     func(context.Context, string, string) ([]repositories.ActivityForApproval, error)
+	createFn                       func(context.Context, pgx.Tx, string, string, string, string, dto.CreateDailyReportRequest) (string, error)
+	updateFn                       func(context.Context, pgx.Tx, string, string, dto.CreateDailyReportRequest) error
+	setStatusFn                    func(context.Context, pgx.Tx, string, string, string, *string) error
+	getProjectStatusFn             func(context.Context, string, string) (string, error)
+	getWorkerInfoFn                func(context.Context, string, string) (string, *string, error)
+	isMaterialInProjectFn          func(context.Context, string, string, string) (bool, error)
+	getMaterialAvailableQuantityFn func(context.Context, string, string, string) (float64, string, error)
+	getActiveProjectsFn            func(context.Context, string) ([]dto.FormDataProject, error)
+	getWorkersForPoslovodaFn       func(context.Context, string, string) ([]dto.FormDataWorker, error)
+	getAllActiveWorkersFn          func(context.Context, string) ([]dto.FormDataWorker, error)
+	getMaterialsForProjectFn       func(context.Context, string, string) ([]dto.FormDataMaterial, error)
 }
 
 func (m *mockDrRepo) List(ctx context.Context, companyID string, f dto.DailyReportFilter) ([]dto.DailyReportListItem, error) {
@@ -100,6 +101,13 @@ func (m *mockDrRepo) IsMaterialInProject(ctx context.Context, materialID, projec
 		return m.isMaterialInProjectFn(ctx, materialID, projectID, companyID)
 	}
 	return true, nil
+}
+
+func (m *mockDrRepo) GetMaterialAvailableQuantity(ctx context.Context, materialID, projectID, companyID string) (float64, string, error) {
+	if m.getMaterialAvailableQuantityFn != nil {
+		return m.getMaterialAvailableQuantityFn(ctx, materialID, projectID, companyID)
+	}
+	return 999, "stock", nil
 }
 
 func (m *mockDrRepo) GetActiveProjects(ctx context.Context, companyID string) ([]dto.FormDataProject, error) {
@@ -921,5 +929,279 @@ func TestDailyReport_Approve_NormalStockActivityUnchanged(t *testing.T) {
 	}
 	if act.ProjectMaterialID == nil || *act.ProjectMaterialID != matID {
 		t.Errorf("expected ProjectMaterialID=%q, got %v", matID, act.ProjectMaterialID)
+	}
+}
+
+// ── Tests: submission-time stock validation ───────────────────────────────────
+
+// TestDailyReport_Create_ZeroStockMontazaRejected verifies that submitting a
+// montaza activity for a stock-type material with available_quantity=0 is rejected
+// at submission time with ErrInsufficientMaterialStock.
+func TestDailyReport_Create_ZeroStockMontazaRejected(t *testing.T) {
+	matID := "mat-zero"
+	repo := &mockDrRepo{
+		getProjectStatusFn: func(_ context.Context, _, _ string) (string, error) { return "active", nil },
+		isMaterialInProjectFn: func(_ context.Context, materialID, _, _ string) (bool, error) {
+			return materialID == matID, nil
+		},
+		getMaterialAvailableQuantityFn: func(_ context.Context, _, _, _ string) (float64, string, error) {
+			return 0.0, "stock", nil
+		},
+	}
+	req := dto.CreateDailyReportRequest{
+		ProjectID:  "project-1",
+		ReportDate: drTodayStr(),
+		Activities: []dto.ActivityInput{
+			{
+				IsVTK:             false,
+				ProjectMaterialID: &matID,
+				Quantity:          1,
+				Unit:              "kom",
+				ActivityType:      "montaza",
+			},
+		},
+	}
+	_, err := newDrSvc(repo).Create(context.Background(), "co-1", "user-1", "emp-poslovoda", "poslovoda", req)
+	if err == nil {
+		t.Fatal("expected error for zero-stock montaza, got nil")
+	}
+	if !errors.Is(err, ErrInsufficientMaterialStock) {
+		t.Errorf("expected ErrInsufficientMaterialStock, got: %v", err)
+	}
+}
+
+// TestDailyReport_Create_PartialStockMontazaRejected verifies that requesting
+// more quantity than is available is rejected.
+func TestDailyReport_Create_PartialStockMontazaRejected(t *testing.T) {
+	matID := "mat-partial"
+	repo := &mockDrRepo{
+		getProjectStatusFn: func(_ context.Context, _, _ string) (string, error) { return "active", nil },
+		isMaterialInProjectFn: func(_ context.Context, materialID, _, _ string) (bool, error) {
+			return materialID == matID, nil
+		},
+		getMaterialAvailableQuantityFn: func(_ context.Context, _, _, _ string) (float64, string, error) {
+			return 2.0, "stock", nil // only 2 available
+		},
+	}
+	req := dto.CreateDailyReportRequest{
+		ProjectID:  "project-1",
+		ReportDate: drTodayStr(),
+		Activities: []dto.ActivityInput{
+			{
+				IsVTK:             false,
+				ProjectMaterialID: &matID,
+				Quantity:          5, // requesting 5 but only 2 available
+				Unit:              "kom",
+				ActivityType:      "montaza",
+			},
+		},
+	}
+	_, err := newDrSvc(repo).Create(context.Background(), "co-1", "user-1", "emp-poslovoda", "poslovoda", req)
+	if err == nil {
+		t.Fatal("expected error when requested quantity exceeds available stock, got nil")
+	}
+	if !errors.Is(err, ErrInsufficientMaterialStock) {
+		t.Errorf("expected ErrInsufficientMaterialStock, got: %v", err)
+	}
+}
+
+// TestDailyReport_Create_PositiveStockMontazaAccepted verifies that a montaza
+// activity passes when available_quantity >= requested quantity.
+func TestDailyReport_Create_PositiveStockMontazaAccepted(t *testing.T) {
+	matID := "mat-ok"
+	created := false
+	repo := &mockDrRepo{
+		getProjectStatusFn: func(_ context.Context, _, _ string) (string, error) { return "active", nil },
+		isMaterialInProjectFn: func(_ context.Context, materialID, _, _ string) (bool, error) {
+			return materialID == matID, nil
+		},
+		getMaterialAvailableQuantityFn: func(_ context.Context, _, _, _ string) (float64, string, error) {
+			return 10.0, "stock", nil
+		},
+		createFn: func(_ context.Context, _ pgx.Tx, _, _, _, _ string, _ dto.CreateDailyReportRequest) (string, error) {
+			created = true
+			return "report-ok", nil
+		},
+	}
+	req := dto.CreateDailyReportRequest{
+		ProjectID:  "project-1",
+		ReportDate: drTodayStr(),
+		Activities: []dto.ActivityInput{
+			{
+				IsVTK:             false,
+				ProjectMaterialID: &matID,
+				Quantity:          5,
+				Unit:              "kom",
+				ActivityType:      "montaza",
+			},
+		},
+	}
+	_, err := newDrSvc(repo).Create(context.Background(), "co-1", "user-1", "emp-poslovoda", "poslovoda", req)
+	if err != nil {
+		t.Fatalf("stock montaza with sufficient available_quantity should pass, got: %v", err)
+	}
+	if !created {
+		t.Error("expected drRepo.Create to be called")
+	}
+}
+
+// TestDailyReport_Create_WorkTypeMontazaIgnoresStock verifies that montaza on a
+// work-tracking material (tracking_type="work") is not blocked by stock check —
+// work items do not deduct from available_quantity.
+func TestDailyReport_Create_WorkTypeMontazaIgnoresStock(t *testing.T) {
+	matID := "mat-work"
+	created := false
+	repo := &mockDrRepo{
+		getProjectStatusFn: func(_ context.Context, _, _ string) (string, error) { return "active", nil },
+		isMaterialInProjectFn: func(_ context.Context, materialID, _, _ string) (bool, error) {
+			return materialID == matID, nil
+		},
+		getMaterialAvailableQuantityFn: func(_ context.Context, _, _, _ string) (float64, string, error) {
+			return 0.0, "work", nil // zero available but tracking_type=work
+		},
+		createFn: func(_ context.Context, _ pgx.Tx, _, _, _, _ string, _ dto.CreateDailyReportRequest) (string, error) {
+			created = true
+			return "report-work", nil
+		},
+	}
+	req := dto.CreateDailyReportRequest{
+		ProjectID:  "project-1",
+		ReportDate: drTodayStr(),
+		Activities: []dto.ActivityInput{
+			{
+				IsVTK:             false,
+				ProjectMaterialID: &matID,
+				Quantity:          25,
+				Unit:              "m",
+				ActivityType:      "montaza",
+			},
+		},
+	}
+	_, err := newDrSvc(repo).Create(context.Background(), "co-1", "user-1", "emp-poslovoda", "poslovoda", req)
+	if err != nil {
+		t.Fatalf("work-type montaza should not be blocked by stock check, got: %v", err)
+	}
+	if !created {
+		t.Error("expected drRepo.Create to be called for a valid work-type montaza")
+	}
+}
+
+// TestDailyReport_Create_DemontazaSkipsStockCheck verifies that demontaza does not
+// trigger GetMaterialAvailableQuantity — demontaza adds stock, not consumes it.
+func TestDailyReport_Create_DemontazaSkipsStockCheck(t *testing.T) {
+	matID := "mat-1"
+	qtyCallCount := 0
+	created := false
+	repo := &mockDrRepo{
+		getProjectStatusFn: func(_ context.Context, _, _ string) (string, error) { return "active", nil },
+		isMaterialInProjectFn: func(_ context.Context, materialID, _, _ string) (bool, error) {
+			return materialID == matID, nil
+		},
+		getMaterialAvailableQuantityFn: func(_ context.Context, _, _, _ string) (float64, string, error) {
+			qtyCallCount++
+			return 0.0, "stock", nil
+		},
+		createFn: func(_ context.Context, _ pgx.Tx, _, _, _, _ string, _ dto.CreateDailyReportRequest) (string, error) {
+			created = true
+			return "report-demontaza", nil
+		},
+	}
+	req := dto.CreateDailyReportRequest{
+		ProjectID:  "project-1",
+		ReportDate: drTodayStr(),
+		Activities: []dto.ActivityInput{
+			{
+				IsVTK:             false,
+				ProjectMaterialID: &matID,
+				Quantity:          5,
+				Unit:              "kom",
+				ActivityType:      "demontaza",
+			},
+		},
+	}
+	_, err := newDrSvc(repo).Create(context.Background(), "co-1", "user-1", "emp-poslovoda", "poslovoda", req)
+	if err != nil {
+		t.Fatalf("demontaza should not be blocked by stock check, got: %v", err)
+	}
+	if qtyCallCount != 0 {
+		t.Errorf("GetMaterialAvailableQuantity must not be called for demontaza, called %d times", qtyCallCount)
+	}
+	if !created {
+		t.Error("expected drRepo.Create to be called for a valid demontaza")
+	}
+}
+
+// TestDailyReport_Create_VTKMontazaSkipsStockCheck verifies that VTK activities
+// (is_vtk=true) do not trigger the stock check — VTK goes through a separate path.
+func TestDailyReport_Create_VTKMontazaSkipsStockCheck(t *testing.T) {
+	qtyCallCount := 0
+	created := false
+	repo := &mockDrRepo{
+		getProjectStatusFn: func(_ context.Context, _, _ string) (string, error) { return "active", nil },
+		getMaterialAvailableQuantityFn: func(_ context.Context, _, _, _ string) (float64, string, error) {
+			qtyCallCount++
+			return 0.0, "stock", nil
+		},
+		createFn: func(_ context.Context, _ pgx.Tx, _, _, _, _ string, _ dto.CreateDailyReportRequest) (string, error) {
+			created = true
+			return "report-vtk", nil
+		},
+	}
+	req := dto.CreateDailyReportRequest{
+		ProjectID:  "project-1",
+		ReportDate: drTodayStr(),
+		Activities: []dto.ActivityInput{vtkActivity()},
+	}
+	_, err := newDrSvc(repo).Create(context.Background(), "co-1", "user-1", "emp-poslovoda", "poslovoda", req)
+	if err != nil {
+		t.Fatalf("VTK montaza should not be blocked by stock check, got: %v", err)
+	}
+	if qtyCallCount != 0 {
+		t.Errorf("GetMaterialAvailableQuantity must not be called for VTK activity, called %d times", qtyCallCount)
+	}
+	if !created {
+		t.Error("expected drRepo.Create to be called for VTK activity")
+	}
+}
+
+// TestDailyReport_Create_DemontazaZeroStockAllowed confirms that submitting a
+// demontaza activity for a stock-type material with available_quantity = 0 is
+// accepted — demontaza returns material to stock and never needs a stock guard.
+func TestDailyReport_Create_DemontazaZeroStockAllowed(t *testing.T) {
+	matID := "mat-zero"
+	created := false
+	repo := &mockDrRepo{
+		getProjectStatusFn: func(_ context.Context, _, _ string) (string, error) { return "active", nil },
+		isMaterialInProjectFn: func(_ context.Context, materialID, _, _ string) (bool, error) {
+			return materialID == matID, nil
+		},
+		getMaterialAvailableQuantityFn: func(_ context.Context, _, _, _ string) (float64, string, error) {
+			// Would return zero stock if called; demontaza must not call this.
+			return 0.0, "stock", nil
+		},
+		createFn: func(_ context.Context, _ pgx.Tx, _, _, _, _ string, _ dto.CreateDailyReportRequest) (string, error) {
+			created = true
+			return "report-demontaza-zero", nil
+		},
+	}
+	req := dto.CreateDailyReportRequest{
+		ProjectID:  "project-1",
+		ReportDate: drTodayStr(),
+		Activities: []dto.ActivityInput{
+			{
+				IsVTK:             false,
+				ProjectMaterialID: &matID,
+				Quantity:          3,
+				Unit:              "kom",
+				ActivityType:      "demontaza",
+			},
+		},
+	}
+	_, err := newDrSvc(repo).Create(context.Background(), "co-1", "user-1", "emp-poslovoda", "poslovoda", req)
+	if err != nil {
+		t.Fatalf("demontaza of zero-stock material must be allowed at submission, got: %v", err)
+	}
+	if !created {
+		t.Error("expected drRepo.Create to be called for demontaza of zero-stock material")
 	}
 }

@@ -282,7 +282,16 @@ export default function DailyReportForm({
         router.push('/dashboard/daily-reports')
       }
     } catch (err: unknown) {
-      setServerError(err instanceof Error ? err.message : 'Greška pri spremanju.')
+      const backendMsg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+      setServerError(backendMsg ?? (err instanceof Error ? err.message : 'Greška pri spremanju.'))
+      // Re-fetch materials so the dropdown reflects current server state (e.g. a zero-stock
+      // material disappears without the user having to manually reload).
+      if (projectId) {
+        apiClient
+          .get(`/projects/${projectId}/materials`)
+          .then(res => setProjectMaterials(res.data.materials ?? []))
+          .catch(() => {})
+      }
     } finally {
       setSubmitting(false)
       setUploadProgress(null)

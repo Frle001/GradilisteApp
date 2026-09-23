@@ -158,6 +158,8 @@ func respondDailyReportError(c *gin.Context, err error) {
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Odobreni izvještaj se ne može mijenjati"})
 	case errors.Is(err, services.ErrDailyReportInvalidStatus):
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Izvještaj nije u stanju koje dozvoljava ovu radnju"})
+	case errors.Is(err, services.ErrInsufficientMaterialStock):
+		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": "Nema dovoljno dostupnog materijala."})
 	default:
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 	}

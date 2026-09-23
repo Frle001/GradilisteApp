@@ -40,10 +40,11 @@ func NewProjectMaterialService(
 
 // ── CRUD ──────────────────────────────────────────────────────────────────────
 
-func (s *ProjectMaterialService) List(ctx context.Context, projectID, companyID string, search string, activeOnly bool) ([]dto.MaterialListItem, error) {
+func (s *ProjectMaterialService) List(ctx context.Context, projectID, companyID string, search string, activeOnly bool, availableOnly bool) ([]dto.MaterialListItem, error) {
 	items, err := s.matRepo.List(ctx, projectID, companyID, repositories.MaterialFilter{
-		Search:     search,
-		ActiveOnly: activeOnly,
+		Search:        search,
+		ActiveOnly:    activeOnly,
+		AvailableOnly: availableOnly,
 	})
 	if err != nil {
 		return nil, err

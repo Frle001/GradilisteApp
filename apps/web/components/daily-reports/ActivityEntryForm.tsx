@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import {
   type ActivityType,
   type ActivityInputUI,
@@ -35,6 +35,21 @@ export default function ActivityEntryForm({ materials, materialsLoading = false,
   const selectedMat = !isVtk && materialId ? materials.find(m => m.id === materialId) ?? null : null
   const isWorkItem = selectedMat?.tracking_type === 'work'
 
+  // Sort: work-type and positive-stock materials first, zero-stock below. Same order for all activity types.
+  const sortedMaterials = useMemo(() => {
+    return [...materials].sort((a, b) => {
+      const aUsable = (a.tracking_type === 'work' || a.available_quantity > 0) ? 0 : 1
+      const bUsable = (b.tracking_type === 'work' || b.available_quantity > 0) ? 0 : 1
+      if (aUsable !== bUsable) return aUsable - bUsable
+      return a.material_name.localeCompare(b.material_name, 'hr-HR')
+    })
+  }, [materials])
+
+  // Disabled predicate for montaža: stock items with no available stock cannot be consumed.
+  function isMontazaItemDisabled(m: FormDataMaterial): boolean {
+    return m.tracking_type === 'stock' && m.available_quantity <= 0
+  }
+
   function validate(): string[] {
     const errs: string[] = []
 
@@ -49,7 +64,7 @@ export default function ActivityEntryForm({ materials, materialsLoading = false,
       if (!materialId) errs.push('Odaberite materijal.')
       // Stock check only for stock-type montaža; work items have no stock pool.
       if (materialId && activityType === 'montaza' && !isWorkItem) {
-        if (selectedMat && selectedMat.available_quantity === 0) {
+        if (selectedMat && selectedMat.available_quantity <= 0) {
           errs.push('Nije moguće utrošiti novi materijal bez raspoložive količine.')
         }
       }
@@ -156,11 +171,17 @@ export default function ActivityEntryForm({ materials, materialsLoading = false,
           <div className="sm:col-span-2">
             <label className="block text-xs text-slate-400 mb-1">Materijal *</label>
             <MaterialPicker
-              materials={materials}
+              materials={sortedMaterials}
               loading={materialsLoading}
               value={materialId}
               onChange={handleMaterialChange}
               disabled={disabled}
+              emptyMessage={
+                activityType === 'montaza'
+                  ? 'Nema dostupnog materijala na projektu.'
+                  : 'Nema materijala na projektu.'
+              }
+              isItemDisabled={activityType === 'montaza' ? isMontazaItemDisabled : undefined}
               onCreateNew={!disabled && projectId ? handleCreateNew : undefined}
             />
             {isWorkItem && (
@@ -205,7 +226,18 @@ export default function ActivityEntryForm({ materials, materialsLoading = false,
           <select
             value={activityType}
             disabled={disabled}
-            onChange={e => setActivityType(e.target.value as ActivityType)}
+            onChange={e => {
+              const newType = e.target.value as ActivityType
+              setActivityType(newType)
+              // Switching to montaža: a zero-stock stock material is no longer valid — clear it.
+              if (newType === 'montaza' && materialId) {
+                const mat = materials.find(m => m.id === materialId)
+                if (mat && mat.tracking_type !== 'work' && mat.available_quantity <= 0) {
+                  setMaterialId('')
+                  setUnit('')
+                }
+              }
+            }}
             className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-1.5 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
           >
             {ACTIVITY_TYPES.map(t => (

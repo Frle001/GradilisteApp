@@ -33,28 +33,39 @@ func isDuplicateKey(err error) bool {
 }
 
 type MaterialFilter struct {
-	Search     string
-	ActiveOnly bool
+	Search        string
+	ActiveOnly    bool
+	AvailableOnly bool
 }
 
-func (r *ProjectMaterialRepository) List(ctx context.Context, projectID, companyID string, f MaterialFilter) ([]dto.MaterialListItem, error) {
+// buildMaterialListWhere builds the WHERE clause and extra args (excluding the
+// initial $1/$2 project/company placeholders) for List. Extracted for unit testing.
+func buildMaterialListWhere(f MaterialFilter) (where string, extraArgs []interface{}) {
 	conditions := []string{"project_id = $1", "company_id = $2"}
-	args := []interface{}{projectID, companyID}
 	idx := 3
 
 	if f.ActiveOnly {
 		conditions = append(conditions, fmt.Sprintf("active = $%d", idx))
-		args = append(args, true)
+		extraArgs = append(extraArgs, true)
+		idx++
+	}
+	if f.AvailableOnly {
+		conditions = append(conditions, fmt.Sprintf("available_quantity > $%d", idx))
+		extraArgs = append(extraArgs, 0)
 		idx++
 	}
 	if f.Search != "" {
 		conditions = append(conditions, fmt.Sprintf("(material_name ILIKE $%d OR material_code ILIKE $%d)", idx, idx))
-		args = append(args, "%"+f.Search+"%")
-		idx++
+		extraArgs = append(extraArgs, "%"+f.Search+"%")
+		_ = idx
 	}
-	_ = idx
+	return "WHERE " + strings.Join(conditions, " AND "), extraArgs
+}
 
-	where := "WHERE " + strings.Join(conditions, " AND ")
+func (r *ProjectMaterialRepository) List(ctx context.Context, projectID, companyID string, f MaterialFilter) ([]dto.MaterialListItem, error) {
+	where, extraArgs := buildMaterialListWhere(f)
+	args := append([]interface{}{projectID, companyID}, extraArgs...)
+
 	q := `SELECT id, material_name, material_code, planned_quantity, used_quantity, available_quantity,
 	             unit, source, active, tracking_type, created_at, updated_at
 	      FROM project_materials ` + where + ` ORDER BY material_name ASC`

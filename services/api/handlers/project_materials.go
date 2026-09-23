@@ -28,8 +28,9 @@ func (h *ProjectMaterialHandler) List(c *gin.Context) {
 
 	search := c.Query("search")
 	activeOnly := c.Query("active") != "false"
+	availableOnly := c.Query("available_only") == "true"
 
-	items, err := h.svc.List(c.Request.Context(), projectID, u.CompanyID, search, activeOnly)
+	items, err := h.svc.List(c.Request.Context(), projectID, u.CompanyID, search, activeOnly, availableOnly)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
 		return

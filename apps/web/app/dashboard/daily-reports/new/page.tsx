@@ -8,7 +8,7 @@ import DashboardShell from '@/components/layout/DashboardShell'
 import DailyReportForm from '@/components/daily-reports/DailyReportForm'
 import { type DailyReportFormData, type CreateDailyReportPayload } from '@/lib/types/daily-reports'
 import apiClient from '@/lib/api-client'
-import { enqueue, enqueueBlob } from '@/lib/offline/outbox'
+import { enqueue, enqueueBlob, getEntry } from '@/lib/offline/outbox'
 import { trySyncEntry } from '@/lib/offline/sync-engine'
 
 export default function NewDailyReportPage() {
@@ -48,6 +48,13 @@ export default function NewDailyReportPage() {
     if (resolvedId) {
       // Report landed on server — form will upload photos directly via its loop.
       return { id: resolvedId }
+    }
+
+    // If the server permanently rejected the submission (e.g. 422 insufficient stock),
+    // propagate the error so the form can display it and stay open.
+    const failedEntry = await getEntry(submissionId)
+    if (failedEntry?.status === 'failed') {
+      throw new Error(failedEntry.lastError ?? 'Greška pri slanju podataka.')
     }
 
     // Offline or transient server error — queue any pending photos for background upload.
