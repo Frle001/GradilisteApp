@@ -141,7 +141,7 @@ func (r *WorkerHoursRepository) Upsert(
 				(company_id, worker_id, project_id, work_date, hours_worked, notes, work_description, submitted_by, client_submission_id)
 			VALUES
 				($1::uuid, $2::uuid, $3::uuid, $4::date, $5, $6, $7, $8::uuid, $9::uuid)
-			ON CONFLICT (company_id, worker_id, project_id, work_date)
+			ON CONFLICT (company_id, worker_id, project_id, work_date) WHERE project_id IS NOT NULL
 			DO UPDATE SET
 				hours_worked         = EXCLUDED.hours_worked,
 				notes                = EXCLUDED.notes,
@@ -176,7 +176,7 @@ func (r *WorkerHoursRepository) Upsert(
 			(company_id, worker_id, project_id, work_date, hours_worked, notes, work_description, submitted_by)
 		VALUES
 			($1::uuid, $2::uuid, $3::uuid, $4::date, $5, $6, $7, $8::uuid)
-		ON CONFLICT (company_id, worker_id, project_id, work_date)
+		ON CONFLICT (company_id, worker_id, project_id, work_date) WHERE project_id IS NOT NULL
 		DO UPDATE SET
 			hours_worked     = EXCLUDED.hours_worked,
 			notes            = EXCLUDED.notes,
@@ -503,6 +503,7 @@ func (r *WorkerHoursRepository) CorrectHours(
 		SELECT hours_worked
 		FROM worker_daily_hours
 		WHERE id = $1::uuid AND company_id = $2::uuid
+		  AND project_id IS NOT NULL
 		FOR UPDATE
 	`, entryID, companyID).Scan(&previousHours)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -538,7 +539,7 @@ func (r *WorkerHoursRepository) AddComment(
 ) (*dto.WorkerHoursComment, error) {
 	var exists bool
 	if err := r.db.QueryRow(ctx,
-		`SELECT EXISTS(SELECT 1 FROM worker_daily_hours WHERE id = $1::uuid AND company_id = $2::uuid)`,
+		`SELECT EXISTS(SELECT 1 FROM worker_daily_hours WHERE id = $1::uuid AND company_id = $2::uuid AND project_id IS NOT NULL)`,
 		entryID, companyID,
 	).Scan(&exists); err != nil {
 		return nil, fmt.Errorf("worker_hours.AddComment: check entry: %w", err)

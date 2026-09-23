@@ -297,6 +297,7 @@ func (r *AnalyticsRepository) GetDailyHoursForEmployee(ctx context.Context, comp
 		LEFT JOIN projects p ON p.id = wdh.project_id
 		WHERE wdh.company_id = $1::uuid AND wdh.worker_id = $2::uuid
 		  AND wdh.work_date >= $3::date AND wdh.work_date <= $4::date
+		  AND wdh.project_id IS NOT NULL
 		ORDER BY wdh.work_date, p.name
 	`, companyID, employeeID, from, to)
 	if err != nil {
@@ -323,6 +324,7 @@ func (r *AnalyticsRepository) GetHoursByProject(ctx context.Context, companyID, 
 		LEFT JOIN projects p ON p.id = wdh.project_id
 		WHERE wdh.company_id = $1::uuid AND wdh.worker_id = $2::uuid
 		  AND wdh.work_date >= $3::date AND wdh.work_date <= $4::date
+		  AND wdh.project_id IS NOT NULL
 		GROUP BY wdh.project_id, p.name
 		ORDER BY SUM(wdh.hours_worked) DESC
 	`, companyID, employeeID, from, to)
@@ -356,6 +358,7 @@ func (r *AnalyticsRepository) ListEligibleEmployees(ctx context.Context, company
 		        SELECT 1 FROM worker_daily_hours wdh
 		        WHERE wdh.company_id = $1::uuid AND wdh.worker_id = e.id
 		          AND wdh.work_date >= $2::date AND wdh.work_date <= $3::date
+		          AND wdh.project_id IS NOT NULL
 		    )
 		    OR EXISTS (
 		        SELECT 1 FROM employee_compensation_plans ecp

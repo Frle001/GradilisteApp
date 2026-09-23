@@ -98,6 +98,10 @@ func main() {
 	whSvc := services.NewWorkerHoursService(whRepo)
 	whHandler := handlers.NewWorkerHoursHandler(whSvc)
 
+	mhRepo := repositories.NewManagementHoursRepository(db)
+	mhSvc := services.NewManagementHoursService(mhRepo)
+	mhHandler := handlers.NewManagementHoursHandler(mhSvc)
+
 	scheduleRepo := repositories.NewScheduleRepository(db)
 	scheduleSvc := services.NewScheduleService(db, scheduleRepo)
 	scheduleHandler := handlers.NewScheduleHandler(scheduleSvc)
@@ -211,6 +215,7 @@ func main() {
 	routes.RegisterMaterialPurchasesRoutes(api, mpHandler, AuthRequired(userRepo), RequireRoles)
 	routes.RegisterInventoryRoutes(api, invHandler, AuthRequired(userRepo), RequireRoles)
 	routes.RegisterWorkerHoursRoutes(api, whHandler, AuthRequired(userRepo), RequireRoles)
+	routes.RegisterManagementHoursRoutes(api, mhHandler, AuthRequired(userRepo), RequireRoles)
 	routes.RegisterScheduleRoutes(api, scheduleHandler, AuthRequired(userRepo), RequireRoles)
 	routes.RegisterCompanyAssetsRoutes(api, caHandler, AuthRequired(userRepo), RequireRoles)
 	routes.RegisterDocumentationRoutes(api, empDocHandler, AuthRequired(userRepo), RequireRoles)

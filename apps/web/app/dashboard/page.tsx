@@ -24,6 +24,7 @@ const roleCards: Record<string, DashboardCard[]> = {
     { title: 'Upisi materijala', description: 'Evidencija kupljenog materijala', icon: '📦', href: '/dashboard/material-purchases' },
     { title: 'Stanje robe', description: 'Osobna zadužnica i prijenosi', icon: '🗂️', href: '/dashboard/inventory' },
     { title: 'Sati zaposlenika', description: 'Pregled i ispravak upisanih radnih sati', icon: '⏱️', href: '/dashboard/worker-hours' },
+    { title: 'Moji sati', description: 'Evidencija vlastitih radnih sati', icon: '🕐', href: '/dashboard/management-hours' },
     { title: 'Računi', description: 'Evidencija ulaznih računa tvrtke', icon: '🧾', href: '/dashboard/racuni' },
     { title: 'R1 računi', description: 'Osobni R1 računi zaposlenika', icon: '📄', href: '/dashboard/r1' },
     { title: 'Analitika', description: 'Plaće i troškovi zaposlenika', icon: '📊', href: '/dashboard/analytics' },
@@ -40,6 +41,7 @@ const roleCards: Record<string, DashboardCard[]> = {
     { title: 'Upisi materijala', description: 'Evidencija kupljenog materijala', icon: '📦', href: '/dashboard/material-purchases' },
     { title: 'Stanje robe', description: 'Osobna zadužnica i prijenosi', icon: '🗂️', href: '/dashboard/inventory' },
     { title: 'Sati zaposlenika', description: 'Pregled i ispravak upisanih radnih sati', icon: '⏱️', href: '/dashboard/worker-hours' },
+    { title: 'Moji sati', description: 'Evidencija vlastitih radnih sati', icon: '🕐', href: '/dashboard/management-hours' },
     { title: 'Moji R1 računi', description: 'Unos i pregled R1 računa', icon: '📄', href: '/dashboard/r1' },
     { title: 'Analitika', description: 'Plaće i troškovi zaposlenika', icon: '📊', href: '/dashboard/analytics' },
     { title: 'Građevinski dnevnik', description: 'Evidencija radnih sati po gradilištu', icon: '📓', href: '/dashboard/reports/gradevinski-dnevnik' },
@@ -47,6 +49,7 @@ const roleCards: Record<string, DashboardCard[]> = {
   ],
   administracija: [
     { title: 'Zaposlenici', description: 'Upravljanje zaposlenicima', icon: '👥', href: '/dashboard/employees' },
+    { title: 'Moji sati', description: 'Evidencija vlastitih radnih sati', icon: '🕐', href: '/dashboard/management-hours' },
     { title: 'Stanje robe', description: 'Osobna zadužnica i prijenosi', icon: '🗂️', href: '/dashboard/inventory' },
     { title: 'Zaduženja', description: 'Evidencija alata, opreme i vozila', icon: '🔧', href: '/dashboard/zaduzenja' },
     { title: 'Dokumentacija', description: 'HR dokumenti i compliance zaposlenika', icon: '📋', href: '/dashboard/dokumentacija' },
