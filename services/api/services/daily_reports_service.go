@@ -188,7 +188,7 @@ func (s *DailyReportService) Approve(ctx context.Context, id, companyID, callerU
 	if err != nil {
 		return err
 	}
-	if status != "submitted" && status != "draft" {
+	if status != "submitted" && status != "draft" && status != "rejected" {
 		return ErrDailyReportInvalidStatus
 	}
 

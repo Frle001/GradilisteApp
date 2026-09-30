@@ -239,7 +239,7 @@ export default function DailyReportDetailPage() {
             />
 
             {/* ── Approve / Reject actions ────────────────────────────── */}
-            {canManage && report.status === 'submitted' && (
+            {canManage && (report.status === 'submitted' || report.status === 'rejected') && (
               <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
                 <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">Akcije</h2>
                 {actionError && (
@@ -252,16 +252,18 @@ export default function DailyReportDetailPage() {
                     onClick={handleApprove}
                     className="px-4 py-2 bg-green-700 hover:bg-green-600 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition"
                   >
-                    Odobri
+                    Odobri izvještaj
                   </button>
-                  <button
-                    type="button"
-                    disabled={acting}
-                    onClick={handleReject}
-                    className="px-4 py-2 bg-red-700 hover:bg-red-600 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition"
-                  >
-                    Odbij
-                  </button>
+                  {report.status === 'submitted' && (
+                    <button
+                      type="button"
+                      disabled={acting}
+                      onClick={handleReject}
+                      className="px-4 py-2 bg-red-700 hover:bg-red-600 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition"
+                    >
+                      Odbij
+                    </button>
+                  )}
                 </div>
               </div>
             )}

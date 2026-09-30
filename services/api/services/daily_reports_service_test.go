@@ -415,9 +415,10 @@ func TestDailyReport_Approve_PassesPoslovodaIDToEffects(t *testing.T) {
 }
 
 // TestDailyReport_Approve_RejectsNonSubmittedStatus verifies that an already-approved
-// or rejected report cannot be approved again.
+// report cannot be approved again. "rejected" is no longer invalid — it is handled
+// by the new tests below.
 func TestDailyReport_Approve_RejectsNonSubmittedStatus(t *testing.T) {
-	for _, status := range []string{"approved", "rejected"} {
+	for _, status := range []string{"approved"} {
 		status := status
 		repo := &mockDrRepo{
 			getByIDForEditFn: func(_ context.Context, _, _ string) (string, string, string, error) {
@@ -432,6 +433,260 @@ func TestDailyReport_Approve_RejectsNonSubmittedStatus(t *testing.T) {
 		if !errors.Is(err, ErrDailyReportInvalidStatus) {
 			t.Errorf("status=%s: expected ErrDailyReportInvalidStatus, got %v", status, err)
 		}
+	}
+}
+
+// ── Tests: rejected → approved transition ────────────────────────────────────
+
+// TestDailyReport_Approve_RejectedReport_Succeeds verifies that Approve no longer
+// returns ErrDailyReportInvalidStatus for a report in "rejected" status.
+func TestDailyReport_Approve_RejectedReport_Succeeds(t *testing.T) {
+	repo := &mockDrRepo{
+		getByIDForEditFn: func(_ context.Context, _, _ string) (string, string, string, error) {
+			return "rejected", "emp-poslovoda", "project-1", nil
+		},
+		getActivitiesForApprovalFn: func(_ context.Context, _, _ string) ([]repositories.ActivityForApproval, error) {
+			return []repositories.ActivityForApproval{}, nil
+		},
+	}
+	err := newDrSvcWithEffects(repo, &mockMaterialEffectsRepo{}).
+		Approve(context.Background(), "report-1", "co-1", "user-1", "emp-direktor")
+	if err != nil {
+		t.Fatalf("expected Approve to succeed for rejected report, got: %v", err)
+	}
+}
+
+// TestDailyReport_Approve_RejectedReport_SetsStatusApproved verifies that a
+// rejected report's status is updated to "approved" upon successful approval.
+func TestDailyReport_Approve_RejectedReport_SetsStatusApproved(t *testing.T) {
+	var setStatus string
+	repo := &mockDrRepo{
+		getByIDForEditFn: func(_ context.Context, _, _ string) (string, string, string, error) {
+			return "rejected", "emp-poslovoda", "project-1", nil
+		},
+		getActivitiesForApprovalFn: func(_ context.Context, _, _ string) ([]repositories.ActivityForApproval, error) {
+			return []repositories.ActivityForApproval{}, nil
+		},
+		setStatusFn: func(_ context.Context, _ pgx.Tx, _, _, status string, _ *string) error {
+			setStatus = status
+			return nil
+		},
+	}
+	if err := newDrSvcWithEffects(repo, &mockMaterialEffectsRepo{}).
+		Approve(context.Background(), "report-1", "co-1", "user-1", "emp-direktor"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if setStatus != "approved" {
+		t.Errorf("expected SetStatus called with 'approved', got %q", setStatus)
+	}
+}
+
+// TestDailyReport_Approve_RejectedReport_PreservesNotes verifies that SetStatus
+// is called with nil notes when approving a rejected report, so the rejection
+// reason stored in the notes column is not overwritten.
+func TestDailyReport_Approve_RejectedReport_PreservesNotes(t *testing.T) {
+	var gotNotes *string
+	repo := &mockDrRepo{
+		getByIDForEditFn: func(_ context.Context, _, _ string) (string, string, string, error) {
+			return "rejected", "emp-poslovoda", "project-1", nil
+		},
+		getActivitiesForApprovalFn: func(_ context.Context, _, _ string) ([]repositories.ActivityForApproval, error) {
+			return []repositories.ActivityForApproval{}, nil
+		},
+		setStatusFn: func(_ context.Context, _ pgx.Tx, _, _, _ string, notes *string) error {
+			gotNotes = notes
+			return nil
+		},
+	}
+	if err := newDrSvcWithEffects(repo, &mockMaterialEffectsRepo{}).
+		Approve(context.Background(), "report-1", "co-1", "user-1", "emp-direktor"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotNotes != nil {
+		t.Errorf("expected SetStatus called with nil notes (preserves rejection reason), got %v", *gotNotes)
+	}
+}
+
+// TestDailyReport_Approve_RejectedReport_AppliesEffects verifies that material
+// effects are applied when approving a previously rejected report, since rejection
+// never writes to report_material_effects (EffectsAlreadyApplied returns false).
+func TestDailyReport_Approve_RejectedReport_AppliesEffects(t *testing.T) {
+	applyCalled := false
+	fx := &mockMaterialEffectsRepo{
+		alreadyAppliedFn: func(_ context.Context, _ pgx.Tx, _ string) (bool, error) {
+			return false, nil // rejection never applied effects
+		},
+		validateAndApplyFn: func(_ context.Context, _ pgx.Tx, _, _, _, _, _ string, _ []repositories.ActivityForApproval) error {
+			applyCalled = true
+			return nil
+		},
+	}
+	repo := &mockDrRepo{
+		getByIDForEditFn: func(_ context.Context, _, _ string) (string, string, string, error) {
+			return "rejected", "emp-poslovoda", "project-1", nil
+		},
+		getActivitiesForApprovalFn: func(_ context.Context, _, _ string) ([]repositories.ActivityForApproval, error) {
+			return []repositories.ActivityForApproval{}, nil
+		},
+	}
+	if err := newDrSvcWithEffects(repo, fx).
+		Approve(context.Background(), "report-1", "co-1", "user-1", "emp-direktor"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !applyCalled {
+		t.Error("expected ValidateAndApply to be called when effects have not been applied")
+	}
+}
+
+// TestDailyReport_Approve_RejectedReport_IdempotencyGuard verifies that if effects
+// somehow already exist for a rejected report, ValidateAndApply is not called again.
+func TestDailyReport_Approve_RejectedReport_IdempotencyGuard(t *testing.T) {
+	applyCalled := false
+	fx := &mockMaterialEffectsRepo{
+		alreadyAppliedFn: func(_ context.Context, _ pgx.Tx, _ string) (bool, error) {
+			return true, nil
+		},
+		validateAndApplyFn: func(_ context.Context, _ pgx.Tx, _, _, _, _, _ string, _ []repositories.ActivityForApproval) error {
+			applyCalled = true
+			return nil
+		},
+	}
+	repo := &mockDrRepo{
+		getByIDForEditFn: func(_ context.Context, _, _ string) (string, string, string, error) {
+			return "rejected", "emp-poslovoda", "project-1", nil
+		},
+		getActivitiesForApprovalFn: func(_ context.Context, _, _ string) ([]repositories.ActivityForApproval, error) {
+			return []repositories.ActivityForApproval{}, nil
+		},
+	}
+	if err := newDrSvcWithEffects(repo, fx).
+		Approve(context.Background(), "report-1", "co-1", "user-1", "emp-direktor"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if applyCalled {
+		t.Error("ValidateAndApply must not be called when effects are already applied")
+	}
+}
+
+// TestDailyReport_Approve_RejectedReport_InsufficientStockFails verifies that a
+// stock error from ValidateAndApply propagates when approving a rejected report.
+func TestDailyReport_Approve_RejectedReport_InsufficientStockFails(t *testing.T) {
+	stockErr := ErrInsufficientMaterialStock
+	fx := &mockMaterialEffectsRepo{
+		validateAndApplyFn: func(_ context.Context, _ pgx.Tx, _, _, _, _, _ string, _ []repositories.ActivityForApproval) error {
+			return stockErr
+		},
+	}
+	repo := &mockDrRepo{
+		getByIDForEditFn: func(_ context.Context, _, _ string) (string, string, string, error) {
+			return "rejected", "emp-poslovoda", "project-1", nil
+		},
+		getActivitiesForApprovalFn: func(_ context.Context, _, _ string) ([]repositories.ActivityForApproval, error) {
+			return []repositories.ActivityForApproval{}, nil
+		},
+	}
+	err := newDrSvcWithEffects(repo, fx).
+		Approve(context.Background(), "report-1", "co-1", "user-1", "emp-direktor")
+	if !errors.Is(err, stockErr) {
+		t.Errorf("expected ErrInsufficientMaterialStock to propagate, got %v", err)
+	}
+}
+
+// TestDailyReport_Approve_RejectedReport_StockFailureDoesNotSetStatus verifies
+// that SetStatus is not called when effects fail for a rejected-report approval.
+func TestDailyReport_Approve_RejectedReport_StockFailureDoesNotSetStatus(t *testing.T) {
+	setStatusCalled := false
+	fx := &mockMaterialEffectsRepo{
+		validateAndApplyFn: func(_ context.Context, _ pgx.Tx, _, _, _, _, _ string, _ []repositories.ActivityForApproval) error {
+			return errors.New("stock error")
+		},
+	}
+	repo := &mockDrRepo{
+		getByIDForEditFn: func(_ context.Context, _, _ string) (string, string, string, error) {
+			return "rejected", "emp-poslovoda", "project-1", nil
+		},
+		getActivitiesForApprovalFn: func(_ context.Context, _, _ string) ([]repositories.ActivityForApproval, error) {
+			return []repositories.ActivityForApproval{}, nil
+		},
+		setStatusFn: func(_ context.Context, _ pgx.Tx, _, _, _ string, _ *string) error {
+			setStatusCalled = true
+			return nil
+		},
+	}
+	_ = newDrSvcWithEffects(repo, fx).
+		Approve(context.Background(), "report-1", "co-1", "user-1", "emp-direktor")
+	if setStatusCalled {
+		t.Error("SetStatus must not be called when ValidateAndApply fails for a rejected report")
+	}
+}
+
+// TestDailyReport_Approve_RejectedReport_ForwardsPoslovodaIDToEffects verifies
+// that the stored poslovodaID is forwarded to ValidateAndApply when approving a
+// rejected report, so responsibility tracking records the correct poslovoda.
+func TestDailyReport_Approve_RejectedReport_ForwardsPoslovodaIDToEffects(t *testing.T) {
+	fx := &mockMaterialEffectsRepo{}
+	repo := &mockDrRepo{
+		getByIDForEditFn: func(_ context.Context, _, _ string) (string, string, string, error) {
+			return "rejected", "emp-poslovoda-original", "project-abc", nil
+		},
+		getActivitiesForApprovalFn: func(_ context.Context, _, _ string) ([]repositories.ActivityForApproval, error) {
+			return []repositories.ActivityForApproval{}, nil
+		},
+	}
+	if err := newDrSvcWithEffects(repo, fx).
+		Approve(context.Background(), "report-1", "co-1", "user-1", "emp-direktor"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if fx.applyCallArgs.poslovodaID != "emp-poslovoda-original" {
+		t.Errorf("expected poslovodaID='emp-poslovoda-original' forwarded to effects, got %q", fx.applyCallArgs.poslovodaID)
+	}
+	if fx.applyCallArgs.projectID != "project-abc" {
+		t.Errorf("expected projectID='project-abc' forwarded to effects, got %q", fx.applyCallArgs.projectID)
+	}
+}
+
+// TestDailyReport_Approve_ApprovedReport_StillBlocked verifies that the regression
+// fix for "rejected" status did not unintentionally allow re-approving an already-
+// approved report.
+func TestDailyReport_Approve_ApprovedReport_StillBlocked(t *testing.T) {
+	repo := &mockDrRepo{
+		getByIDForEditFn: func(_ context.Context, _, _ string) (string, string, string, error) {
+			return "approved", "emp-poslovoda", "project-1", nil
+		},
+	}
+	err := newDrSvcWithEffects(repo, &mockMaterialEffectsRepo{}).
+		Approve(context.Background(), "report-1", "co-1", "user-1", "emp-direktor")
+	if err == nil {
+		t.Fatal("expected error when approving an already-approved report, got nil")
+	}
+	if !errors.Is(err, ErrDailyReportInvalidStatus) {
+		t.Errorf("expected ErrDailyReportInvalidStatus, got %v", err)
+	}
+}
+
+// TestDailyReport_Approve_RejectedReport_InzenjerSucceeds verifies that the
+// inzenjer role can also approve a rejected report (role enforcement is at the
+// route middleware level; the service layer does not block by caller identity).
+func TestDailyReport_Approve_RejectedReport_InzenjerSucceeds(t *testing.T) {
+	var statusSet string
+	repo := &mockDrRepo{
+		getByIDForEditFn: func(_ context.Context, _, _ string) (string, string, string, error) {
+			return "rejected", "emp-poslovoda", "project-1", nil
+		},
+		getActivitiesForApprovalFn: func(_ context.Context, _, _ string) ([]repositories.ActivityForApproval, error) {
+			return []repositories.ActivityForApproval{}, nil
+		},
+		setStatusFn: func(_ context.Context, _ pgx.Tx, _, _, status string, _ *string) error {
+			statusSet = status
+			return nil
+		},
+	}
+	if err := newDrSvcWithEffects(repo, &mockMaterialEffectsRepo{}).
+		Approve(context.Background(), "report-1", "co-1", "user-inzenjer", "emp-inzenjer"); err != nil {
+		t.Fatalf("inzenjer approving rejected report should succeed, got: %v", err)
+	}
+	if statusSet != "approved" {
+		t.Errorf("expected status='approved', got %q", statusSet)
 	}
 }
 
