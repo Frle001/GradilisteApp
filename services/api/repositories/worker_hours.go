@@ -532,6 +532,65 @@ func (r *WorkerHoursRepository) CorrectHours(
 	return tx.Commit(ctx)
 }
 
+// WorkerHoursForDelete holds the fields captured before deletion, used for audit.
+type WorkerHoursForDelete struct {
+	WorkerID    string
+	WorkerName  string
+	ProjectID   string
+	WorkDate    string
+	HoursWorked float64
+	Notes       *string
+}
+
+// DeleteEntry removes a project-based (project_id IS NOT NULL) worker-hours row.
+// Executes as a single transaction: SELECT FOR UPDATE to capture state → DELETE → COMMIT.
+// Returns ErrWorkerHoursNotFound when the entry does not exist, belongs to another company,
+// or has project_id IS NULL (management hours).
+func (r *WorkerHoursRepository) DeleteEntry(ctx context.Context, companyID, entryID string) (*WorkerHoursForDelete, error) {
+	tx, err := r.db.Begin(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("worker_hours.DeleteEntry: begin: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	var d WorkerHoursForDelete
+	err = tx.QueryRow(ctx, `
+		SELECT
+			wdh.worker_id::text,
+			CONCAT(e.first_name, ' ', e.last_name),
+			wdh.project_id::text,
+			wdh.work_date::text,
+			wdh.hours_worked,
+			wdh.notes
+		FROM worker_daily_hours wdh
+		JOIN employees e ON e.id = wdh.worker_id
+		WHERE wdh.id         = $1::uuid
+		  AND wdh.company_id = $2::uuid
+		  AND wdh.project_id IS NOT NULL
+		FOR UPDATE
+	`, entryID, companyID).Scan(
+		&d.WorkerID, &d.WorkerName, &d.ProjectID, &d.WorkDate, &d.HoursWorked, &d.Notes,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrWorkerHoursNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("worker_hours.DeleteEntry: lock: %w", err)
+	}
+
+	if _, err = tx.Exec(ctx, `
+		DELETE FROM worker_daily_hours
+		WHERE id = $1::uuid AND company_id = $2::uuid
+	`, entryID, companyID); err != nil {
+		return nil, fmt.Errorf("worker_hours.DeleteEntry: delete: %w", err)
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		return nil, fmt.Errorf("worker_hours.DeleteEntry: commit: %w", err)
+	}
+	return &d, nil
+}
+
 // AddComment inserts a private manager comment on an entry.
 func (r *WorkerHoursRepository) AddComment(
 	ctx context.Context,

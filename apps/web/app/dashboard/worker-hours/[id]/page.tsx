@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { useParams } from 'next/navigation'
+import { useParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import LoadingScreen from '@/components/ui/LoadingScreen'
 import DashboardShell from '@/components/layout/DashboardShell'
@@ -58,6 +58,7 @@ function formatDate(dateStr: string): string {
 export default function WorkerHoursDetailPage() {
   const { user, employee, isLoading, logout } = useAuth()
   const params = useParams()
+  const router = useRouter()
   const entryId = params.id as string
 
   const [detail, setDetail] = useState<EntryDetail | null>(null)
@@ -75,6 +76,11 @@ export default function WorkerHoursDetailPage() {
   const [commentText, setCommentText] = useState('')
   const [addingComment, setAddingComment] = useState(false)
   const [commentError, setCommentError] = useState<string | null>(null)
+
+  // Delete confirmation
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const fetchDetail = useCallback(() => {
     setLoading(true)
@@ -121,6 +127,19 @@ export default function WorkerHoursDetailPage() {
       setCorrectionError(msg ?? 'Greška pri ispravku sati.')
     } finally {
       setCorrecting(false)
+    }
+  }
+
+  async function handleDelete() {
+    setDeleteError(null)
+    setDeleting(true)
+    try {
+      await apiClient.delete(`/worker-hours/manager/${entryId}`)
+      router.push('/dashboard/worker-hours')
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+      setDeleteError(msg ?? 'Greška pri brisanju unosa.')
+      setDeleting(false)
     }
   }
 
@@ -277,6 +296,50 @@ export default function WorkerHoursDetailPage() {
                   </button>
                 </div>
               </form>
+            )}
+
+            {/* Delete button */}
+            {!showCorrectionForm && !showDeleteConfirm && (
+              <div className="mt-4 pt-4 border-t border-slate-800">
+                <button
+                  type="button"
+                  onClick={() => { setDeleteError(null); setShowDeleteConfirm(true) }}
+                  className="text-sm text-red-400 hover:text-red-300 border border-red-800 hover:border-red-600 px-3 py-1.5 rounded-lg transition"
+                >
+                  Obriši
+                </button>
+              </div>
+            )}
+
+            {/* Delete confirmation */}
+            {showDeleteConfirm && (
+              <div className="mt-4 pt-4 border-t border-red-900/50 space-y-3">
+                <h3 className="text-sm font-semibold text-red-300">Obrisati evidenciju sati?</h3>
+                <p className="text-sm text-slate-400">
+                  Ovaj unos više se neće uračunavati u evidenciju radnih sati. Radnja će biti zabilježena.
+                </p>
+                {deleteError && (
+                  <p className="text-sm text-red-400">{deleteError}</p>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    disabled={deleting}
+                    onClick={handleDelete}
+                    className="px-4 py-2 bg-red-700 hover:bg-red-600 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition"
+                  >
+                    {deleting ? 'Brisanje...' : 'Obriši evidenciju'}
+                  </button>
+                  <button
+                    type="button"
+                    disabled={deleting}
+                    onClick={() => setShowDeleteConfirm(false)}
+                    className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm rounded-lg transition"
+                  >
+                    Odustani
+                  </button>
+                </div>
+              </div>
             )}
           </div>
 

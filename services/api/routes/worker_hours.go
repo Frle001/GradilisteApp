@@ -30,5 +30,6 @@ func RegisterWorkerHoursRoutes(
 		mgr.GET("/:id", h.ManagerDetail)
 		mgr.POST("/:id/correct", h.ManagerCorrect)
 		mgr.POST("/:id/comments", h.ManagerAddComment)
+		mgr.DELETE("/:id", h.ManagerDelete)
 	}
 }

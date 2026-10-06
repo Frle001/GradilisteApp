@@ -159,6 +159,26 @@ func (h *WorkerHoursHandler) ManagerCorrect(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"ok": true})
 }
 
+// DELETE /api/worker-hours/manager/:id
+func (h *WorkerHoursHandler) ManagerDelete(c *gin.Context) {
+	u := appctx.GetAuthUser(c)
+	entryID := c.Param("id")
+
+	if err := h.svc.DeleteEntry(c.Request.Context(), u.CompanyID, u.Role, u.UserID, u.EmployeeID, entryID); err != nil {
+		if errors.Is(err, services.ErrForbidden) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Nemate pristup ovoj operaciji"})
+			return
+		}
+		if errors.Is(err, repositories.ErrWorkerHoursNotFound) {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Unos nije pronađen"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
 // POST /api/worker-hours/manager/:id/comments
 func (h *WorkerHoursHandler) ManagerAddComment(c *gin.Context) {
 	u := appctx.GetAuthUser(c)

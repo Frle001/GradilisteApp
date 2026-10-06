@@ -10,6 +10,36 @@ import (
 	"github.com/gradiliste/api/repositories"
 )
 
+// DeleteEntry removes a project-based worker-hours entry.
+// Only direktor and inženjer may call this. Management-hours entries (project_id IS NULL)
+// cannot be deleted through this method — the repo returns ErrWorkerHoursNotFound for them.
+func (s *WorkerHoursService) DeleteEntry(ctx context.Context, companyID, callerRole, callerUserID, callerEmpID, entryID string) error {
+	if !s.isManager(callerRole) {
+		return ErrForbidden
+	}
+	deleted, err := s.repo.DeleteEntry(ctx, companyID, entryID)
+	if err != nil {
+		return err
+	}
+	go s.auditRepo.Log(context.Background(), repositories.AuditParams{
+		CompanyID:  companyID,
+		UserID:     &callerUserID,
+		EmployeeID: nilIfEmpty(callerEmpID),
+		Action:     "worker_hours.delete",
+		EntityType: "worker_hours",
+		EntityID:   &entryID,
+		OldData: map[string]interface{}{
+			"worker_id":    deleted.WorkerID,
+			"worker_name":  deleted.WorkerName,
+			"project_id":   deleted.ProjectID,
+			"work_date":    deleted.WorkDate,
+			"hours_worked": deleted.HoursWorked,
+			"notes":        deleted.Notes,
+		},
+	})
+	return nil
+}
+
 // workerHoursRepoIface is the repository surface used by WorkerHoursService.
 type workerHoursRepoIface interface {
 	ListCompanyActiveProjects(ctx context.Context, companyID string) ([]dto.WorkerProject, error)
@@ -24,14 +54,16 @@ type workerHoursRepoIface interface {
 	GetByID(ctx context.Context, companyID, entryID string) (*dto.WorkerHoursDetail, error)
 	CorrectHours(ctx context.Context, companyID, entryID string, newHours float64, reason, changedByUserID string) error
 	AddComment(ctx context.Context, companyID, entryID, authorUserID, text string) (*dto.WorkerHoursComment, error)
+	DeleteEntry(ctx context.Context, companyID, entryID string) (*repositories.WorkerHoursForDelete, error)
 }
 
 type WorkerHoursService struct {
-	repo workerHoursRepoIface
+	repo      workerHoursRepoIface
+	auditRepo auditLogRepoIface
 }
 
-func NewWorkerHoursService(repo workerHoursRepoIface) *WorkerHoursService {
-	return &WorkerHoursService{repo: repo}
+func NewWorkerHoursService(repo workerHoursRepoIface, auditRepo auditLogRepoIface) *WorkerHoursService {
+	return &WorkerHoursService{repo: repo, auditRepo: auditRepo}
 }
 
 // ListCompanyProjects returns all active projects in the company.

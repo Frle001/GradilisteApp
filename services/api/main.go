@@ -95,7 +95,7 @@ func main() {
 	invHandler := handlers.NewInventoryHandler(invSvc)
 
 	whRepo := repositories.NewWorkerHoursRepository(db)
-	whSvc := services.NewWorkerHoursService(whRepo)
+	whSvc := services.NewWorkerHoursService(whRepo, auditRepo)
 	whHandler := handlers.NewWorkerHoursHandler(whSvc)
 
 	mhRepo := repositories.NewManagementHoursRepository(db)
