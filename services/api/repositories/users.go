@@ -144,6 +144,36 @@ func (r *UserRepository) InvalidateSessions(ctx context.Context, userID string) 
 	return nil
 }
 
+// UpdateRoleWithTx updates users.role to newRole, increments auth_version, and
+// revokes all active refresh tokens for the user linked to the given employee —
+// all within the caller's transaction. No-op (no error) if the employee has no
+// linked user account.
+func (r *UserRepository) UpdateRoleWithTx(ctx context.Context, tx pgx.Tx, companyID, employeeID, newRole string) error {
+	result, err := tx.Exec(ctx, `
+		UPDATE users
+		SET role = $1, auth_version = auth_version + 1
+		WHERE employee_id = $2::uuid AND company_id = $3::uuid
+	`, newRole, employeeID, companyID)
+	if err != nil {
+		return fmt.Errorf("users.UpdateRoleWithTx update: %w", err)
+	}
+	if result.RowsAffected() == 0 {
+		return nil // no user account linked to this employee — not an error
+	}
+
+	if _, err := tx.Exec(ctx, `
+		UPDATE refresh_tokens
+		SET revoked_at = NOW()
+		WHERE user_id = (
+			SELECT id FROM users
+			WHERE employee_id = $1::uuid AND company_id = $2::uuid
+		) AND revoked_at IS NULL
+	`, employeeID, companyID); err != nil {
+		return fmt.Errorf("users.UpdateRoleWithTx revoke: %w", err)
+	}
+	return nil
+}
+
 // InvalidateSessionsByEmployeeID finds the user account linked to the given employee
 // and calls InvalidateSessions. No-op if the employee has no login account.
 func (r *UserRepository) InvalidateSessionsByEmployeeID(ctx context.Context, companyID, employeeID string) error {

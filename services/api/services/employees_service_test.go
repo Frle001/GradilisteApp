@@ -6,15 +6,19 @@ import (
 	"testing"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 
 	"github.com/gradiliste/api/repositories"
+	"github.com/gradiliste/api/dto"
 )
 
 // ── Mock employee repository ──────────────────────────────────────────────────
 
 type mockEmpRepo struct {
-	listFn    func(ctx context.Context, companyID string, f repositories.EmployeeListFilter) ([]repositories.Employee, error)
-	getByIDFn func(ctx context.Context, companyID, id string) (*repositories.Employee, error)
+	listFn        func(ctx context.Context, companyID string, f repositories.EmployeeListFilter) ([]repositories.Employee, error)
+	getByIDFn     func(ctx context.Context, companyID, id string) (*repositories.Employee, error)
+	updateFn      func() (*repositories.Employee, error)
+	updateWithTxFn func(id, role string) (*repositories.Employee, error)
 }
 
 func (m *mockEmpRepo) List(ctx context.Context, companyID string, f repositories.EmployeeListFilter) ([]repositories.Employee, error) {
@@ -40,7 +44,17 @@ func (m *mockEmpRepo) Create(_ context.Context, _, _, _, _ string, _, _, _ *stri
 }
 
 func (m *mockEmpRepo) Update(_ context.Context, _, _, _, _, _ string, _, _, _ *string) (*repositories.Employee, error) {
-	return nil, nil
+	if m.updateFn != nil {
+		return m.updateFn()
+	}
+	return &repositories.Employee{Active: true}, nil
+}
+
+func (m *mockEmpRepo) UpdateWithTx(_ context.Context, _ pgx.Tx, _, id, _, _, role string, _, _, _ *string) (*repositories.Employee, error) {
+	if m.updateWithTxFn != nil {
+		return m.updateWithTxFn(id, role)
+	}
+	return &repositories.Employee{ID: id, Role: role, Active: true}, nil
 }
 
 func (m *mockEmpRepo) SetActive(_ context.Context, _, _ string, _ bool) error { return nil }
@@ -70,6 +84,10 @@ type mockUserRepo struct {
 	activateCalled           bool
 	resetAndInvalidateCalled bool
 	resetAndInvalidateError  error
+
+	updateRoleWithTxCalled bool
+	updateRoleWithTxRole   string
+	updateRoleWithTxError  error
 }
 
 func (m *mockUserRepo) CreateWithTx(_ context.Context, _ pgx.Tx, _, _, _, _, _ string) error {
@@ -93,6 +111,12 @@ func (m *mockUserRepo) DeactivateEmployeeWithInvalidation(_ context.Context, _, 
 func (m *mockUserRepo) ActivateEmployeeAccount(_ context.Context, _, _ string) error {
 	m.activateCalled = true
 	return nil
+}
+
+func (m *mockUserRepo) UpdateRoleWithTx(_ context.Context, _ pgx.Tx, _, _, newRole string) error {
+	m.updateRoleWithTxCalled = true
+	m.updateRoleWithTxRole = newRole
+	return m.updateRoleWithTxError
 }
 
 // ── Helper ────────────────────────────────────────────────────────────────────
@@ -287,5 +311,344 @@ func TestResetPassword_RepoFailureIsReturned(t *testing.T) {
 	_, err := svc.ResetPassword(context.Background(), "co-1", "caller-1", "", "", "emp-1")
 	if err == nil {
 		t.Fatal("expected error when repo fails, got nil")
+	}
+}
+
+// ── stubTx ────────────────────────────────────────────────────────────────────
+
+// stubTx is a minimal pgx.Tx for unit tests. Only Commit and Rollback are
+// meaningful; all other methods panic because the service never calls them
+// directly (they are exercised through the mocked repository layer).
+type stubTx struct {
+	commitErr  error
+	committed  bool
+	rolledBack bool
+}
+
+func (s *stubTx) Begin(_ context.Context) (pgx.Tx, error)                             { panic("not used") }
+func (s *stubTx) Commit(_ context.Context) error                                       { s.committed = true; return s.commitErr }
+func (s *stubTx) Rollback(_ context.Context) error                                     { s.rolledBack = true; return nil }
+func (s *stubTx) CopyFrom(_ context.Context, _ pgx.Identifier, _ []string, _ pgx.CopyFromSource) (int64, error) {
+	panic("not used")
+}
+func (s *stubTx) SendBatch(_ context.Context, _ *pgx.Batch) pgx.BatchResults { panic("not used") }
+func (s *stubTx) LargeObjects() pgx.LargeObjects                              { panic("not used") }
+func (s *stubTx) Prepare(_ context.Context, _, _ string) (*pgconn.StatementDescription, error) {
+	panic("not used")
+}
+func (s *stubTx) Exec(_ context.Context, _ string, _ ...any) (pgconn.CommandTag, error) {
+	panic("not used")
+}
+func (s *stubTx) Query(_ context.Context, _ string, _ ...any) (pgx.Rows, error) { panic("not used") }
+func (s *stubTx) QueryRow(_ context.Context, _ string, _ ...any) pgx.Row        { panic("not used") }
+func (s *stubTx) Conn() *pgx.Conn                                                { panic("not used") }
+
+// ── Role-change regression tests ──────────────────────────────────────────────
+
+// newUpdateSvc builds an EmployeeService wired for Update() tests.
+func newUpdateSvc(empRepo *mockEmpRepo, userRepo *mockUserRepo, tx *stubTx) *EmployeeService {
+	beginTxFn := func(_ context.Context) (pgx.Tx, error) { return tx, nil }
+	return &EmployeeService{
+		empRepo:   empRepo,
+		userRepo:  userRepo,
+		auditRepo: &mockAuditRepo{},
+		beginTx:   beginTxFn,
+	}
+}
+
+// validUpdateReq returns an UpdateEmployeeRequest for tests; no supervisor needed for these roles.
+func validUpdateReq(role string) dto.UpdateEmployeeRequest {
+	email := "test@example.com"
+	return dto.UpdateEmployeeRequest{
+		FirstName: "Ivo",
+		LastName:  "Ivić",
+		Role:      role,
+		Email:     &email,
+	}
+}
+
+// TestUpdate_NoRoleChange_DoesNotBeginTx verifies that when the role is unchanged the
+// service never opens a transaction — no unnecessary locking.
+func TestUpdate_NoRoleChange_DoesNotBeginTx(t *testing.T) {
+	txBegun := false
+	emp := testEmpRow("emp-1", "co-1", "Ivo", "Ivić", "inzenjer")
+	userRepo := &mockUserRepo{}
+	svc := &EmployeeService{
+		empRepo: &mockEmpRepo{
+			getByIDFn: func(_ context.Context, _, _ string) (*repositories.Employee, error) {
+				return &emp, nil
+			},
+		},
+		userRepo:  userRepo,
+		auditRepo: &mockAuditRepo{},
+		beginTx: func(_ context.Context) (pgx.Tx, error) {
+			txBegun = true
+			return &stubTx{}, nil
+		},
+	}
+
+	_, err := svc.Update(context.Background(), "co-1", "caller-1", "", "", "emp-1", validUpdateReq("inzenjer"))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if txBegun {
+		t.Error("no transaction should be started when role does not change")
+	}
+}
+
+// TestUpdate_NoRoleChange_DoesNotSyncUserRole verifies that UpdateRoleWithTx is
+// NOT called when the role is unchanged.
+func TestUpdate_NoRoleChange_DoesNotSyncUserRole(t *testing.T) {
+	emp := testEmpRow("emp-1", "co-1", "Ivo", "Ivić", "inzenjer")
+	userRepo := &mockUserRepo{}
+	svc := &EmployeeService{
+		empRepo: &mockEmpRepo{
+			getByIDFn: func(_ context.Context, _, _ string) (*repositories.Employee, error) {
+				return &emp, nil
+			},
+		},
+		userRepo:  userRepo,
+		auditRepo: &mockAuditRepo{},
+		beginTx:   func(_ context.Context) (pgx.Tx, error) { return &stubTx{}, nil },
+	}
+
+	if _, err := svc.Update(context.Background(), "co-1", "caller-1", "", "", "emp-1", validUpdateReq("inzenjer")); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if userRepo.updateRoleWithTxCalled {
+		t.Error("UpdateRoleWithTx must NOT be called when role does not change")
+	}
+}
+
+// TestUpdate_RoleChange_BeginsTransaction verifies that a transaction is opened
+// when the role changes, ensuring atomicity.
+func TestUpdate_RoleChange_BeginsTransaction(t *testing.T) {
+	txBegun := false
+	oldEmp := testEmpRow("emp-1", "co-1", "Ivo", "Ivić", "inzenjer")
+	tx := &stubTx{}
+	svc := newUpdateSvc(
+		&mockEmpRepo{
+			getByIDFn: func(_ context.Context, _, _ string) (*repositories.Employee, error) {
+				return &oldEmp, nil
+			},
+		},
+		&mockUserRepo{},
+		tx,
+	)
+	svc.beginTx = func(_ context.Context) (pgx.Tx, error) {
+		txBegun = true
+		return tx, nil
+	}
+
+	if _, err := svc.Update(context.Background(), "co-1", "caller-1", "", "", "emp-1", validUpdateReq("direktor")); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !txBegun {
+		t.Error("a transaction must be started when the role changes")
+	}
+}
+
+// TestUpdate_RoleChange_CallsUpdateRoleWithTx verifies that the user role sync
+// is invoked when the role changes.
+func TestUpdate_RoleChange_CallsUpdateRoleWithTx(t *testing.T) {
+	oldEmp := testEmpRow("emp-1", "co-1", "Ivo", "Ivić", "inzenjer")
+	userRepo := &mockUserRepo{}
+	svc := newUpdateSvc(
+		&mockEmpRepo{
+			getByIDFn: func(_ context.Context, _, _ string) (*repositories.Employee, error) {
+				return &oldEmp, nil
+			},
+		},
+		userRepo,
+		&stubTx{},
+	)
+
+	if _, err := svc.Update(context.Background(), "co-1", "caller-1", "", "", "emp-1", validUpdateReq("direktor")); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !userRepo.updateRoleWithTxCalled {
+		t.Error("UpdateRoleWithTx must be called when role changes")
+	}
+}
+
+// TestUpdate_RoleChange_NewRolePassedToUserRepo verifies the correct new role is
+// forwarded so JWTs will contain the right claims after re-login.
+func TestUpdate_RoleChange_NewRolePassedToUserRepo(t *testing.T) {
+	oldEmp := testEmpRow("emp-1", "co-1", "Ivo", "Ivić", "radnik")
+	oldEmp.SupervisorID = nil // override for non-radnik update below
+	userRepo := &mockUserRepo{}
+	svc := newUpdateSvc(
+		&mockEmpRepo{
+			getByIDFn: func(_ context.Context, _, _ string) (*repositories.Employee, error) {
+				return &oldEmp, nil
+			},
+		},
+		userRepo,
+		&stubTx{},
+	)
+
+	if _, err := svc.Update(context.Background(), "co-1", "caller-1", "", "", "emp-1", validUpdateReq("inzenjer")); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if userRepo.updateRoleWithTxRole != "inzenjer" {
+		t.Errorf("UpdateRoleWithTx received role %q, want %q", userRepo.updateRoleWithTxRole, "inzenjer")
+	}
+}
+
+// TestUpdate_RoleChange_OldRoleNotPassedToUserRepo verifies the old role is not
+// forwarded (regression: guards against accidentally passing old.Role).
+func TestUpdate_RoleChange_OldRoleNotPassedToUserRepo(t *testing.T) {
+	oldEmp := testEmpRow("emp-1", "co-1", "Ivo", "Ivić", "administracija")
+	userRepo := &mockUserRepo{}
+	svc := newUpdateSvc(
+		&mockEmpRepo{
+			getByIDFn: func(_ context.Context, _, _ string) (*repositories.Employee, error) {
+				return &oldEmp, nil
+			},
+		},
+		userRepo,
+		&stubTx{},
+	)
+
+	if _, err := svc.Update(context.Background(), "co-1", "caller-1", "", "", "emp-1", validUpdateReq("inzenjer")); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if userRepo.updateRoleWithTxRole == "administracija" {
+		t.Error("UpdateRoleWithTx received the OLD role — must receive the new role")
+	}
+}
+
+// TestUpdate_RoleChange_CommitError_ReturnsError verifies that a transaction
+// commit failure propagates as an error and is not silently swallowed.
+func TestUpdate_RoleChange_CommitError_ReturnsError(t *testing.T) {
+	oldEmp := testEmpRow("emp-1", "co-1", "Ivo", "Ivić", "inzenjer")
+	commitErr := errors.New("disk full")
+	tx := &stubTx{commitErr: commitErr}
+	svc := newUpdateSvc(
+		&mockEmpRepo{
+			getByIDFn: func(_ context.Context, _, _ string) (*repositories.Employee, error) {
+				return &oldEmp, nil
+			},
+		},
+		&mockUserRepo{},
+		tx,
+	)
+
+	_, err := svc.Update(context.Background(), "co-1", "caller-1", "", "", "emp-1", validUpdateReq("direktor"))
+	if err == nil {
+		t.Fatal("expected error when commit fails, got nil")
+	}
+}
+
+// TestUpdate_RoleChange_UserRepoError_ReturnsError verifies that a failure in
+// UpdateRoleWithTx propagates and prevents the transaction from committing.
+func TestUpdate_RoleChange_UserRepoError_ReturnsError(t *testing.T) {
+	oldEmp := testEmpRow("emp-1", "co-1", "Ivo", "Ivić", "inzenjer")
+	tx := &stubTx{}
+	userRepo := &mockUserRepo{updateRoleWithTxError: errors.New("constraint violation")}
+	svc := newUpdateSvc(
+		&mockEmpRepo{
+			getByIDFn: func(_ context.Context, _, _ string) (*repositories.Employee, error) {
+				return &oldEmp, nil
+			},
+		},
+		userRepo,
+		tx,
+	)
+
+	_, err := svc.Update(context.Background(), "co-1", "caller-1", "", "", "emp-1", validUpdateReq("direktor"))
+	if err == nil {
+		t.Fatal("expected error when user repo fails, got nil")
+	}
+	if tx.committed {
+		t.Error("transaction must NOT be committed when UpdateRoleWithTx fails")
+	}
+}
+
+// TestUpdate_RoleChange_EmpRepoError_SkipsUserRepo verifies that an employee
+// repo failure prevents UpdateRoleWithTx from being called.
+func TestUpdate_RoleChange_EmpRepoError_SkipsUserRepo(t *testing.T) {
+	oldEmp := testEmpRow("emp-1", "co-1", "Ivo", "Ivić", "inzenjer")
+	userRepo := &mockUserRepo{}
+	svc := newUpdateSvc(
+		&mockEmpRepo{
+			getByIDFn: func(_ context.Context, _, _ string) (*repositories.Employee, error) {
+				return &oldEmp, nil
+			},
+			updateWithTxFn: func(_, _ string) (*repositories.Employee, error) {
+				return nil, errors.New("db error")
+			},
+		},
+		userRepo,
+		&stubTx{},
+	)
+
+	_, err := svc.Update(context.Background(), "co-1", "caller-1", "", "", "emp-1", validUpdateReq("direktor"))
+	if err == nil {
+		t.Fatal("expected error when empRepo.UpdateWithTx fails")
+	}
+	if userRepo.updateRoleWithTxCalled {
+		t.Error("UpdateRoleWithTx must NOT be called when the employee update fails")
+	}
+}
+
+// TestUpdate_RoleChange_CompanyIDForwardedToUserRepo verifies that UpdateRoleWithTx
+// is reached on role change, confirming the company-scoped user repo path is taken
+// rather than a global query that could cross tenant boundaries.
+func TestUpdate_RoleChange_CompanyIDForwardedToUserRepo(t *testing.T) {
+	oldEmp := testEmpRow("emp-1", "co-abc", "Ivo", "Ivić", "inzenjer")
+	userRepo := &mockUserRepo{}
+	svc := newUpdateSvc(
+		&mockEmpRepo{
+			getByIDFn: func(_ context.Context, _, _ string) (*repositories.Employee, error) {
+				return &oldEmp, nil
+			},
+		},
+		userRepo,
+		&stubTx{},
+	)
+
+	if _, err := svc.Update(context.Background(), "co-abc", "caller-1", "", "", "emp-1", validUpdateReq("direktor")); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !userRepo.updateRoleWithTxCalled {
+		t.Error("UpdateRoleWithTx must be called — company-scoped role sync path was not reached")
+	}
+}
+
+// TestUpdate_RoleChange_AllKnownRoleTransitions verifies that every role pair
+// (excluding radnik which requires a supervisor) triggers the user sync.
+func TestUpdate_RoleChange_AllKnownRoleTransitions(t *testing.T) {
+	roles := []string{"direktor", "inzenjer", "administracija", "poslovoda"}
+
+	for _, fromRole := range roles {
+		for _, toRole := range roles {
+			if fromRole == toRole {
+				continue
+			}
+			t.Run(fromRole+"→"+toRole, func(t *testing.T) {
+				oldEmp := testEmpRow("emp-1", "co-1", "Ivo", "Ivić", fromRole)
+				userRepo := &mockUserRepo{}
+				svc := newUpdateSvc(
+					&mockEmpRepo{
+						getByIDFn: func(_ context.Context, _, _ string) (*repositories.Employee, error) {
+							return &oldEmp, nil
+						},
+					},
+					userRepo,
+					&stubTx{},
+				)
+
+				if _, err := svc.Update(context.Background(), "co-1", "caller-1", "", "", "emp-1", validUpdateReq(toRole)); err != nil {
+					t.Fatalf("Update(%s→%s): unexpected error: %v", fromRole, toRole, err)
+				}
+				if !userRepo.updateRoleWithTxCalled {
+					t.Errorf("Update(%s→%s): UpdateRoleWithTx must be called", fromRole, toRole)
+				}
+				if userRepo.updateRoleWithTxRole != toRole {
+					t.Errorf("Update(%s→%s): UpdateRoleWithTx got role %q, want %q", fromRole, toRole, userRepo.updateRoleWithTxRole, toRole)
+				}
+			})
+		}
 	}
 }

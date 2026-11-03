@@ -75,6 +75,9 @@ type userRepoIface interface {
 	// users in one transaction so the state is always consistent.
 	DeactivateEmployeeWithInvalidation(ctx context.Context, companyID, employeeID string) error
 	ActivateEmployeeAccount(ctx context.Context, companyID, employeeID string) error
+	// UpdateRoleWithTx atomically updates users.role, increments auth_version, and
+	// revokes all refresh tokens within the provided transaction.
+	UpdateRoleWithTx(ctx context.Context, tx pgx.Tx, companyID, employeeID, newRole string) error
 }
 
 type empRepoIface interface {
@@ -83,6 +86,7 @@ type empRepoIface interface {
 	CreateWithTx(ctx context.Context, tx pgx.Tx, companyID, firstName, lastName, role string, email, phone, supervisorID *string) (*repositories.Employee, error)
 	Create(ctx context.Context, companyID, firstName, lastName, role string, email, phone, supervisorID *string) (*repositories.Employee, error)
 	Update(ctx context.Context, companyID, id, firstName, lastName, role string, email, phone, supervisorID *string) (*repositories.Employee, error)
+	UpdateWithTx(ctx context.Context, tx pgx.Tx, companyID, id, firstName, lastName, role string, email, phone, supervisorID *string) (*repositories.Employee, error)
 	SetActive(ctx context.Context, companyID, id string, active bool) error
 	GetRoleByID(ctx context.Context, companyID, id string) (string, error)
 	GetLinkedUserID(ctx context.Context, companyID, employeeID string) (string, bool, error)
@@ -98,6 +102,7 @@ type EmployeeService struct {
 	auditRepo    auditRepoIface
 	userRepo     userRepoIface
 	hashPassword func(password string) (string, error)
+	beginTx      func(ctx context.Context) (pgx.Tx, error)
 }
 
 func NewEmployeeService(
@@ -115,6 +120,7 @@ func NewEmployeeService(
 		auditRepo:    auditRepo,
 		userRepo:     userRepo,
 		hashPassword: hashPassword,
+		beginTx:      db.Begin,
 	}
 }
 
@@ -295,19 +301,45 @@ func (s *EmployeeService) Update(ctx context.Context, companyID, callerUserID, i
 		return nil, fmt.Errorf("update employee fetch: %w", err)
 	}
 
-	emp, err := s.empRepo.Update(ctx, companyID, id,
-		strings.TrimSpace(req.FirstName),
-		strings.TrimSpace(req.LastName),
-		req.Role,
-		email,
-		emptyToNil(req.Phone),
-		req.SupervisorID,
-	)
-	if err != nil {
-		if isUniqueViolation(err) {
-			return nil, ErrEmailInUse
+	firstName := strings.TrimSpace(req.FirstName)
+	lastName := strings.TrimSpace(req.LastName)
+	phone := emptyToNil(req.Phone)
+	roleChanged := old.Role != req.Role
+
+	var emp *repositories.Employee
+
+	if roleChanged {
+		// Role change: wrap employee update + user role sync + session invalidation in
+		// one transaction so employees.role and users.role are never inconsistent.
+		tx, txErr := s.beginTx(ctx)
+		if txErr != nil {
+			return nil, fmt.Errorf("update employee begin tx: %w", txErr)
 		}
-		return nil, fmt.Errorf("update employee: %w", err)
+		defer func() { tx.Rollback(ctx) }()
+
+		emp, err = s.empRepo.UpdateWithTx(ctx, tx, companyID, id, firstName, lastName, req.Role, email, phone, req.SupervisorID)
+		if err != nil {
+			if isUniqueViolation(err) {
+				return nil, ErrEmailInUse
+			}
+			return nil, fmt.Errorf("update employee: %w", err)
+		}
+
+		if err = s.userRepo.UpdateRoleWithTx(ctx, tx, companyID, id, req.Role); err != nil {
+			return nil, fmt.Errorf("sync user role: %w", err)
+		}
+
+		if err = tx.Commit(ctx); err != nil {
+			return nil, fmt.Errorf("update employee commit: %w", err)
+		}
+	} else {
+		emp, err = s.empRepo.Update(ctx, companyID, id, firstName, lastName, req.Role, email, phone, req.SupervisorID)
+		if err != nil {
+			if isUniqueViolation(err) {
+				return nil, ErrEmailInUse
+			}
+			return nil, fmt.Errorf("update employee: %w", err)
+		}
 	}
 
 	go s.auditRepo.Log(context.Background(), repositories.AuditParams{

@@ -230,6 +230,35 @@ func (r *EmployeeRepository) Update(ctx context.Context, companyID, id, firstNam
 	return &e, nil
 }
 
+func (r *EmployeeRepository) UpdateWithTx(ctx context.Context, tx pgx.Tx, companyID, id, firstName, lastName, role string, email, phone, supervisorID *string) (*Employee, error) {
+	var e Employee
+	err := tx.QueryRow(ctx, `
+		UPDATE employees
+		SET first_name = $3, last_name = $4, role = $5,
+		    email = $6, phone = $7, supervisor_id = $8::uuid
+		WHERE id = $1::uuid AND company_id = $2::uuid
+		RETURNING
+			id::text, company_id::text,
+			first_name, last_name, role,
+			email, phone, active,
+			supervisor_id::text,
+			created_at, updated_at
+	`, id, companyID, firstName, lastName, role, email, phone, supervisorID).Scan(
+		&e.ID, &e.CompanyID,
+		&e.FirstName, &e.LastName, &e.Role,
+		&e.Email, &e.Phone, &e.Active,
+		&e.SupervisorID,
+		&e.CreatedAt, &e.UpdatedAt,
+	)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if err != nil {
+		return nil, fmt.Errorf("employees.UpdateWithTx: %w", err)
+	}
+	return &e, nil
+}
+
 func (r *EmployeeRepository) SetActive(ctx context.Context, companyID, id string, active bool) error {
 	tag, err := r.db.Exec(ctx, `
 		UPDATE employees SET active = $3
