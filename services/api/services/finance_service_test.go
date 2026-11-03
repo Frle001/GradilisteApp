@@ -6,6 +6,7 @@ import (
 	"mime/multipart"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -18,10 +19,13 @@ var errNotFoundPgx = pgx.ErrNoRows
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
 type mockFinanceRepo struct {
-	invoices     []repositories.CompanyInvoiceRow
-	r1s          []repositories.R1ReceiptRow
-	createInvErr error
-	createR1Err  error
+	invoices      []repositories.CompanyInvoiceRow
+	r1s           []repositories.R1ReceiptRow
+	fuelReceipts  []repositories.FuelReceiptRow
+	createInvErr  error
+	createR1Err   error
+	createFuelErr error
+	deleteFuelErr error
 }
 
 func (m *mockFinanceRepo) CreateInvoice(_ context.Context, p repositories.CreateInvoiceParams) (*repositories.CompanyInvoiceRow, error) {
@@ -93,6 +97,62 @@ func (m *mockFinanceRepo) GetR1Receipt(_ context.Context, _, receiptID string) (
 		}
 	}
 	return nil, errNotFoundPgx
+}
+
+func (m *mockFinanceRepo) CreateFuelReceipt(_ context.Context, p repositories.CreateFuelReceiptParams) (*repositories.FuelReceiptRow, error) {
+	if m.createFuelErr != nil {
+		return nil, m.createFuelErr
+	}
+	row := repositories.FuelReceiptRow{
+		ID:                  "fuel-1",
+		SubmittedBy:         p.SubmittedBy,
+		SubmitterName:       "Test User",
+		ReceiptDate:         p.ReceiptDate,
+		AmountEur:           p.AmountEur,
+		StorageKey:          p.StorageKey,
+		OriginalFilename:    p.OriginalFilename,
+		MimeType:            p.MimeType,
+		FileSize:            p.FileSize,
+		Notes:               p.Notes,
+		VehicleRegistration: p.VehicleRegistration,
+		FuelLiters:          p.FuelLiters,
+		FuelType:            p.FuelType,
+	}
+	return &row, nil
+}
+
+func (m *mockFinanceRepo) ListFuelReceipts(_ context.Context, _ string, submittedBy *string) ([]repositories.FuelReceiptRow, error) {
+	if submittedBy == nil {
+		return m.fuelReceipts, nil
+	}
+	var out []repositories.FuelReceiptRow
+	for _, r := range m.fuelReceipts {
+		if r.SubmittedBy == *submittedBy {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+func (m *mockFinanceRepo) GetFuelReceipt(_ context.Context, _, receiptID string) (*repositories.FuelReceiptRow, error) {
+	for _, r := range m.fuelReceipts {
+		if r.ID == receiptID {
+			return &r, nil
+		}
+	}
+	return nil, errNotFoundPgx
+}
+
+func (m *mockFinanceRepo) DeleteFuelReceipt(_ context.Context, _, receiptID string) error {
+	if m.deleteFuelErr != nil {
+		return m.deleteFuelErr
+	}
+	for _, r := range m.fuelReceipts {
+		if r.ID == receiptID {
+			return nil
+		}
+	}
+	return errNotFoundPgx
 }
 
 type mockFinanceStorage struct {
@@ -542,5 +602,171 @@ func TestDownloadR1_DirektorCanSeeOthers(t *testing.T) {
 	}
 	if reader != nil {
 		reader.Close()
+	}
+}
+
+// ── Fuel Receipts ─────────────────────────────────────────────────────────────
+
+func testDate() time.Time {
+	return time.Date(2024, 6, 15, 0, 0, 0, 0, time.UTC)
+}
+
+func dummyFuelHeader() *multipart.FileHeader {
+	return makeFileHeaderWithCT("receipt.jpg", "image/jpeg", 512*1024)
+}
+
+func newFuelSvc() *FinanceService {
+	return newFinanceSvc(&mockFinanceRepo{}, &mockFinanceStorage{})
+}
+
+func submitFuel(svc *FinanceService, role string) (*dto.FuelReceipt, error) {
+	return svc.CreateFuelReceipt(
+		context.Background(), "co-1", role, "u-1",
+		testDate(), 50.0,
+		nil, nil, nil, nil,
+		dummyFile(), dummyFuelHeader(),
+	)
+}
+
+// Test 1: radnik can submit a fuel receipt
+func TestFuelReceipt_RadnikCanSubmit(t *testing.T) {
+	if _, err := submitFuel(newFuelSvc(), "radnik"); err != nil {
+		t.Fatalf("radnik should be allowed to submit fuel receipt: %v", err)
+	}
+}
+
+// Test 2: poslovoda can submit a fuel receipt
+func TestFuelReceipt_PoslovodaCanSubmit(t *testing.T) {
+	if _, err := submitFuel(newFuelSvc(), "poslovoda"); err != nil {
+		t.Fatalf("poslovoda should be allowed to submit fuel receipt: %v", err)
+	}
+}
+
+// Test 3: inzenjer can submit a fuel receipt
+func TestFuelReceipt_InzenjerCanSubmit(t *testing.T) {
+	if _, err := submitFuel(newFuelSvc(), "inzenjer"); err != nil {
+		t.Fatalf("inzenjer should be allowed to submit fuel receipt: %v", err)
+	}
+}
+
+// Test 4: administracija can submit a fuel receipt
+func TestFuelReceipt_AdministracijaCanSubmit(t *testing.T) {
+	if _, err := submitFuel(newFuelSvc(), "administracija"); err != nil {
+		t.Fatalf("administracija should be allowed to submit fuel receipt: %v", err)
+	}
+}
+
+// Test 5: direktor can submit a fuel receipt
+func TestFuelReceipt_DirektorCanSubmit(t *testing.T) {
+	if _, err := submitFuel(newFuelSvc(), "direktor"); err != nil {
+		t.Fatalf("direktor should be allowed to submit fuel receipt: %v", err)
+	}
+}
+
+// Test 6: non-admin sees only own fuel receipts
+func TestFuelReceipt_NonAdminSeesOwnOnly(t *testing.T) {
+	repo := &mockFinanceRepo{
+		fuelReceipts: []repositories.FuelReceiptRow{
+			{ID: "fuel-a", SubmittedBy: "user-a"},
+			{ID: "fuel-b", SubmittedBy: "user-b"},
+		},
+	}
+	svc := newFinanceSvc(repo, &mockFinanceStorage{})
+	list, err := svc.ListFuelReceipts(context.Background(), "co-1", "radnik", "user-a")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(list) != 1 {
+		t.Fatalf("radnik should see 1 own receipt, got %d", len(list))
+	}
+	if list[0].SubmittedBy != "user-a" {
+		t.Errorf("radnik sees wrong receipt: %v", list[0].SubmittedBy)
+	}
+}
+
+// Test 7: non-admin cannot download another user's fuel receipt
+func TestFuelReceipt_CannotDownloadOthersReceipt(t *testing.T) {
+	repo := &mockFinanceRepo{
+		fuelReceipts: []repositories.FuelReceiptRow{
+			{ID: "fuel-x", SubmittedBy: "user-b", StorageKey: "some/key"},
+		},
+	}
+	svc := newFinanceSvc(repo, &mockFinanceStorage{})
+	_, _, _, err := svc.DownloadFuelReceipt(context.Background(), "co-1", "poslovoda", "user-a", "fuel-x")
+	if err != ErrForbidden {
+		t.Fatalf("expected ErrForbidden when non-admin downloads another's receipt, got %v", err)
+	}
+}
+
+// Test 8: admin roles see all company fuel receipts
+func TestFuelReceipt_AdminSeesAll(t *testing.T) {
+	repo := &mockFinanceRepo{
+		fuelReceipts: []repositories.FuelReceiptRow{
+			{ID: "fuel-a", SubmittedBy: "user-a"},
+			{ID: "fuel-b", SubmittedBy: "user-b"},
+			{ID: "fuel-c", SubmittedBy: "user-c"},
+		},
+	}
+	svc := newFinanceSvc(repo, &mockFinanceStorage{})
+	for _, role := range []string{"direktor", "administracija"} {
+		list, err := svc.ListFuelReceipts(context.Background(), "co-1", role, "user-a")
+		if err != nil {
+			t.Fatalf("%s list error: %v", role, err)
+		}
+		if len(list) != 3 {
+			t.Errorf("%s should see all 3 receipts, got %d", role, len(list))
+		}
+	}
+}
+
+// Test 9: non-admin role cannot delete a fuel receipt
+func TestFuelReceipt_NonAdminDeleteForbidden(t *testing.T) {
+	repo := &mockFinanceRepo{
+		fuelReceipts: []repositories.FuelReceiptRow{
+			{ID: "fuel-1"},
+		},
+	}
+	svc := newFinanceSvc(repo, &mockFinanceStorage{})
+	for _, role := range []string{"radnik", "poslovoda", "inzenjer"} {
+		err := svc.DeleteFuelReceipt(context.Background(), "co-1", role, "fuel-1")
+		if err != ErrForbidden {
+			t.Errorf("%s delete should be forbidden, got %v", role, err)
+		}
+	}
+}
+
+// Test 10: company isolation — receipt not found in another company returns ErrNotFound
+func TestFuelReceipt_CompanyIsolation(t *testing.T) {
+	// Receipt "fuel-other" does not exist in co-1's scope (simulates a different company's receipt)
+	svc := newFinanceSvc(&mockFinanceRepo{}, &mockFinanceStorage{})
+	err := svc.DeleteFuelReceipt(context.Background(), "co-1", "direktor", "fuel-other-company")
+	if err != ErrNotFound {
+		t.Fatalf("expected ErrNotFound for cross-company delete attempt, got %v", err)
+	}
+}
+
+// Test 11: invalid inputs (zero amount) are rejected
+func TestFuelReceipt_InvalidAmountRejected(t *testing.T) {
+	svc := newFuelSvc()
+	_, err := svc.CreateFuelReceipt(
+		context.Background(), "co-1", "radnik", "u-1",
+		testDate(), 0,
+		nil, nil, nil, nil,
+		dummyFile(), dummyFuelHeader(),
+	)
+	if AsValidationError(err) == nil {
+		t.Fatal("expected ValidationError for zero amount")
+	}
+}
+
+// Test 12: existing R1 functionality is unaffected by the gorivo additions
+func TestFuelReceipt_R1Unaffected(t *testing.T) {
+	svc := newFinanceSvc(&mockFinanceRepo{}, &mockFinanceStorage{})
+	rec, err := svc.CreateR1Receipt(context.Background(), "co-1", "radnik", "u-1", 75.0, dummyFile(), dummyFileHeader())
+	if err != nil {
+		t.Fatalf("R1 creation should still work: %v", err)
+	}
+	if rec.Price != 75.0 {
+		t.Errorf("expected price 75.0, got %v", rec.Price)
 	}
 }

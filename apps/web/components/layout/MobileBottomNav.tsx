@@ -12,6 +12,7 @@ import {
   ClipboardList,
   Receipt,
   BarChart2,
+  Droplets,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -28,6 +29,7 @@ const navByRole: Record<string, NavItem[]> = {
     { href: '/dashboard/projects', label: 'Projekti', Icon: FolderOpen },
     { href: '/dashboard/daily-reports', label: 'Izvještaji', Icon: FileText },
     { href: '/dashboard/management-hours', label: 'Moji sati', Icon: Clock },
+    { href: '/dashboard/gorivo', label: 'Gorivo', Icon: Droplets },
     { href: '/dashboard/analytics', label: 'Analitika', Icon: BarChart2 },
   ],
   inzenjer: [
@@ -35,6 +37,7 @@ const navByRole: Record<string, NavItem[]> = {
     { href: '/dashboard/projects', label: 'Projekti', Icon: FolderOpen },
     { href: '/dashboard/daily-reports', label: 'Izvještaji', Icon: FileText },
     { href: '/dashboard/management-hours', label: 'Moji sati', Icon: Clock },
+    { href: '/dashboard/gorivo', label: 'Gorivo', Icon: Droplets },
     { href: '/dashboard/analytics', label: 'Analitika', Icon: BarChart2 },
   ],
   administracija: [
@@ -43,6 +46,7 @@ const navByRole: Record<string, NavItem[]> = {
     { href: '/dashboard/employees', label: 'Zaposlenici', Icon: Users },
     { href: '/dashboard/dokumentacija', label: 'Dokumentacija', Icon: ClipboardList },
     { href: '/dashboard/racuni', label: 'Računi', Icon: Receipt },
+    { href: '/dashboard/gorivo', label: 'Gorivo', Icon: Droplets },
   ],
   poslovoda: [
     { href: '/dashboard', label: 'Početna', Icon: Home, exact: true },
@@ -50,6 +54,7 @@ const navByRole: Record<string, NavItem[]> = {
     { href: '/dashboard/my-hours', label: 'Moji sati', Icon: Clock },
     { href: '/dashboard/daily-reports', label: 'Izvještaji', Icon: FileText },
     { href: '/dashboard/projects', label: 'Projekti', Icon: FolderOpen },
+    { href: '/dashboard/gorivo', label: 'Gorivo', Icon: Droplets },
   ],
   radnik: [
     { href: '/dashboard', label: 'Početna', Icon: Home, exact: true },
@@ -57,6 +62,7 @@ const navByRole: Record<string, NavItem[]> = {
     { href: '/dashboard/my-hours', label: 'Moji sati', Icon: Clock },
     { href: '/dashboard/projects', label: 'Projekti', Icon: FolderOpen },
     { href: '/dashboard/r1', label: 'R1', Icon: Receipt },
+    { href: '/dashboard/gorivo', label: 'Gorivo', Icon: Droplets },
   ],
 }
 

@@ -42,3 +42,17 @@ export interface R1Receipt {
   document: FinanceDocMeta
   created_at: string
 }
+
+export interface FuelReceipt {
+  id: string
+  submitted_by: string
+  submitter_name: string
+  receipt_date: string
+  amount_eur: number
+  document: FinanceDocMeta
+  notes?: string
+  vehicle_registration?: string
+  fuel_liters?: number
+  fuel_type?: string
+  created_at: string
+}

@@ -13,6 +13,7 @@ import {
   SUPPLIERS,
   LEASING_COMPANIES,
   R1Receipt,
+  FuelReceipt,
 } from '@/lib/types/finance'
 
 const inputCls =
@@ -293,9 +294,106 @@ function R1Row({ receipt }: R1RowProps) {
   )
 }
 
+// ── Gorivo row (for Računi admin tab) ────────────────────────────────────────
+
+interface GorivoRowProps {
+  receipt: FuelReceipt
+  onDelete: (id: string) => void
+}
+
+function GorivoRow({ receipt, onDelete }: GorivoRowProps) {
+  const [downloading, setDownloading] = useState(false)
+  const [deleting, setDeleting] = useState(false)
+  const [err, setErr] = useState('')
+
+  async function handleDownload() {
+    setDownloading(true)
+    setErr('')
+    try {
+      const resp = await apiClient.get(`/finance/gorivo/${receipt.id}/download`, { responseType: 'blob' })
+      const url = window.URL.createObjectURL(resp.data as Blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = receipt.document.original_filename
+      a.click()
+      window.URL.revokeObjectURL(url)
+    } catch {
+      setErr('Greška pri preuzimanju')
+    } finally {
+      setDownloading(false)
+    }
+  }
+
+  async function handleDelete() {
+    if (!confirm('Obrisati ovaj račun za gorivo?')) return
+    setDeleting(true)
+    setErr('')
+    try {
+      await apiClient.delete(`/finance/gorivo/${receipt.id}`)
+      onDelete(receipt.id)
+    } catch (e) {
+      const cast = e as { response?: { data?: { error?: string } } }
+      setErr(cast?.response?.data?.error ?? 'Greška pri brisanju')
+    } finally {
+      setDeleting(false)
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-slate-700 bg-slate-800/50 p-4 space-y-2">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <p className="text-lg font-semibold text-white">
+              {receipt.amount_eur.toLocaleString('hr-HR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+            </p>
+            <span className="text-xs text-slate-400">{receipt.receipt_date}</span>
+          </div>
+          <p className="text-sm text-slate-300">Predao: <span className="text-white">{receipt.submitter_name}</span></p>
+          {receipt.vehicle_registration && (
+            <p className="text-xs text-slate-400">
+              {receipt.vehicle_registration}
+              {receipt.fuel_type && ` · ${receipt.fuel_type}`}
+              {receipt.fuel_liters != null && ` · ${receipt.fuel_liters} L`}
+            </p>
+          )}
+          {receipt.notes && <p className="text-xs text-slate-500 mt-0.5">{receipt.notes}</p>}
+          <p className="text-xs text-slate-500 mt-1">
+            {receipt.document.original_filename} · {formatFileSize(receipt.document.file_size)}
+          </p>
+          <p className="text-xs text-slate-500">{formatDate(receipt.created_at)}</p>
+        </div>
+        <div className="flex gap-2 items-center shrink-0 flex-wrap justify-end">
+          <DocumentPreviewDialog
+            fetchUrl={`/finance/gorivo/${receipt.id}/download`}
+            filename={receipt.document.original_filename}
+            mimeType={receipt.document.mime_type}
+            triggerClassName="text-xs text-blue-400 hover:underline"
+          />
+          <button
+            onClick={handleDownload}
+            disabled={downloading}
+            className={btnSecondary + ' text-xs py-1.5'}
+          >
+            {downloading ? '...' : 'Preuzmi'}
+          </button>
+          <button
+            onClick={handleDelete}
+            disabled={deleting}
+            className="rounded-lg border border-red-800 bg-red-950/40 px-3 py-1.5 text-xs font-medium text-red-400 hover:bg-red-900/50 transition-colors disabled:opacity-50"
+          >
+            {deleting ? '...' : 'Obriši'}
+          </button>
+        </div>
+      </div>
+      {err && <p className="text-xs text-red-400">{err}</p>}
+    </div>
+  )
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
-type PageTab = 'invoices' | 'r1'
+type PageTab = 'invoices' | 'r1' | 'gorivo'
 
 export default function RacuniPage() {
   const { user, isLoading: authLoading } = useAuth()
@@ -303,8 +401,10 @@ export default function RacuniPage() {
   const [tab, setTab] = useState<PageTab>('invoices')
   const [invoices, setInvoices] = useState<CompanyInvoice[]>([])
   const [r1s, setR1s] = useState<R1Receipt[]>([])
+  const [gorivos, setGorivos] = useState<FuelReceipt[]>([])
   const [loading, setLoading] = useState(true)
   const [r1Loading, setR1Loading] = useState(false)
+  const [gorivoLoading, setGorivoLoading] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [filterType, setFilterType] = useState<InvoiceType | ''>('')
 
@@ -331,6 +431,18 @@ export default function RacuniPage() {
     }
   }, [])
 
+  const loadGorivos = useCallback(async () => {
+    setGorivoLoading(true)
+    try {
+      const resp = await apiClient.get<{ receipts: FuelReceipt[] }>('/finance/gorivo')
+      setGorivos(resp.data.receipts ?? [])
+    } catch {
+      // handled silently
+    } finally {
+      setGorivoLoading(false)
+    }
+  }, [])
+
   useEffect(() => {
     if (!authLoading && user) {
       if (user.role !== 'direktor' && user.role !== 'administracija') {
@@ -345,6 +457,9 @@ export default function RacuniPage() {
     setTab(next)
     if (next === 'r1' && r1s.length === 0 && !r1Loading) {
       loadR1s()
+    }
+    if (next === 'gorivo' && gorivos.length === 0 && !gorivoLoading) {
+      loadGorivos()
     }
   }
 
@@ -378,6 +493,9 @@ export default function RacuniPage() {
         </button>
         <button className={tabCls(tab === 'r1')} onClick={() => handleTabChange('r1')}>
           R1 računi
+        </button>
+        <button className={tabCls(tab === 'gorivo')} onClick={() => handleTabChange('gorivo')}>
+          Gorivo
         </button>
       </div>
 
@@ -444,6 +562,32 @@ export default function RacuniPage() {
             <div className="space-y-3">
               {r1s.map((rec) => (
                 <R1Row key={rec.id} receipt={rec} />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ── Gorivo tab ── */}
+      {tab === 'gorivo' && (
+        <>
+          <div className="mb-4 flex justify-end">
+            <button onClick={loadGorivos} className={btnSecondary + ' text-xs py-1.5'}>
+              Osvježi
+            </button>
+          </div>
+          {gorivoLoading ? (
+            <div className="text-center py-12 text-slate-400">Učitavanje...</div>
+          ) : gorivos.length === 0 ? (
+            <div className="text-center py-12 text-slate-400">Još nema predanih gorivo računa.</div>
+          ) : (
+            <div className="space-y-3">
+              {gorivos.map((rec) => (
+                <GorivoRow
+                  key={rec.id}
+                  receipt={rec}
+                  onDelete={(id) => setGorivos((prev) => prev.filter((r) => r.id !== id))}
+                />
               ))}
             </div>
           )}

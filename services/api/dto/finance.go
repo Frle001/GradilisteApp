@@ -74,3 +74,17 @@ type R1Receipt struct {
 	Document      FinanceDocMeta `json:"document"`
 	CreatedAt     time.Time      `json:"created_at"`
 }
+
+type FuelReceipt struct {
+	ID                  string         `json:"id"`
+	SubmittedBy         string         `json:"submitted_by"`
+	SubmitterName       string         `json:"submitter_name"`
+	ReceiptDate         string         `json:"receipt_date"`
+	AmountEur           float64        `json:"amount_eur"`
+	Document            FinanceDocMeta `json:"document"`
+	Notes               *string        `json:"notes,omitempty"`
+	VehicleRegistration *string        `json:"vehicle_registration,omitempty"`
+	FuelLiters          *float64       `json:"fuel_liters,omitempty"`
+	FuelType            *string        `json:"fuel_type,omitempty"`
+	CreatedAt           time.Time      `json:"created_at"`
+}

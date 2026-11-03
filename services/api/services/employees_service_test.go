@@ -8,16 +8,16 @@ import (
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
-	"github.com/gradiliste/api/repositories"
 	"github.com/gradiliste/api/dto"
+	"github.com/gradiliste/api/repositories"
 )
 
 // ── Mock employee repository ──────────────────────────────────────────────────
 
 type mockEmpRepo struct {
-	listFn        func(ctx context.Context, companyID string, f repositories.EmployeeListFilter) ([]repositories.Employee, error)
-	getByIDFn     func(ctx context.Context, companyID, id string) (*repositories.Employee, error)
-	updateFn      func() (*repositories.Employee, error)
+	listFn         func(ctx context.Context, companyID string, f repositories.EmployeeListFilter) ([]repositories.Employee, error)
+	getByIDFn      func(ctx context.Context, companyID, id string) (*repositories.Employee, error)
+	updateFn       func() (*repositories.Employee, error)
 	updateWithTxFn func(id, role string) (*repositories.Employee, error)
 }
 
@@ -325,14 +325,14 @@ type stubTx struct {
 	rolledBack bool
 }
 
-func (s *stubTx) Begin(_ context.Context) (pgx.Tx, error)                             { panic("not used") }
-func (s *stubTx) Commit(_ context.Context) error                                       { s.committed = true; return s.commitErr }
-func (s *stubTx) Rollback(_ context.Context) error                                     { s.rolledBack = true; return nil }
+func (s *stubTx) Begin(_ context.Context) (pgx.Tx, error) { panic("not used") }
+func (s *stubTx) Commit(_ context.Context) error          { s.committed = true; return s.commitErr }
+func (s *stubTx) Rollback(_ context.Context) error        { s.rolledBack = true; return nil }
 func (s *stubTx) CopyFrom(_ context.Context, _ pgx.Identifier, _ []string, _ pgx.CopyFromSource) (int64, error) {
 	panic("not used")
 }
 func (s *stubTx) SendBatch(_ context.Context, _ *pgx.Batch) pgx.BatchResults { panic("not used") }
-func (s *stubTx) LargeObjects() pgx.LargeObjects                              { panic("not used") }
+func (s *stubTx) LargeObjects() pgx.LargeObjects                             { panic("not used") }
 func (s *stubTx) Prepare(_ context.Context, _, _ string) (*pgconn.StatementDescription, error) {
 	panic("not used")
 }
@@ -341,7 +341,7 @@ func (s *stubTx) Exec(_ context.Context, _ string, _ ...any) (pgconn.CommandTag,
 }
 func (s *stubTx) Query(_ context.Context, _ string, _ ...any) (pgx.Rows, error) { panic("not used") }
 func (s *stubTx) QueryRow(_ context.Context, _ string, _ ...any) pgx.Row        { panic("not used") }
-func (s *stubTx) Conn() *pgx.Conn                                                { panic("not used") }
+func (s *stubTx) Conn() *pgx.Conn                                               { panic("not used") }
 
 // ── Role-change regression tests ──────────────────────────────────────────────
 

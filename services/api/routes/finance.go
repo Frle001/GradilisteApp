@@ -27,4 +27,16 @@ func RegisterFinanceRoutes(
 	r1Read := api.Group("/finance/r1", authRequired, requireRoles("direktor", "inzenjer", "poslovoda", "radnik", "administracija"))
 	r1Read.GET("", h.ListR1Receipts)
 	r1Read.GET("/:receiptId/download", h.DownloadR1Receipt)
+
+	// Gorivo: all roles may submit and view (service enforces own-only for non-admin)
+	gorivo := api.Group("/finance/gorivo", authRequired, requireRoles("direktor", "inzenjer", "poslovoda", "radnik", "administracija"))
+	{
+		gorivo.POST("", h.CreateFuelReceipt)
+		gorivo.GET("", h.ListFuelReceipts)
+		gorivo.GET("/:receiptId/download", h.DownloadFuelReceipt)
+	}
+
+	// Gorivo delete: direktor and administracija only
+	gorivoAdmin := api.Group("/finance/gorivo", authRequired, requireRoles("direktor", "administracija"))
+	gorivoAdmin.DELETE("/:receiptId", h.DeleteFuelReceipt)
 }

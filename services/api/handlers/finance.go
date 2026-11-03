@@ -4,6 +4,8 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 
@@ -141,6 +143,108 @@ func (h *FinanceHandler) DownloadR1Receipt(c *gin.Context) {
 	defer reader.Close()
 	c.Header("Content-Disposition", `attachment; filename="`+filename+`"`)
 	c.DataFromReader(http.StatusOK, -1, ct, reader, nil)
+}
+
+// ── Fuel Receipts ─────────────────────────────────────────────────────────────
+
+// POST /api/finance/gorivo
+func (h *FinanceHandler) CreateFuelReceipt(c *gin.Context) {
+	u := appctx.GetAuthUser(c)
+
+	file, header, err := c.Request.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Dokument je obavezan"})
+		return
+	}
+	defer file.Close()
+
+	var body struct {
+		ReceiptDate string  `form:"receipt_date"`
+		AmountEur   float64 `form:"amount_eur"`
+		Notes       string  `form:"notes"`
+		VehicleReg  string  `form:"vehicle_registration"`
+		FuelType    string  `form:"fuel_type"`
+		FuelLiters  string  `form:"fuel_liters"`
+	}
+	if err := c.ShouldBind(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	receiptDate, err := time.Parse("2006-01-02", body.ReceiptDate)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Neispravan format datuma (YYYY-MM-DD)"})
+		return
+	}
+
+	var notes *string
+	if body.Notes != "" {
+		notes = &body.Notes
+	}
+	var vehicleReg *string
+	if body.VehicleReg != "" {
+		vehicleReg = &body.VehicleReg
+	}
+	var fuelType *string
+	if body.FuelType != "" {
+		fuelType = &body.FuelType
+	}
+	var fuelLiters *float64
+	if body.FuelLiters != "" {
+		if fl, parseErr := strconv.ParseFloat(body.FuelLiters, 64); parseErr == nil && fl > 0 {
+			fuelLiters = &fl
+		}
+	}
+
+	rec, err := h.svc.CreateFuelReceipt(
+		c.Request.Context(),
+		u.CompanyID, u.Role, u.UserID,
+		receiptDate, body.AmountEur,
+		notes, vehicleReg, fuelType, fuelLiters,
+		file, header,
+	)
+	if err != nil {
+		respondFinanceError(c, err)
+		return
+	}
+	c.JSON(http.StatusCreated, gin.H{"receipt": rec})
+}
+
+// GET /api/finance/gorivo
+func (h *FinanceHandler) ListFuelReceipts(c *gin.Context) {
+	u := appctx.GetAuthUser(c)
+	list, err := h.svc.ListFuelReceipts(c.Request.Context(), u.CompanyID, u.Role, u.UserID)
+	if err != nil {
+		respondFinanceError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"receipts": list})
+}
+
+// GET /api/finance/gorivo/:receiptId/download
+func (h *FinanceHandler) DownloadFuelReceipt(c *gin.Context) {
+	u := appctx.GetAuthUser(c)
+	reader, ct, filename, err := h.svc.DownloadFuelReceipt(
+		c.Request.Context(),
+		u.CompanyID, u.Role, u.UserID, c.Param("receiptId"),
+	)
+	if err != nil {
+		respondFinanceError(c, err)
+		return
+	}
+	defer reader.Close()
+	c.Header("Content-Disposition", `attachment; filename="`+filename+`"`)
+	c.DataFromReader(http.StatusOK, -1, ct, reader, nil)
+}
+
+// DELETE /api/finance/gorivo/:receiptId
+func (h *FinanceHandler) DeleteFuelReceipt(c *gin.Context) {
+	u := appctx.GetAuthUser(c)
+	if err := h.svc.DeleteFuelReceipt(c.Request.Context(), u.CompanyID, u.Role, c.Param("receiptId")); err != nil {
+		respondFinanceError(c, err)
+		return
+	}
+	c.Status(http.StatusNoContent)
 }
 
 // ── Error helper ──────────────────────────────────────────────────────────────

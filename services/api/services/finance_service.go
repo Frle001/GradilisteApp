@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 
@@ -22,6 +23,10 @@ type financeRepo interface {
 	CreateR1Receipt(ctx context.Context, p repositories.CreateR1Params) (*repositories.R1ReceiptRow, error)
 	ListR1Receipts(ctx context.Context, companyID string, submittedBy *string) ([]repositories.R1ReceiptRow, error)
 	GetR1Receipt(ctx context.Context, companyID, receiptID string) (*repositories.R1ReceiptRow, error)
+	CreateFuelReceipt(ctx context.Context, p repositories.CreateFuelReceiptParams) (*repositories.FuelReceiptRow, error)
+	ListFuelReceipts(ctx context.Context, companyID string, submittedBy *string) ([]repositories.FuelReceiptRow, error)
+	GetFuelReceipt(ctx context.Context, companyID, receiptID string) (*repositories.FuelReceiptRow, error)
+	DeleteFuelReceipt(ctx context.Context, companyID, receiptID string) error
 }
 
 type financeStorage interface {
@@ -253,6 +258,104 @@ func (s *FinanceService) DownloadR1Receipt(ctx context.Context, companyID, role,
 	return reader, ct, row.OriginalFilename, nil
 }
 
+// ── Fuel Receipts ─────────────────────────────────────────────────────────────
+
+func requireFuelDeleteAccess(role string) error {
+	if role != "direktor" && role != "administracija" {
+		return ErrForbidden
+	}
+	return nil
+}
+
+func (s *FinanceService) CreateFuelReceipt(
+	ctx context.Context,
+	companyID, role, userID string,
+	receiptDate time.Time,
+	amountEur float64,
+	notes, vehicleReg, fuelType *string,
+	fuelLiters *float64,
+	file multipart.File,
+	header *multipart.FileHeader,
+) (*dto.FuelReceipt, error) {
+	if amountEur <= 0 {
+		return nil, validationErr("Iznos mora biti veći od nule")
+	}
+	if file == nil || header == nil {
+		return nil, validationErr("Dokument je obavezan")
+	}
+
+	fileKey, contentType, fileSize, err := s.storage.SaveFinanceDocFile(ctx, file, header, companyID, "gorivo")
+	if err != nil {
+		return nil, fmt.Errorf("finance.CreateFuelReceipt upload: %w", err)
+	}
+
+	row, err := s.repo.CreateFuelReceipt(ctx, repositories.CreateFuelReceiptParams{
+		CompanyID:           companyID,
+		SubmittedBy:         userID,
+		ReceiptDate:         receiptDate,
+		AmountEur:           amountEur,
+		StorageKey:          fileKey,
+		OriginalFilename:    header.Filename,
+		MimeType:            contentType,
+		FileSize:            fileSize,
+		Notes:               notes,
+		VehicleRegistration: vehicleReg,
+		FuelLiters:          fuelLiters,
+		FuelType:            fuelType,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("finance.CreateFuelReceipt: %w", err)
+	}
+	return toFuelReceiptDTO(*row), nil
+}
+
+func (s *FinanceService) ListFuelReceipts(ctx context.Context, companyID, role, userID string) ([]dto.FuelReceipt, error) {
+	var filter *string
+	if role != "direktor" && role != "administracija" {
+		filter = &userID
+	}
+	rows, err := s.repo.ListFuelReceipts(ctx, companyID, filter)
+	if err != nil {
+		return nil, fmt.Errorf("finance.ListFuelReceipts: %w", err)
+	}
+	out := make([]dto.FuelReceipt, len(rows))
+	for i, r := range rows {
+		out[i] = *toFuelReceiptDTO(r)
+	}
+	return out, nil
+}
+
+func (s *FinanceService) DownloadFuelReceipt(ctx context.Context, companyID, role, userID, receiptID string) (io.ReadCloser, string, string, error) {
+	row, err := s.repo.GetFuelReceipt(ctx, companyID, receiptID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, "", "", ErrNotFound
+		}
+		return nil, "", "", fmt.Errorf("finance.DownloadFuelReceipt get: %w", err)
+	}
+	if role != "direktor" && role != "administracija" && row.SubmittedBy != userID {
+		return nil, "", "", ErrForbidden
+	}
+	reader, ct, err := s.storage.ReadFinanceDocFile(ctx, row.StorageKey)
+	if err != nil {
+		return nil, "", "", fmt.Errorf("finance.DownloadFuelReceipt read: %w", err)
+	}
+	return reader, ct, row.OriginalFilename, nil
+}
+
+func (s *FinanceService) DeleteFuelReceipt(ctx context.Context, companyID, role, receiptID string) error {
+	if err := requireFuelDeleteAccess(role); err != nil {
+		return err
+	}
+	if err := s.repo.DeleteFuelReceipt(ctx, companyID, receiptID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrNotFound
+		}
+		return fmt.Errorf("finance.DeleteFuelReceipt: %w", err)
+	}
+	return nil
+}
+
 // ── Converters ────────────────────────────────────────────────────────────────
 
 func toInvoiceDTO(r repositories.CompanyInvoiceRow) *dto.CompanyInvoice {
@@ -286,5 +389,26 @@ func toR1DTO(r repositories.R1ReceiptRow) *dto.R1Receipt {
 			UploadedAt:       r.CreatedAt,
 		},
 		CreatedAt: r.CreatedAt,
+	}
+}
+
+func toFuelReceiptDTO(r repositories.FuelReceiptRow) *dto.FuelReceipt {
+	return &dto.FuelReceipt{
+		ID:            r.ID,
+		SubmittedBy:   r.SubmittedBy,
+		SubmitterName: r.SubmitterName,
+		ReceiptDate:   r.ReceiptDate.Format("2006-01-02"),
+		AmountEur:     r.AmountEur,
+		Document: dto.FinanceDocMeta{
+			OriginalFilename: r.OriginalFilename,
+			MimeType:         r.MimeType,
+			FileSize:         r.FileSize,
+			UploadedAt:       r.CreatedAt,
+		},
+		Notes:               r.Notes,
+		VehicleRegistration: r.VehicleRegistration,
+		FuelLiters:          r.FuelLiters,
+		FuelType:            r.FuelType,
+		CreatedAt:           r.CreatedAt,
 	}
 }
