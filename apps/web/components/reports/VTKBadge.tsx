@@ -4,7 +4,7 @@ interface Props {
 }
 
 export default function VTKBadge({ isVtk, className = '' }: Props) {
-  if (!isVtk) return <span className={`text-slate-600 text-sm select-none ${className}`}>—</span>
+  if (!isVtk) return <span className={`text-gi-text-subtle text-sm select-none ${className}`}>—</span>
   return (
     <span className={`inline-flex items-center gap-0.5 px-2 py-0.5 rounded-md text-xs font-bold bg-amber-500/15 text-amber-400 border border-amber-500/40 ${className}`}>
       <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">

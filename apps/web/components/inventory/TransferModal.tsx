@@ -21,12 +21,12 @@ interface Props {
   onNeedsRefresh?: () => void
 }
 
-const inputCls = `
-  w-full bg-slate-900 border border-slate-700 rounded-lg text-white text-sm
-  placeholder-slate-500 px-3 py-2.5
-  focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500
-  disabled:opacity-40 disabled:cursor-not-allowed transition-colors
-`.replace(/\s+/g, ' ').trim()
+const inputCls = [
+  'w-full bg-gi-card-elevated border border-gi-border rounded-lg text-gi-text text-sm',
+  'placeholder:text-gi-text-subtle px-3.5 py-2.5',
+  'focus:outline-none focus:border-gi-yellow transition-colors',
+  'disabled:opacity-40 disabled:cursor-not-allowed',
+].join(' ')
 
 export default function TransferModal({ subject, onClose, onSuccess, onNeedsRefresh }: Props) {
   const [targets, setTargets] = useState<TransferTarget[]>([])
@@ -40,7 +40,6 @@ export default function TransferModal({ subject, onClose, onSuccess, onNeedsRefr
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
-  // Load transfer targets when subject changes
   useEffect(() => {
     if (!subject) return
     setToEmployeeID('')
@@ -57,7 +56,6 @@ export default function TransferModal({ subject, onClose, onSuccess, onNeedsRefr
       .finally(() => setLoadingTargets(false))
   }, [subject])
 
-  // Load recipient's active projects when recipient changes (material transfers only)
   useEffect(() => {
     if (!subject || subject.kind !== 'material' || !toEmployeeID) {
       setRecipientProjects([])
@@ -76,8 +74,8 @@ export default function TransferModal({ subject, onClose, onSuccess, onNeedsRefr
 
   const isMaterial = subject.kind === 'material'
   const title = isMaterial
-    ? `Prenesi: ${subject.item.material_name}`
-    : `Prenesi: ${subject.item.name}`
+    ? `Prijenos: ${subject.item.material_name}`
+    : `Prijenos: ${subject.item.name}`
 
   const maxQty = isMaterial ? subject.item.total_quantity : 1
 
@@ -119,8 +117,7 @@ export default function TransferModal({ subject, onClose, onSuccess, onNeedsRefr
       const e = err as { response?: { status?: number; data?: { error?: string } } }
       const msg = e?.response?.data?.error ?? 'Greška pri prijenosu.'
       setError(msg)
-      // 409 Conflict means project quantities changed since the form loaded.
-      // Trigger a refetch so the displayed available quantity reflects reality.
+      // 409 means project quantities changed since form loaded — refresh displayed values
       if (e?.response?.status === 409) {
         onNeedsRefresh?.()
       }
@@ -131,15 +128,16 @@ export default function TransferModal({ subject, onClose, onSuccess, onNeedsRefr
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
+      className="fixed inset-0 z-50 flex items-end md:items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onClick={e => { if (e.target === e.currentTarget) onClose() }}
     >
-      <div className="bg-slate-900 border border-slate-700 rounded-2xl w-full max-w-md shadow-2xl">
-        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-800">
-          <h2 className="text-base font-semibold text-white">{title}</h2>
+      <div className="bg-gi-card border border-gi-border rounded-2xl w-full max-w-md shadow-2xl">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-gi-border">
+          <h2 className="text-base font-semibold text-gi-text">{title}</h2>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white transition-colors p-1 rounded"
+            className="text-gi-text-subtle hover:text-gi-text transition-colors p-1 rounded"
             aria-label="Zatvori"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -149,21 +147,24 @@ export default function TransferModal({ subject, onClose, onSuccess, onNeedsRefr
         </div>
 
         <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          {/* Available quantity summary */}
           {isMaterial && (
-            <div className="bg-slate-800 rounded-lg px-4 py-3 text-sm text-slate-300">
-              Dostupno: <span className="font-semibold text-white">{subject.item.total_quantity.toFixed(2)} {subject.item.unit}</span>
-              <span className="text-slate-500 ml-2">· {subject.item.project_name}</span>
+            <div className="bg-gi-card-elevated border border-gi-border rounded-lg px-4 py-3 text-sm">
+              <span className="text-gi-text-muted">Dostupno: </span>
+              <span className="font-semibold text-gi-text">{subject.item.total_quantity.toFixed(2)} {subject.item.unit}</span>
+              <span className="text-gi-text-subtle ml-2">· {subject.item.project_name}</span>
             </div>
           )}
 
+          {/* Recipient */}
           <div>
-            <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5">
-              Primatelj *
+            <label className="block text-xs font-medium text-gi-text-muted uppercase tracking-wider mb-1.5">
+              Primatelj <span className="text-red-400">*</span>
             </label>
             {loadingTargets ? (
-              <p className="text-slate-500 text-sm">Učitavanje...</p>
+              <p className="text-gi-text-subtle text-sm animate-pulse">Učitavanje primatelja...</p>
             ) : targets.length === 0 ? (
-              <p className="text-slate-500 text-sm">
+              <p className="text-gi-text-subtle text-sm">
                 {isMaterial
                   ? 'Nema dostupnih poslovođa za prijenos materijala.'
                   : 'Nema dostupnih primatelja.'}
@@ -186,15 +187,16 @@ export default function TransferModal({ subject, onClose, onSuccess, onNeedsRefr
             )}
           </div>
 
+          {/* Destination project (material transfers only) */}
           {isMaterial && toEmployeeID && (
             <div>
-              <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5">
-                Odredišni projekt *
+              <label className="block text-xs font-medium text-gi-text-muted uppercase tracking-wider mb-1.5">
+                Odredišni projekt <span className="text-red-400">*</span>
               </label>
               {loadingProjects ? (
-                <p className="text-slate-500 text-sm">Učitavanje projekata...</p>
+                <p className="text-gi-text-subtle text-sm animate-pulse">Učitavanje projekata...</p>
               ) : recipientProjects.length === 0 ? (
-                <p className="text-slate-500 text-sm">Odabrani poslovođa nema aktivnih projekata.</p>
+                <p className="text-gi-text-subtle text-sm">Odabrani poslovođa nema aktivnih projekata.</p>
               ) : (
                 <select
                   className={inputCls}
@@ -212,10 +214,11 @@ export default function TransferModal({ subject, onClose, onSuccess, onNeedsRefr
             </div>
           )}
 
+          {/* Quantity (material transfers only) */}
           {isMaterial && (
             <div>
-              <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5">
-                Količina za prijenos *
+              <label className="block text-xs font-medium text-gi-text-muted uppercase tracking-wider mb-1.5">
+                Količina <span className="text-red-400">*</span>
               </label>
               <input
                 type="number"
@@ -230,12 +233,13 @@ export default function TransferModal({ subject, onClose, onSuccess, onNeedsRefr
                 disabled={submitting}
                 required
               />
-              <p className="text-xs text-slate-500 mt-1">Maksimalno: {maxQty.toFixed(2)} {subject.item.unit}</p>
+              <p className="text-xs text-gi-text-subtle mt-1">Maksimalno: {maxQty.toFixed(2)} {subject.item.unit}</p>
             </div>
           )}
 
+          {/* Notes */}
           <div>
-            <label className="block text-xs font-medium text-slate-400 uppercase tracking-wider mb-1.5">
+            <label className="block text-xs font-medium text-gi-text-muted uppercase tracking-wider mb-1.5">
               Napomena
             </label>
             <textarea
@@ -249,7 +253,7 @@ export default function TransferModal({ subject, onClose, onSuccess, onNeedsRefr
           </div>
 
           {error && (
-            <div className="rounded-lg bg-red-950 border border-red-800 text-red-300 text-sm px-3 py-2 flex items-center gap-2">
+            <div className="rounded-lg bg-red-900/30 border border-red-800/60 text-red-300 text-sm px-3 py-2.5 flex items-center gap-2">
               <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
               </svg>
@@ -262,14 +266,14 @@ export default function TransferModal({ subject, onClose, onSuccess, onNeedsRefr
               type="button"
               onClick={onClose}
               disabled={submitting}
-              className="flex-1 py-2.5 rounded-lg border border-slate-600 text-slate-300 text-sm hover:bg-slate-800 transition-colors disabled:opacity-40"
+              className="flex-1 py-2.5 rounded-lg border border-gi-border text-gi-text-muted text-sm hover:bg-gi-card-elevated transition-colors disabled:opacity-40"
             >
               Odustani
             </button>
             <button
               type="submit"
               disabled={submitting || targets.length === 0}
-              className="flex-1 py-2.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-white text-sm font-semibold transition-colors disabled:opacity-40 flex items-center justify-center gap-2"
+              className="flex-1 py-2.5 rounded-lg bg-gi-yellow hover:bg-gi-yellow-hover text-gi-navy text-sm font-semibold transition-colors disabled:opacity-40 flex items-center justify-center gap-2"
             >
               {submitting ? (
                 <>

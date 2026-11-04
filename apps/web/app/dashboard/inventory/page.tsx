@@ -2,10 +2,10 @@
 
 import { useCallback, useEffect, useState } from 'react'
 import Link from 'next/link'
+import { ArrowLeftRight } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import LoadingScreen from '@/components/ui/LoadingScreen'
-import LoadingOverlay from '@/components/ui/LoadingOverlay'
-import DashboardShell from '@/components/layout/DashboardShell'
+import AppShell from '@/components/layout/AppShell'
 import InventoryOverview from '@/components/inventory/InventoryOverview'
 import apiClient from '@/lib/api-client'
 import type { InventoryResponse } from '@/lib/types/inventory'
@@ -40,35 +40,35 @@ export default function MyInventoryPage() {
   const showOthers = canViewOtherInventory(user.role)
 
   return (
-    <DashboardShell
+    <AppShell
       user={user}
       employee={employee}
-      title="Moje stanje robe"
+      title="Stanje robe"
       backHref="/dashboard"
       onLogout={logout}
       action={
         showTransfers ? (
           <Link
             href="/dashboard/inventory/transfers"
-            className="px-4 py-2 bg-slate-700 text-white font-semibold rounded-lg text-sm hover:bg-slate-600 transition"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gi-card-elevated border border-gi-border hover:border-gi-border/80 text-gi-text-muted hover:text-gi-text text-xs font-medium transition-colors"
           >
-            Povijest prijenosa
+            <ArrowLeftRight className="w-3.5 h-3.5" />Povijest prijenosa
           </Link>
         ) : undefined
       }
     >
-      <div className="max-w-4xl space-y-6">
+      <div className="space-y-5">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Moje stanje robe</h1>
-          <p className="text-sm text-slate-400 mt-1">Osobno dodijeljeni resursi i materijali</p>
+          <h1 className="text-xl font-bold text-gi-text">Stanje robe</h1>
+          <p className="text-sm text-gi-text-subtle mt-0.5">Osobno dodijeljeni resursi i materijali</p>
         </div>
 
         {showOthers && (
-          <div className="bg-slate-800/50 border border-slate-700 rounded-xl p-4">
-            <p className="text-xs text-slate-400 uppercase tracking-wider font-medium mb-2">Pregled po zaposleniku</p>
-            <p className="text-sm text-slate-300">
+          <div className="bg-gi-card border border-gi-border rounded-xl p-4">
+            <p className="text-[10px] text-gi-text-subtle uppercase tracking-wider font-medium mb-1.5">Pregled po zaposleniku</p>
+            <p className="text-sm text-gi-text-muted">
               Kao menadžment možete pregledati stanje robe za svakog zaposlenika putem{' '}
-              <Link href="/dashboard/employees" className="text-blue-400 hover:underline">
+              <Link href="/dashboard/employees" className="text-gi-yellow hover:text-gi-yellow-hover">
                 popisa zaposlenika
               </Link>.
             </p>
@@ -76,9 +76,11 @@ export default function MyInventoryPage() {
         )}
 
         {loading ? (
-          <LoadingOverlay />
+          <div className="flex items-center justify-center h-32 border border-gi-border rounded-xl bg-gi-card">
+            <p className="text-gi-text-subtle text-sm animate-pulse">Učitavanje stanja robe...</p>
+          </div>
         ) : error ? (
-          <div className="rounded-xl bg-red-950 border border-red-800 text-red-300 text-sm px-4 py-3 flex items-center gap-2">
+          <div className="rounded-xl bg-red-900/30 border border-red-800/60 text-red-300 text-sm px-4 py-3 flex items-center gap-2">
             <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
             </svg>
@@ -92,6 +94,6 @@ export default function MyInventoryPage() {
           />
         ) : null}
       </div>
-    </DashboardShell>
+    </AppShell>
   )
 }

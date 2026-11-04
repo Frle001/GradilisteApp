@@ -2,10 +2,10 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
+import { Pencil } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import LoadingScreen from '@/components/ui/LoadingScreen'
-import LoadingOverlay from '@/components/ui/LoadingOverlay'
-import DashboardShell from '@/components/layout/DashboardShell'
+import AppShell from '@/components/layout/AppShell'
 import ReceiptPreview from '@/components/material-purchases/ReceiptPreview'
 import apiClient from '@/lib/api-client'
 import {
@@ -17,8 +17,6 @@ function formatDate(s: string) {
   return new Date(s).toLocaleDateString('hr-HR', { day: '2-digit', month: '2-digit', year: 'numeric' })
 }
 
-// ── Edit item draft ───────────────────────────────────────────────────────────
-
 interface EditItemDraft {
   _key: number
   project_material_id: string
@@ -29,9 +27,9 @@ interface EditItemDraft {
 let _editKeyCounter = 0
 function nextKey() { return ++_editKeyCounter }
 
-// ── Page ─────────────────────────────────────────────────────────────────────
-
 type EditState = 'idle' | 'loading' | 'editing' | 'saving'
+
+const inputCls = 'w-full bg-gi-card-elevated border border-gi-border rounded-lg px-3.5 py-2.5 text-sm text-gi-text focus:outline-none focus:border-gi-yellow transition-colors disabled:opacity-50'
 
 export default function MaterialPurchaseDetailPage() {
   const { user, employee, isLoading, logout } = useAuth()
@@ -42,7 +40,6 @@ export default function MaterialPurchaseDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  // Edit state
   const [editState, setEditState] = useState<EditState>('idle')
   const [editItems, setEditItems] = useState<EditItemDraft[]>([])
   const [editNotes, setEditNotes] = useState('')
@@ -65,12 +62,7 @@ export default function MaterialPurchaseDetailPage() {
       .finally(() => setLoading(false))
   }, [id])
 
-  useEffect(() => {
-    if (!id) return
-    loadPurchase()
-  }, [id, loadPurchase])
-
-  // ── Open edit ───────────────────────────────────────────────────────────────
+  useEffect(() => { if (!id) return; loadPurchase() }, [id, loadPurchase])
 
   async function openEdit() {
     if (!purchase) return
@@ -95,12 +87,7 @@ export default function MaterialPurchaseDetailPage() {
     }
   }
 
-  function cancelEdit() {
-    setEditState('idle')
-    setEditError(null)
-  }
-
-  // ── Item helpers ────────────────────────────────────────────────────────────
+  function cancelEdit() { setEditState('idle'); setEditError(null) }
 
   function unitForMaterial(matId: string) {
     return editMaterials.find(m => m.id === matId)?.unit ?? ''
@@ -108,16 +95,12 @@ export default function MaterialPurchaseDetailPage() {
 
   function updateItemMaterial(key: number, matId: string) {
     setEditItems(prev => prev.map(item =>
-      item._key === key
-        ? { ...item, project_material_id: matId, unit: unitForMaterial(matId) }
-        : item
+      item._key === key ? { ...item, project_material_id: matId, unit: unitForMaterial(matId) } : item
     ))
   }
 
   function updateItemQuantity(key: number, qty: string) {
-    setEditItems(prev => prev.map(item =>
-      item._key === key ? { ...item, quantity: qty } : item
-    ))
+    setEditItems(prev => prev.map(item => item._key === key ? { ...item, quantity: qty } : item))
   }
 
   function removeItem(key: number) {
@@ -128,30 +111,15 @@ export default function MaterialPurchaseDetailPage() {
     setEditItems(prev => [...prev, { _key: nextKey(), project_material_id: '', quantity: '', unit: '' }])
   }
 
-  // ── Save edit ───────────────────────────────────────────────────────────────
-
   async function saveEdit() {
     setEditError(null)
-
-    if (editItems.length === 0) {
-      setEditError('Upis mora sadržavati najmanje jednu stavku materijala.')
-      return
-    }
+    if (editItems.length === 0) { setEditError('Upis mora sadržavati najmanje jednu stavku materijala.'); return }
     for (const item of editItems) {
-      if (!item.project_material_id) {
-        setEditError('Svaka stavka mora imati odabrani materijal.')
-        return
-      }
+      if (!item.project_material_id) { setEditError('Svaka stavka mora imati odabrani materijal.'); return }
       const qty = parseFloat(item.quantity)
-      if (isNaN(qty) || qty <= 0) {
-        setEditError('Sve količine moraju biti pozitivne.')
-        return
-      }
+      if (isNaN(qty) || qty <= 0) { setEditError('Sve količine moraju biti pozitivne.'); return }
     }
-    if (!editPurchasedAt) {
-      setEditError('Datum kupnje je obavezan.')
-      return
-    }
+    if (!editPurchasedAt) { setEditError('Datum kupnje je obavezan.'); return }
 
     setEditState('saving')
     try {
@@ -174,15 +142,13 @@ export default function MaterialPurchaseDetailPage() {
     }
   }
 
-  // ── Render ──────────────────────────────────────────────────────────────────
-
   if (isLoading) return <LoadingScreen />
   if (!user) return null
 
   const isEditing = editState === 'editing' || editState === 'saving'
 
   return (
-    <DashboardShell
+    <AppShell
       user={user}
       employee={employee}
       title="Detalji upisa"
@@ -192,87 +158,91 @@ export default function MaterialPurchaseDetailPage() {
         canEdit && editState === 'idle' && purchase ? (
           <button
             onClick={openEdit}
-            className="px-4 py-2 bg-white text-slate-900 font-semibold rounded-lg text-sm hover:bg-slate-100 transition"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gi-card-elevated border border-gi-border hover:border-gi-border/80 text-gi-text-muted hover:text-gi-text text-xs font-medium transition-colors"
           >
-            Uredi
+            <Pencil className="w-3.5 h-3.5" />Uredi
           </button>
         ) : canEdit && editState === 'loading' ? (
-          <span className="text-slate-400 text-sm">Učitavanje...</span>
+          <span className="text-gi-text-subtle text-sm">Učitavanje...</span>
         ) : undefined
       }
     >
-      {loading && <LoadingOverlay />}
+      {loading && (
+        <div className="flex items-center justify-center h-32 border border-gi-border rounded-xl bg-gi-card">
+          <p className="text-gi-text-subtle text-sm animate-pulse">Učitavanje upisa...</p>
+        </div>
+      )}
 
       {error && (
-        <div className="rounded-xl bg-red-950 border border-red-800 text-red-300 text-sm px-4 py-3">
+        <div className="rounded-xl bg-red-900/30 border border-red-800/60 text-red-300 text-sm px-4 py-3">
           {error}
         </div>
       )}
 
       {purchase && (
-        <div className="max-w-3xl space-y-6">
+        <div className="max-w-3xl space-y-5">
           <div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">Upis materijala</h1>
-            <p className="text-sm text-slate-400 mt-1">{purchase.project.name} · {formatDate(purchase.purchased_at)}</p>
+            <h1 className="text-xl font-bold text-gi-text">Upis materijala</h1>
+            <p className="text-sm text-gi-text-subtle mt-0.5">{purchase.project.name} · {formatDate(purchase.purchased_at)}</p>
           </div>
 
           {/* Summary card */}
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 grid grid-cols-2 gap-x-8 gap-y-4 sm:grid-cols-3">
+          <div className="bg-gi-card border border-gi-border rounded-xl p-5 grid grid-cols-2 gap-x-8 gap-y-4 sm:grid-cols-3">
             <div>
-              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Gradilište</p>
-              <p className="text-slate-100 font-medium mt-0.5">{purchase.project.name}</p>
+              <p className="text-[10px] font-medium text-gi-text-subtle uppercase tracking-wider mb-0.5">Gradilište</p>
+              <p className="text-gi-text font-medium">{purchase.project.name}</p>
               {purchase.project.address && (
-                <p className="text-xs text-slate-500 mt-0.5">{purchase.project.address}</p>
+                <p className="text-xs text-gi-text-subtle mt-0.5">{purchase.project.address}</p>
               )}
             </div>
             <div>
-              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Kupac</p>
-              <p className="text-slate-100 font-medium mt-0.5">{purchase.buyer.full_name}</p>
+              <p className="text-[10px] font-medium text-gi-text-subtle uppercase tracking-wider mb-0.5">Kupac</p>
+              <p className="text-gi-text font-medium">{purchase.buyer.full_name}</p>
             </div>
             <div>
-              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Datum kupnje</p>
-              <p className="text-slate-100 font-medium mt-0.5">{formatDate(purchase.purchased_at)}</p>
+              <p className="text-[10px] font-medium text-gi-text-subtle uppercase tracking-wider mb-0.5">Datum kupnje</p>
+              <p className="text-gi-text font-medium">{formatDate(purchase.purchased_at)}</p>
             </div>
             <div>
-              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Broj stavki</p>
-              <p className="text-slate-100 font-medium mt-0.5">{purchase.items.length}</p>
+              <p className="text-[10px] font-medium text-gi-text-subtle uppercase tracking-wider mb-0.5">Broj stavki</p>
+              <p className="text-gi-text font-medium">{purchase.items.length}</p>
             </div>
             <div>
-              <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Uneseno</p>
-              <p className="text-slate-100 font-medium mt-0.5">{formatDate(purchase.created_at)}</p>
+              <p className="text-[10px] font-medium text-gi-text-subtle uppercase tracking-wider mb-0.5">Uneseno</p>
+              <p className="text-gi-text font-medium">{formatDate(purchase.created_at)}</p>
             </div>
             {purchase.notes && (
               <div className="col-span-2 sm:col-span-3">
-                <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">Napomena</p>
-                <p className="text-slate-300 mt-0.5">{purchase.notes}</p>
+                <p className="text-[10px] font-medium text-gi-text-subtle uppercase tracking-wider mb-0.5">Napomena</p>
+                <p className="text-gi-text-muted">{purchase.notes}</p>
               </div>
             )}
           </div>
 
-          {/* Items — read-only view or edit panel */}
+          {/* Items or edit panel */}
           {!isEditing ? (
             <div>
-              <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Kupljeni materijali</h2>
-              <div className="overflow-x-auto rounded-xl border border-slate-700">
+              <h2 className="text-xs font-semibold text-gi-text-subtle uppercase tracking-wider mb-3">Kupljeni materijali</h2>
+              <div className="overflow-x-auto rounded-xl border border-gi-border">
                 <table className="w-full text-sm text-left">
                   <thead>
-                    <tr className="bg-slate-800/80 border-b border-slate-700">
-                      <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Materijal</th>
-                      <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider text-right">Količina</th>
-                      <th className="px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wider">Jed.</th>
+                    <tr className="border-b border-gi-border">
+                      <th className="px-4 py-3 text-xs font-medium text-gi-text-subtle uppercase tracking-wider">Materijal</th>
+                      <th className="px-4 py-3 text-xs font-medium text-gi-text-subtle uppercase tracking-wider text-right">Količina</th>
+                      <th className="px-4 py-3 text-xs font-medium text-gi-text-subtle uppercase tracking-wider">JM</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800">
+                  <tbody className="divide-y divide-gi-border/60">
                     {purchase.items.map(item => (
-                      <tr key={item.id} className="hover:bg-slate-800/40 transition-colors">
+                      <tr key={item.id} className="hover:bg-gi-card-elevated transition-colors">
                         <td className="px-4 py-3">
-                          <p className="text-slate-100 font-medium">{item.material_name}</p>
-                          {item.material_code && <p className="text-xs text-slate-500">{item.material_code}</p>}
+                          <p className="text-gi-text font-medium">{item.material_name}</p>
+                          {item.material_code && <p className="text-xs text-gi-text-subtle">{item.material_code}</p>}
                         </td>
-                        <td className="px-4 py-3 text-right font-mono font-semibold text-slate-100 tabular-nums">
+                        <td className="px-4 py-3 text-right font-mono font-semibold text-gi-text tabular-nums">
                           {item.quantity.toLocaleString('hr-HR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </td>
-                        <td className="px-4 py-3 text-slate-400">{item.unit}</td>
+                        <td className="px-4 py-3 text-gi-text-muted">{item.unit}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -280,35 +250,31 @@ export default function MaterialPurchaseDetailPage() {
               </div>
             </div>
           ) : (
-            /* ── Edit panel ── */
-            <div className="bg-slate-900 border border-slate-700 rounded-xl p-5 space-y-5">
-              <h2 className="text-sm font-semibold text-slate-200">Uredi upis</h2>
+            <div className="bg-gi-card border border-gi-border rounded-xl p-5 space-y-5">
+              <h2 className="text-sm font-semibold text-gi-text">Uredi upis</h2>
 
-              {/* Date */}
               <div>
-                <label className="block text-xs text-slate-400 mb-1">Datum kupnje</label>
+                <label className="block text-xs text-gi-text-muted mb-1.5">Datum kupnje</label>
                 <input
                   type="date"
                   value={editPurchasedAt}
                   onChange={e => setEditPurchasedAt(e.target.value)}
                   disabled={editState === 'saving'}
-                  className="w-full sm:w-48 bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+                  className="w-full sm:w-48 bg-gi-card-elevated border border-gi-border rounded-lg px-3.5 py-2.5 text-sm text-gi-text focus:outline-none focus:border-gi-yellow transition-colors disabled:opacity-50"
                 />
               </div>
 
-              {/* Items */}
               <div>
-                <p className="text-xs text-slate-400 mb-2">Stavke materijala</p>
+                <p className="text-xs text-gi-text-muted mb-2">Stavke materijala</p>
                 <div className="space-y-3">
                   {editItems.map((item, idx) => (
                     <div key={item._key} className="flex flex-col sm:flex-row gap-2 items-start sm:items-center">
-                      <span className="text-xs text-slate-600 w-5 text-right shrink-0 mt-2.5">{idx + 1}.</span>
-                      {/* Material select */}
+                      <span className="text-xs text-gi-text-subtle w-5 text-right shrink-0 mt-2.5">{idx + 1}.</span>
                       <select
                         value={item.project_material_id}
                         onChange={e => updateItemMaterial(item._key, e.target.value)}
                         disabled={editState === 'saving'}
-                        className="flex-1 min-w-0 bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+                        className="flex-1 min-w-0 bg-gi-card-elevated border border-gi-border rounded-lg px-3.5 py-2.5 text-sm text-gi-text focus:outline-none focus:border-gi-yellow transition-colors disabled:opacity-50"
                       >
                         <option value="">— Odaberi materijal —</option>
                         {editMaterials.map(m => (
@@ -317,7 +283,6 @@ export default function MaterialPurchaseDetailPage() {
                           </option>
                         ))}
                       </select>
-                      {/* Quantity */}
                       <input
                         type="number"
                         min="0.01"
@@ -326,16 +291,14 @@ export default function MaterialPurchaseDetailPage() {
                         onChange={e => updateItemQuantity(item._key, e.target.value)}
                         disabled={editState === 'saving'}
                         placeholder="Kol."
-                        className="w-28 shrink-0 bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+                        className="w-28 shrink-0 bg-gi-card-elevated border border-gi-border rounded-lg px-3.5 py-2.5 text-sm text-gi-text placeholder:text-gi-text-subtle focus:outline-none focus:border-gi-yellow transition-colors disabled:opacity-50"
                       />
-                      {/* Unit */}
-                      <span className="text-sm text-slate-500 w-10 shrink-0">{item.unit || '—'}</span>
-                      {/* Remove */}
+                      <span className="text-sm text-gi-text-subtle w-10 shrink-0">{item.unit || '—'}</span>
                       <button
                         type="button"
                         onClick={() => removeItem(item._key)}
                         disabled={editState === 'saving' || editItems.length === 1}
-                        className="shrink-0 text-red-500 hover:text-red-400 disabled:opacity-30 text-xs px-2 py-1 transition"
+                        className="shrink-0 text-red-500 hover:text-red-400 disabled:opacity-30 text-xs px-2 py-1 transition-colors"
                         aria-label="Ukloni stavku"
                       >
                         Ukloni
@@ -347,27 +310,26 @@ export default function MaterialPurchaseDetailPage() {
                   type="button"
                   onClick={addItem}
                   disabled={editState === 'saving'}
-                  className="mt-3 text-xs text-blue-400 hover:text-blue-300 disabled:opacity-40 transition"
+                  className="mt-3 text-xs text-gi-text-muted hover:text-gi-yellow disabled:opacity-40 transition-colors"
                 >
                   + Dodaj stavku
                 </button>
               </div>
 
-              {/* Notes */}
               <div>
-                <label className="block text-xs text-slate-400 mb-1">Napomena <span className="text-slate-600">(nije obavezno)</span></label>
+                <label className="block text-xs text-gi-text-muted mb-1.5">Napomena <span className="text-gi-text-subtle">(nije obavezno)</span></label>
                 <textarea
                   value={editNotes}
                   onChange={e => setEditNotes(e.target.value)}
                   disabled={editState === 'saving'}
                   rows={2}
                   placeholder="Kratka napomena..."
-                  className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none disabled:opacity-50"
+                  className={inputCls + ' resize-none'}
                 />
               </div>
 
               {editError && (
-                <div className="bg-red-950 border border-red-800 rounded-lg px-4 py-3">
+                <div className="bg-red-900/30 border border-red-800/60 rounded-lg px-4 py-3">
                   <p className="text-red-300 text-sm">{editError}</p>
                 </div>
               )}
@@ -377,7 +339,7 @@ export default function MaterialPurchaseDetailPage() {
                   type="button"
                   onClick={saveEdit}
                   disabled={editState === 'saving'}
-                  className="flex-1 sm:flex-none px-5 py-2 bg-white text-slate-900 font-semibold rounded-lg text-sm hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition"
+                  className="flex-1 sm:flex-none px-5 py-2 bg-gi-yellow hover:bg-gi-yellow-hover text-gi-navy font-semibold rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 >
                   {editState === 'saving' ? 'Spremanje...' : 'Spremi izmjene'}
                 </button>
@@ -385,32 +347,31 @@ export default function MaterialPurchaseDetailPage() {
                   type="button"
                   onClick={cancelEdit}
                   disabled={editState === 'saving'}
-                  className="flex-1 sm:flex-none px-5 py-2 border border-slate-700 text-slate-400 hover:bg-slate-800 rounded-lg text-sm transition disabled:opacity-40"
+                  className="flex-1 sm:flex-none px-5 py-2 border border-gi-border text-gi-text-muted hover:bg-gi-card-elevated rounded-lg text-sm transition-colors disabled:opacity-40"
                 >
                   Odustani
                 </button>
               </div>
 
-              <p className="text-xs text-slate-600">
-                Napomena: izmjene se odnose samo na stavke i metapodatke ovog upisa.
-                Gradilište, kupac i priloženi račun ne mogu se mijenjati.
+              <p className="text-xs text-gi-text-subtle">
+                Izmjene se odnose samo na stavke i metapodatke ovog upisa. Gradilište, kupac i priloženi račun ne mogu se mijenjati.
               </p>
             </div>
           )}
 
-          {/* Receipt — always visible */}
+          {/* Receipt */}
           <div>
-            <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-3">Račun</h2>
+            <h2 className="text-xs font-semibold text-gi-text-subtle uppercase tracking-wider mb-3">Račun</h2>
             {purchase.receipt_file_url ? (
               <ReceiptPreview purchaseId={purchase.id} originalFilename={purchase.receipt_original_filename} />
             ) : (
-              <div className="rounded-xl border border-slate-700 bg-slate-800/30 px-4 py-6 text-center">
-                <p className="text-slate-500 text-sm">Nema priloženog računa za ovaj upis.</p>
+              <div className="rounded-xl border border-gi-border bg-gi-card px-4 py-6 text-center">
+                <p className="text-gi-text-subtle text-sm">Nema priloženog računa za ovaj upis.</p>
               </div>
             )}
           </div>
         </div>
       )}
-    </DashboardShell>
+    </AppShell>
   )
 }

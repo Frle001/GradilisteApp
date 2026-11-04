@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import LoadingScreen from '@/components/ui/LoadingScreen'
-import DashboardShell from '@/components/layout/DashboardShell'
+import AppShell from '@/components/layout/AppShell'
 import EmployeeForm from '@/components/employees/EmployeeForm'
 import { type EmployeeDetail, type CreateEmployeePayload, canManageEmployees, fullName } from '@/lib/types/employees'
 import apiClient from '@/lib/api-client'
@@ -62,20 +62,20 @@ export default function EditEmployeePage() {
   const name = fullName(emp)
 
   return (
-    <DashboardShell
+    <AppShell
       user={user}
       employee={authEmployee}
       title={`Uredi — ${name}`}
       backHref={`/dashboard/employees/${id}`}
       onLogout={logout}
     >
-      <div className="max-w-lg">
+      <div className="max-w-xl mx-auto">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-white">Uredi zaposlenika</h1>
-          <p className="text-slate-400 text-sm mt-1">{name}</p>
+          <h1 className="text-2xl font-bold text-gi-text">Uredi zaposlenika</h1>
+          <p className="text-gi-text-muted text-sm mt-1">{name}</p>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+        <div className="bg-gi-card border border-gi-border rounded-xl p-6">
           <EmployeeForm
             defaultValues={{
               first_name: emp.first_name,
@@ -92,6 +92,6 @@ export default function EditEmployeePage() {
           />
         </div>
       </div>
-    </DashboardShell>
+    </AppShell>
   )
 }

@@ -9,17 +9,17 @@ export const viewport: Viewport = {
   minimumScale: 1,
   maximumScale: 5,
   viewportFit: 'cover',
-  themeColor: '#0f172a',
+  themeColor: '#111C30',
 }
 
 export const metadata: Metadata = {
-  title: 'Gradilište',
-  description: 'Upravljanje projektima, zaposlenicima i materijalima za građevinska poduzeća.',
+  title: 'Get Install',
+  description: 'Upravljanje projektima, zaposlenicima i materijalima — Get Install Electrical Solutions.',
   manifest: '/manifest.json',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Gradilište',
+    title: 'Get Install',
   },
 }
 

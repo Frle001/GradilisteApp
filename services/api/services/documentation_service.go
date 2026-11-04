@@ -83,7 +83,7 @@ func NewDocumentationService(repo documentationRepoIface, storage docStorageIfac
 }
 
 func (s *DocumentationService) requireAdmin(role string) error {
-	if role != "administracija" {
+	if role != "administracija" && role != "direktor" {
 		return ErrForbidden
 	}
 	return nil

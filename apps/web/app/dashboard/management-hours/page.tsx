@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import LoadingScreen from '@/components/ui/LoadingScreen'
-import DashboardShell from '@/components/layout/DashboardShell'
+import AppShell from '@/components/layout/AppShell'
 import apiClient from '@/lib/api-client'
 
 interface ManagementHoursEntry {
@@ -26,7 +26,6 @@ const ROLE_LABELS: Record<string, string> = {
   administracija: 'Administracija',
 }
 
-// Filter tabs visible to direktor only
 type FilterTab = 'all' | 'inzenjer' | 'administracija' | 'mine'
 
 function localTodayStr(): string {
@@ -39,6 +38,10 @@ function formatHrDate(dateStr: string): string {
     weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric',
   })
 }
+
+const inputCls =
+  'w-full bg-gi-card-elevated border border-gi-border rounded-lg px-3 py-2.5 text-sm text-gi-text placeholder:text-gi-text-subtle focus:outline-none focus:border-gi-yellow transition-colors disabled:opacity-50'
+const labelCls = 'block text-xs font-medium text-gi-text-muted uppercase tracking-wider mb-1.5'
 
 export default function ManagementHoursPage() {
   const { user, employee, isLoading, logout } = useAuth()
@@ -58,6 +61,11 @@ export default function ManagementHoursPage() {
 
   // Director filter
   const [filterTab, setFilterTab] = useState<FilterTab>('all')
+
+  // Delete confirmation
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const isDirector = user?.role === 'direktor'
 
@@ -110,23 +118,28 @@ export default function ManagementHoursPage() {
   }
 
   const handleDelete = async (id: string) => {
+    setDeleteError(null)
+    setDeleting(true)
     try {
       await apiClient.delete(`/management-hours/${id}`)
+      setDeletingId(null)
       fetchEntries()
-    } catch {
-      // Silently ignore; user will see stale data and can retry
+    } catch (err: unknown) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+      setDeleteError(msg ?? 'Greška pri brisanju unosa.')
+    } finally {
+      setDeleting(false)
     }
   }
 
   if (isLoading) return <LoadingScreen />
   if (!user) return null
 
-  // Only allowed roles reach this page (middleware blocks others, but guard client-side too)
   if (!['direktor', 'inzenjer', 'administracija'].includes(user.role)) {
     return (
-      <DashboardShell user={user} employee={employee} title="Moji sati" onLogout={logout}>
-        <p className="text-slate-400 text-sm">Nemate pristup ovoj stranici.</p>
-      </DashboardShell>
+      <AppShell user={user} employee={employee} title="Radni sati" onLogout={logout}>
+        <p className="text-red-400 text-sm">Nemate pristup ovoj stranici.</p>
+      </AppShell>
     )
   }
 
@@ -147,79 +160,110 @@ export default function ManagementHoursPage() {
     { key: 'mine', label: 'Moji sati' },
   ]
 
-  return (
-    <DashboardShell user={user} employee={employee} title="Moji sati" onLogout={logout}>
-      <div className="space-y-8">
+  const totalHours = filteredEntries.reduce((sum, e) => sum + e.hours_worked, 0)
 
-        {/* ── Hour entry form ─────────────────────────────────────────────── */}
-        <section className="bg-slate-900 border border-slate-800 rounded-xl p-6">
-          <h2 className="text-base font-semibold text-white mb-4">Unos radnih sati</h2>
+  return (
+    <AppShell user={user} employee={employee} title="Radni sati" backHref="/dashboard" onLogout={logout}>
+      <div className="max-w-3xl mx-auto space-y-6">
+
+        {/* Page header */}
+        <div>
+          <h1 className="text-xl font-bold text-gi-text">Radni sati — Menadžment</h1>
+          <p className="text-gi-text-subtle text-sm mt-0.5">
+            Evidencija radnih sati za direktore, inženjere i administraciju
+          </p>
+        </div>
+
+        {/* Entry form */}
+        <section className="bg-gi-card border border-gi-border rounded-xl p-5">
+          <h2 className="text-sm font-semibold text-gi-text mb-4">Unos radnih sati</h2>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs text-slate-400 mb-1">Datum *</label>
+                <label className={labelCls}>
+                  Datum <span className="text-red-400 normal-case font-normal">*</span>
+                </label>
                 <input
                   type="date"
                   value={formDate}
                   max={today}
                   onChange={e => setFormDate(e.target.value)}
                   required
-                  className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className={inputCls}
+                  disabled={submitting}
                 />
               </div>
               <div>
-                <label className="block text-xs text-slate-400 mb-1">Broj sati *</label>
+                <label className={labelCls}>
+                  Broj sati <span className="text-red-400 normal-case font-normal">*</span>
+                </label>
                 <input
                   type="number"
                   min={0}
                   max={24}
                   step="0.5"
+                  inputMode="decimal"
                   value={hours}
                   onChange={e => setHours(e.target.value)}
                   placeholder="8"
                   required
-                  className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                  className={inputCls}
+                  disabled={submitting}
                 />
               </div>
             </div>
             <div>
-              <label className="block text-xs text-slate-400 mb-1">Napomena</label>
+              <label className={labelCls}>
+                Napomena <span className="text-gi-text-subtle normal-case font-normal">(nije obavezno)</span>
+              </label>
               <input
                 type="text"
                 value={notes}
                 onChange={e => setNotes(e.target.value)}
                 placeholder="Opcionalno…"
-                className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className={inputCls}
+                disabled={submitting}
               />
             </div>
 
             {submitError && (
-              <p className="text-sm text-red-400">{submitError}</p>
+              <div className="bg-red-900/30 border border-red-800/60 rounded-lg px-3 py-2.5">
+                <p className="text-red-300 text-sm">{submitError}</p>
+              </div>
             )}
             {submitSuccess && (
-              <p className="text-sm text-emerald-400">{submitSuccess}</p>
+              <div className="bg-emerald-900/30 border border-emerald-700/60 rounded-lg px-3 py-2.5">
+                <p className="text-emerald-300 text-sm">{submitSuccess}</p>
+              </div>
             )}
 
             <button
               type="submit"
-              disabled={submitting}
-              className="px-5 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium rounded transition-colors"
+              disabled={submitting || !hours || !formDate}
+              className="px-5 py-2.5 bg-gi-yellow hover:bg-gi-yellow-hover disabled:opacity-50 text-gi-navy text-sm font-semibold rounded-lg transition-colors"
             >
               {submitting ? 'Zapisivanje…' : 'Upiši sate'}
             </button>
           </form>
         </section>
 
-        {/* ── History / list ──────────────────────────────────────────────── */}
+        {/* History / list */}
         <section>
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="text-base font-semibold text-white">
-              {isDirector ? 'Radni sati' : 'Moji sati'}
-            </h2>
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <div>
+              <h2 className="text-sm font-semibold text-gi-text">
+                {isDirector ? 'Radni sati' : 'Moji sati'}
+              </h2>
+              {!loadingEntries && filteredEntries.length > 0 && (
+                <p className="text-xs text-gi-text-subtle mt-0.5">
+                  {filteredEntries.length} unosa · <span className="text-gi-yellow font-medium">{totalHours.toFixed(1)} h</span>
+                </p>
+              )}
+            </div>
             <button
               onClick={fetchEntries}
               disabled={loadingEntries}
-              className="text-xs text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 px-3 py-1.5 rounded transition"
+              className="text-xs text-gi-text-muted hover:text-gi-text border border-gi-border hover:border-gi-text-subtle px-3 py-1.5 rounded-lg transition-colors disabled:opacity-50"
             >
               Osvježi
             </button>
@@ -227,7 +271,7 @@ export default function ManagementHoursPage() {
 
           {/* Director filter tabs */}
           {isDirector && (
-            <div className="flex gap-1 mb-4 flex-wrap">
+            <div className="flex gap-1.5 mb-4 flex-wrap">
               {tabs.map(tab => (
                 <button
                   key={tab.key}
@@ -235,8 +279,8 @@ export default function ManagementHoursPage() {
                   className={[
                     'px-3 py-1.5 text-xs font-medium rounded-full transition-colors',
                     filterTab === tab.key
-                      ? 'bg-blue-600 text-white'
-                      : 'bg-slate-800 text-slate-400 hover:text-white',
+                      ? 'bg-gi-yellow text-gi-navy'
+                      : 'bg-gi-card border border-gi-border text-gi-text-muted hover:text-gi-text',
                   ].join(' ')}
                 >
                   {tab.label}
@@ -246,51 +290,86 @@ export default function ManagementHoursPage() {
           )}
 
           {fetchError && (
-            <p className="text-sm text-red-400 mb-4">{fetchError}</p>
+            <div className="bg-red-900/30 border border-red-800/60 rounded-lg px-4 py-3 mb-4">
+              <p className="text-red-300 text-sm">{fetchError}</p>
+            </div>
           )}
 
           {loadingEntries ? (
-            <p className="text-slate-400 text-sm">Učitavanje…</p>
+            <div className="bg-gi-card border border-gi-border rounded-xl p-8 text-center">
+              <p className="text-gi-text-subtle text-sm animate-pulse">Učitavanje…</p>
+            </div>
           ) : filteredEntries.length === 0 ? (
-            <p className="text-slate-500 text-sm">Nema upisanih sati.</p>
+            <div className="bg-gi-card border border-gi-border rounded-xl p-6 text-center">
+              <p className="text-gi-text-subtle text-sm">Nema upisanih sati.</p>
+            </div>
           ) : (
-            <div className="space-y-2">
+            <div className="bg-gi-card border border-gi-border rounded-xl overflow-hidden divide-y divide-gi-border/60">
               {filteredEntries.map(entry => {
                 const isOwn = employee ? entry.employee_id === employee.id : false
+                const isConfirming = deletingId === entry.id
+
                 return (
-                  <div
-                    key={entry.id}
-                    className="bg-slate-900 border border-slate-800 rounded-lg px-4 py-3 flex items-start justify-between gap-3"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-medium text-white">
-                          {formatHrDate(entry.work_date)}
-                        </span>
-                        <span className="text-sm text-blue-400 font-semibold">
-                          {entry.hours_worked} h
-                        </span>
-                        {isDirector && (
-                          <span className="text-xs text-slate-500">
-                            {entry.employee_name} · {ROLE_LABELS[entry.employee_role] ?? entry.employee_role}
+                  <div key={entry.id}>
+                    <div className="px-4 py-3 flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-medium text-gi-text capitalize">
+                            {formatHrDate(entry.work_date)}
                           </span>
+                          <span className="text-sm font-semibold text-gi-yellow">
+                            {entry.hours_worked} h
+                          </span>
+                          {isDirector && (
+                            <span className="text-xs text-gi-text-subtle">
+                              {entry.employee_name} · {ROLE_LABELS[entry.employee_role] ?? entry.employee_role}
+                            </span>
+                          )}
+                        </div>
+                        {entry.notes && (
+                          <p className="text-xs text-gi-text-muted mt-1 truncate">{entry.notes}</p>
+                        )}
+                        {entry.project_name && (
+                          <p className="text-xs text-gi-text-subtle mt-0.5">Projekt: {entry.project_name}</p>
                         )}
                       </div>
-                      {entry.notes && (
-                        <p className="text-xs text-slate-400 mt-1 truncate">{entry.notes}</p>
-                      )}
-                      {entry.project_name && (
-                        <p className="text-xs text-slate-500 mt-0.5">Projekt: {entry.project_name}</p>
+                      {isOwn && !isConfirming && (
+                        <button
+                          onClick={() => { setDeleteError(null); setDeletingId(entry.id) }}
+                          className="shrink-0 text-xs text-gi-text-subtle hover:text-red-400 border border-transparent hover:border-red-700/60 px-2 py-1 rounded transition-colors"
+                          aria-label="Obriši unos"
+                        >
+                          Obriši
+                        </button>
                       )}
                     </div>
-                    {isOwn && (
-                      <button
-                        onClick={() => handleDelete(entry.id)}
-                        className="shrink-0 text-xs text-slate-600 hover:text-red-400 transition-colors"
-                        aria-label="Obriši unos"
-                      >
-                        ×
-                      </button>
+
+                    {/* Inline delete confirmation */}
+                    {isConfirming && (
+                      <div className="px-4 pb-3 pt-0 border-t border-red-900/30 bg-red-900/10 space-y-2">
+                        <p className="text-xs text-red-300 mt-2">
+                          Obrisati {entry.hours_worked} h za {formatHrDate(entry.work_date)}?
+                        </p>
+                        {deleteError && (
+                          <p className="text-xs text-red-400">{deleteError}</p>
+                        )}
+                        <div className="flex gap-2">
+                          <button
+                            disabled={deleting}
+                            onClick={() => handleDelete(entry.id)}
+                            className="px-3 py-1.5 bg-red-700 hover:bg-red-600 disabled:opacity-50 text-white text-xs font-medium rounded-lg transition-colors"
+                          >
+                            {deleting ? 'Brisanje…' : 'Potvrdi brisanje'}
+                          </button>
+                          <button
+                            disabled={deleting}
+                            onClick={() => { setDeletingId(null); setDeleteError(null) }}
+                            className="px-3 py-1.5 bg-gi-card-elevated hover:bg-gi-border text-gi-text-muted text-xs rounded-lg transition-colors"
+                          >
+                            Odustani
+                          </button>
+                        </div>
+                      </div>
                     )}
                   </div>
                 )
@@ -298,7 +377,8 @@ export default function ManagementHoursPage() {
             </div>
           )}
         </section>
+
       </div>
-    </DashboardShell>
+    </AppShell>
   )
 }

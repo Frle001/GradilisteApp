@@ -3,7 +3,7 @@ import { type ActivityType, ACTIVITY_TYPE_LABELS } from '@/lib/types/daily-repor
 const TYPE_STYLES: Record<ActivityType, string> = {
   montaza:   'bg-indigo-900/40 text-indigo-300 border border-indigo-800',
   demontaza: 'bg-orange-900/40 text-orange-300 border border-orange-800',
-  other:     'bg-slate-800 text-slate-400 border border-slate-700',
+  other:     'bg-gi-card-elevated text-gi-text-subtle border border-gi-border',
 }
 
 interface Props {

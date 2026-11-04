@@ -11,7 +11,7 @@ func RegisterDocumentationRoutes(
 	authRequired gin.HandlerFunc,
 	requireRoles func(...string) gin.HandlerFunc,
 ) {
-	adminOnly := requireRoles("administracija")
+	adminOnly := requireRoles("administracija", "direktor")
 
 	rg := api.Group("/documentation", authRequired, adminOnly)
 	{

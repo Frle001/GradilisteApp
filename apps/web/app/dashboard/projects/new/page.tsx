@@ -4,7 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import LoadingScreen from '@/components/ui/LoadingScreen'
-import DashboardShell from '@/components/layout/DashboardShell'
+import AppShell from '@/components/layout/AppShell'
 import ProjectForm from '@/components/projects/ProjectForm'
 import { type CreateProjectPayload, canManageProjects } from '@/lib/types/projects'
 import apiClient from '@/lib/api-client'
@@ -45,20 +45,20 @@ export default function NewProjectPage() {
   }
 
   return (
-    <DashboardShell
+    <AppShell
       user={user}
       employee={employee}
       title="Novi projekt"
       backHref="/dashboard/projects"
       onLogout={logout}
     >
-      <div className="max-w-lg">
+      <div className="max-w-xl mx-auto">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-white">Novi projekt</h1>
-          <p className="text-slate-400 text-sm mt-1">Kreirajte novo gradilište</p>
+          <h1 className="text-xl font-bold text-gi-text">Novi projekt</h1>
+          <p className="text-gi-text-subtle text-sm mt-1">Kreirajte novo gradilište</p>
         </div>
 
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+        <div className="bg-gi-card border border-gi-border rounded-xl p-6">
           <ProjectForm
             onSubmit={handleSubmit}
             submitLabel="Kreiraj projekt"
@@ -68,6 +68,6 @@ export default function NewProjectPage() {
           />
         </div>
       </div>
-    </DashboardShell>
+    </AppShell>
   )
 }

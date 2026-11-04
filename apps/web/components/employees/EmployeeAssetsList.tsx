@@ -42,13 +42,13 @@ export default function EmployeeAssetsList({
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider">
+        <h2 className="text-xs font-medium text-gi-text-muted uppercase tracking-wider">
           Zaduženja i oprema
         </h2>
         {canManage && !showForm && !editingAsset && (
           <button
             onClick={() => setShowForm(true)}
-            className="text-xs text-white border border-slate-700 hover:border-slate-500 px-3 py-1.5 rounded-lg transition"
+            className="text-xs text-gi-text-muted border border-gi-border hover:border-gi-text-subtle hover:bg-gi-card-elevated px-3 py-1.5 rounded-lg transition-colors"
           >
             + Dodaj zaduženje
           </button>
@@ -56,14 +56,14 @@ export default function EmployeeAssetsList({
       </div>
 
       {error && (
-        <div className="bg-red-950 border border-red-800 rounded-lg px-4 py-3">
+        <div className="bg-red-900/30 border border-red-800/60 rounded-lg px-4 py-3">
           <p className="text-red-300 text-sm">{error}</p>
         </div>
       )}
 
       {showForm && (
-        <div className="bg-slate-900 border border-slate-700 rounded-xl p-5">
-          <h3 className="text-sm font-medium text-white mb-4">Novo zaduženje</h3>
+        <div className="bg-gi-card border border-gi-border rounded-xl p-5">
+          <h3 className="text-sm font-medium text-gi-text mb-4">Novo zaduženje</h3>
           <EmployeeAssetForm
             employeeID={employeeID}
             onSuccess={handleFormSuccess}
@@ -73,8 +73,8 @@ export default function EmployeeAssetsList({
       )}
 
       {editingAsset && (
-        <div className="bg-slate-900 border border-slate-700 rounded-xl p-5">
-          <h3 className="text-sm font-medium text-white mb-4">Uredi zaduženje</h3>
+        <div className="bg-gi-card border border-gi-border rounded-xl p-5">
+          <h3 className="text-sm font-medium text-gi-text mb-4">Uredi zaduženje</h3>
           <EmployeeAssetForm
             employeeID={employeeID}
             asset={editingAsset}
@@ -85,23 +85,23 @@ export default function EmployeeAssetsList({
       )}
 
       {assets.length === 0 && !showForm ? (
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 text-center">
-          <p className="text-slate-400 text-sm">Nema evidentiranih zaduženja.</p>
+        <div className="bg-gi-card border border-gi-border rounded-xl px-4 py-6 text-center">
+          <p className="text-gi-text-subtle text-sm">Nema evidentiranih zaduženja.</p>
         </div>
-      ) : (
-        <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-          <div className="divide-y divide-slate-800">
+      ) : assets.length > 0 ? (
+        <div className="bg-gi-card border border-gi-border rounded-xl overflow-hidden">
+          <div className="divide-y divide-gi-border/60">
             {assets.map((asset) => (
-              <div key={asset.id} className="px-5 py-4 flex items-start justify-between gap-4">
+              <div key={asset.id} className="px-5 py-4 flex items-start justify-between gap-4 hover:bg-gi-card-elevated/40 transition-colors">
                 <div className="min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-sm font-medium text-white">{asset.name}</span>
-                    <span className="text-xs text-slate-500">
+                    <span className="text-sm font-medium text-gi-text">{asset.name}</span>
+                    <span className="text-xs text-gi-text-subtle">
                       {ASSET_TYPE_LABELS[asset.asset_type] ?? asset.asset_type}
                     </span>
                     <StatusBadge active={asset.active} />
                   </div>
-                  <div className="text-xs text-slate-400 mt-1 space-x-3">
+                  <div className="text-xs text-gi-text-muted mt-1 space-x-3">
                     <span>
                       Količina: {asset.quantity}
                       {asset.unit ? ` ${asset.unit}` : ''}
@@ -109,20 +109,20 @@ export default function EmployeeAssetsList({
                     {asset.serial_number && <span>S/N: {asset.serial_number}</span>}
                   </div>
                   {asset.notes && (
-                    <p className="text-xs text-slate-500 mt-1 truncate">{asset.notes}</p>
+                    <p className="text-xs text-gi-text-subtle mt-1 truncate">{asset.notes}</p>
                   )}
                 </div>
                 {canManage && asset.active && (
-                  <div className="flex items-center gap-3 shrink-0">
+                  <div className="flex items-center gap-4 shrink-0">
                     <button
                       onClick={() => setEditingAsset(asset)}
-                      className="text-xs text-slate-400 hover:text-white transition"
+                      className="text-xs text-gi-text-muted hover:text-gi-text transition-colors"
                     >
                       Uredi
                     </button>
                     <button
                       onClick={() => handleDeactivate(asset.id)}
-                      className="text-xs text-slate-500 hover:text-red-400 transition"
+                      className="text-xs text-gi-text-subtle hover:text-red-400 transition-colors"
                     >
                       Razduženje
                     </button>
@@ -132,7 +132,7 @@ export default function EmployeeAssetsList({
             ))}
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   )
 }

@@ -37,7 +37,7 @@ func NewCompanyAssetsService(repo companyAssetsRepoIface) *CompanyAssetsService 
 }
 
 func (s *CompanyAssetsService) requireAdmin(role string) error {
-	if role != "administracija" {
+	if role != "administracija" && role != "direktor" {
 		return ErrForbidden
 	}
 	return nil

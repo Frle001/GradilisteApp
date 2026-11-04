@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import LoadingScreen from '@/components/ui/LoadingScreen'
-import DashboardShell from '@/components/layout/DashboardShell'
+import AppShell from '@/components/layout/AppShell'
 import TransferHistoryTable from '@/components/inventory/TransferHistoryTable'
 import ReportPaginationBar from '@/components/reports/ReportPaginationBar'
 import apiClient from '@/lib/api-client'
@@ -36,22 +36,21 @@ export default function TransfersPage() {
   if (!user) return null
 
   return (
-    <DashboardShell
+    <AppShell
       user={user}
       employee={employee}
       title="Povijest prijenosa"
       backHref="/dashboard/inventory"
       onLogout={logout}
-      wide
     >
       <div className="space-y-5">
         <div>
-          <h1 className="text-2xl font-bold text-white tracking-tight">Povijest prijenosa</h1>
-          <p className="text-sm text-slate-400 mt-1">Evidencija prijenosa opreme i materijala između zaposlenika</p>
+          <h1 className="text-xl font-bold text-gi-text">Povijest prijenosa</h1>
+          <p className="text-sm text-gi-text-subtle mt-0.5">Evidencija prijenosa opreme i materijala između zaposlenika</p>
         </div>
 
         {error && (
-          <div className="rounded-xl bg-red-950 border border-red-800 text-red-300 text-sm px-4 py-3 flex items-center gap-2">
+          <div className="rounded-xl bg-red-900/30 border border-red-800/60 text-red-300 text-sm px-4 py-3 flex items-center gap-2">
             <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
             </svg>
@@ -59,7 +58,7 @@ export default function TransfersPage() {
           </div>
         )}
 
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
+        <div className="bg-gi-card border border-gi-border rounded-xl p-5">
           <TransferHistoryTable
             items={data?.data ?? []}
             loading={loading}
@@ -74,6 +73,6 @@ export default function TransfersPage() {
           />
         )}
       </div>
-    </DashboardShell>
+    </AppShell>
   )
 }

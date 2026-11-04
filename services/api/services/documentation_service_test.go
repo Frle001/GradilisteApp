@@ -853,11 +853,11 @@ func TestAuth_Administracija_OK(t *testing.T) {
 	}
 }
 
-func TestAuth_Direktor_Forbidden(t *testing.T) {
+func TestAuth_Direktor_Allowed(t *testing.T) {
 	svc := newDocSvc()
 	_, err := svc.ListEmployees(context.Background(), "company-1", "direktor")
-	if err != ErrForbidden {
-		t.Errorf("direktor should be forbidden, got %v", err)
+	if err != nil {
+		t.Errorf("direktor should be allowed, got %v", err)
 	}
 }
 

@@ -69,7 +69,7 @@ function PhotoThumb({
   const blobUrl = usePhotoBlobUrl(reportId, att.id, inView)
 
   return (
-    <div ref={containerRef} className="relative group rounded-lg overflow-hidden border border-slate-700 bg-slate-800">
+    <div ref={containerRef} className="relative group rounded-lg overflow-hidden border border-gi-border bg-gi-card-elevated">
       <button
         type="button"
         className="w-full aspect-square block"
@@ -84,7 +84,7 @@ function PhotoThumb({
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <svg className="w-8 h-8 text-slate-600" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+            <svg className="w-8 h-8 text-gi-border" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909M3 3h18M3 21h18" />
             </svg>
           </div>
@@ -102,9 +102,9 @@ function PhotoThumb({
           </svg>
         </button>
       )}
-      <div className="px-1.5 py-1 bg-slate-900/80">
-        <p className="text-xs text-slate-400 truncate">{att.original_name}</p>
-        <p className="text-xs text-slate-600">{formatBytes(att.file_size)}</p>
+      <div className="px-1.5 py-1 bg-gi-navy/80">
+        <p className="text-xs text-gi-text-muted truncate">{att.original_name}</p>
+        <p className="text-xs text-gi-text-subtle">{formatBytes(att.file_size)}</p>
       </div>
     </div>
   )
@@ -139,12 +139,12 @@ function Lightbox({
         {blobUrl ? (
           <img src={blobUrl} alt={att.original_name} className="max-h-[80vh] max-w-full object-contain rounded" />
         ) : (
-          <div className="w-64 h-64 flex items-center justify-center text-slate-400">Učitavanje…</div>
+          <div className="w-64 h-64 flex items-center justify-center text-gi-text-muted">Učitavanje…</div>
         )}
         <button
           type="button"
           onClick={onClose}
-          className="absolute -top-3 -right-3 bg-slate-700 hover:bg-slate-600 text-white rounded-full p-1"
+          className="absolute -top-3 -right-3 bg-gi-card-elevated hover:bg-gi-border border border-gi-border text-gi-text rounded-full p-1"
         >
           <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
             <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
@@ -172,7 +172,7 @@ function Lightbox({
             </svg>
           </button>
         )}
-        <p className="text-center text-slate-400 text-xs mt-2">{att.original_name} &middot; {formatBytes(att.file_size)}</p>
+        <p className="text-center text-gi-text-subtle text-xs mt-2">{att.original_name} &middot; {formatBytes(att.file_size)}</p>
       </div>
     </div>
   )
@@ -230,20 +230,22 @@ export default function ReportPhotoGallery({ reportId, initialAttachments, canEd
   }
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
+    <div className="bg-gi-card border border-gi-border rounded-xl p-5 space-y-4">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
-          Fotografije
-          <span className="ml-2 text-slate-600 font-normal normal-case text-xs">
-            {attachments.length} / {MAX_REPORT_PHOTOS}
-          </span>
-        </h2>
+        <div>
+          <h2 className="text-xs font-medium text-gi-text-subtle uppercase tracking-wider">
+            Fotografije
+            <span className="ml-2 text-gi-text-subtle font-normal normal-case">
+              {attachments.length} / {MAX_REPORT_PHOTOS}
+            </span>
+          </h2>
+        </div>
         {canEdit && attachments.length < MAX_REPORT_PHOTOS && (
           <button
             type="button"
             disabled={uploading}
             onClick={() => fileInputRef.current?.click()}
-            className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-medium rounded-lg transition disabled:opacity-50"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-gi-card-elevated hover:bg-gi-border border border-gi-border text-gi-text-muted text-xs font-medium rounded-lg transition disabled:opacity-50"
           >
             {uploading ? (
               <>
@@ -280,9 +282,23 @@ export default function ReportPhotoGallery({ reportId, initialAttachments, canEd
       )}
 
       {attachments.length === 0 ? (
-        <p className="text-sm text-slate-500">
-          {canEdit ? 'Nema fotografija. Dodajte sliku klikom na gumb gore.' : 'Nema fotografija.'}
-        </p>
+        canEdit ? (
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={uploading}
+            className="w-full flex flex-col items-center gap-2 py-6 border border-dashed border-gi-border rounded-lg text-gi-text-subtle hover:border-gi-border/80 hover:text-gi-text-muted transition disabled:pointer-events-none"
+          >
+            <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
+            </svg>
+            <span className="text-xs">Kliknite za dodavanje fotografija</span>
+            <span className="text-xs text-gi-text-subtle">JPEG, PNG, WebP · maks. 10 MB</span>
+          </button>
+        ) : (
+          <p className="text-sm text-gi-text-subtle">Nema fotografija.</p>
+        )
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
           {attachments.map(att => (

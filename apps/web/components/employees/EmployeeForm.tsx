@@ -57,7 +57,7 @@ export default function EmployeeForm({
       {/* First name + Last name */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-slate-300 mb-1.5">
+          <label className="block text-xs font-medium text-gi-text-muted uppercase tracking-wider mb-1.5">
             Ime <span className="text-red-400">*</span>
           </label>
           <input
@@ -69,7 +69,7 @@ export default function EmployeeForm({
           {errors.first_name && <FieldError msg={errors.first_name.message} />}
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-300 mb-1.5">
+          <label className="block text-xs font-medium text-gi-text-muted uppercase tracking-wider mb-1.5">
             Prezime <span className="text-red-400">*</span>
           </label>
           <input
@@ -84,7 +84,7 @@ export default function EmployeeForm({
 
       {/* Role */}
       <div>
-        <label className="block text-sm font-medium text-slate-300 mb-1.5">
+        <label className="block text-xs font-medium text-gi-text-muted uppercase tracking-wider mb-1.5">
           Uloga <span className="text-red-400">*</span>
         </label>
         <select
@@ -100,7 +100,7 @@ export default function EmployeeForm({
         </select>
         {errors.role && <FieldError msg={errors.role.message} />}
         {isLoginRole && (
-          <p className="text-slate-500 text-xs mt-1">
+          <p className="text-gi-text-subtle text-xs mt-1">
             Ova uloga dobiva korisnički račun za prijavu u sustav.
           </p>
         )}
@@ -109,7 +109,7 @@ export default function EmployeeForm({
       {/* Supervisor — required for radnik */}
       {isRadnik && (
         <div>
-          <label className="block text-sm font-medium text-slate-300 mb-1.5">
+          <label className="block text-xs font-medium text-gi-text-muted uppercase tracking-wider mb-1.5">
             Poslovođa (nadzornik) <span className="text-red-400">*</span>
           </label>
           <select
@@ -127,16 +127,16 @@ export default function EmployeeForm({
           </select>
           {errors.supervisor_id && <FieldError msg={errors.supervisor_id.message} />}
           {supervisors.length === 0 && (
-            <p className="text-slate-500 text-xs mt-1">
+            <p className="text-gi-text-subtle text-xs mt-1">
               Nema dostupnih poslovođa. Najprije kreirajte poslovođu.
             </p>
           )}
         </div>
       )}
 
-      {/* Email — required for login roles, optional for radnik */}
+      {/* Email */}
       <div>
-        <label className="block text-sm font-medium text-slate-300 mb-1.5">
+        <label className="block text-xs font-medium text-gi-text-muted uppercase tracking-wider mb-1.5">
           Email adresa
           {isLoginRole && <span className="text-red-400"> *</span>}
         </label>
@@ -154,7 +154,7 @@ export default function EmployeeForm({
         />
         {errors.email && <FieldError msg={errors.email.message} />}
         {isLoginRole && !errors.email && (
-          <p className="text-slate-500 text-xs mt-1">
+          <p className="text-gi-text-subtle text-xs mt-1">
             Privremena lozinka bit će automatski generirana nakon spremanja zaposlenika.
           </p>
         )}
@@ -162,7 +162,7 @@ export default function EmployeeForm({
 
       {/* Phone */}
       <div>
-        <label className="block text-sm font-medium text-slate-300 mb-1.5">
+        <label className="block text-xs font-medium text-gi-text-muted uppercase tracking-wider mb-1.5">
           Broj telefona
         </label>
         <input
@@ -175,7 +175,7 @@ export default function EmployeeForm({
 
       {/* Server error */}
       {serverError && (
-        <div className="bg-red-950 border border-red-800 rounded-lg px-4 py-3">
+        <div className="bg-red-900/30 border border-red-800/60 rounded-lg px-4 py-3">
           <p className="text-red-300 text-sm">{serverError}</p>
         </div>
       )}
@@ -184,7 +184,7 @@ export default function EmployeeForm({
       <button
         type="submit"
         disabled={isSubmitting}
-        className="w-full py-2.5 px-4 bg-white text-slate-900 font-semibold rounded-lg text-sm hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition"
+        className="w-full py-2.5 px-4 bg-gi-yellow hover:bg-gi-yellow-hover text-gi-navy font-semibold rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
       >
         {isSubmitting ? 'Sprema...' : submitLabel}
       </button>
@@ -193,9 +193,12 @@ export default function EmployeeForm({
 }
 
 function inputCls(hasError: boolean) {
-  return `w-full px-3.5 py-2.5 bg-slate-800 border ${
-    hasError ? 'border-red-600' : 'border-slate-700'
-  } rounded-lg text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent transition`
+  return [
+    'w-full px-3.5 py-2.5 bg-gi-card-elevated border rounded-lg text-gi-text placeholder:text-gi-text-subtle text-sm',
+    'focus:outline-none focus:border-gi-yellow transition-colors',
+    'disabled:opacity-40 disabled:cursor-not-allowed',
+    hasError ? 'border-red-600' : 'border-gi-border',
+  ].join(' ')
 }
 
 function FieldError({ msg }: { msg?: string }) {

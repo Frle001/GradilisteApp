@@ -11,7 +11,7 @@ func RegisterCompanyAssetsRoutes(
 	authRequired gin.HandlerFunc,
 	requireRoles func(...string) gin.HandlerFunc,
 ) {
-	adminOnly := requireRoles("administracija")
+	adminOnly := requireRoles("administracija", "direktor")
 
 	// Static sub-paths must be registered before /:id to prevent Gin treating
 	// "employees" and "notifications" as an :id parameter.

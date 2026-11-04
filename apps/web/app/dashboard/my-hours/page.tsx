@@ -1,9 +1,9 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useAuth } from '@/hooks/useAuth'
 import LoadingScreen from '@/components/ui/LoadingScreen'
-import DashboardShell from '@/components/layout/DashboardShell'
+import AppShell from '@/components/layout/AppShell'
 import apiClient from '@/lib/api-client'
 import { enqueue, getEntry, findPendingEntry } from '@/lib/offline/outbox'
 import { trySyncEntry } from '@/lib/offline/sync-engine'
@@ -43,9 +43,14 @@ function formatHistoryDate(dateStr: string): string {
   })
 }
 
+const inputCls =
+  'w-full bg-gi-card-elevated border border-gi-border rounded-lg px-3 py-2.5 text-sm text-gi-text placeholder:text-gi-text-subtle focus:outline-none focus:border-gi-yellow transition-colors disabled:opacity-50'
+const labelCls = 'block text-xs font-medium text-gi-text-muted uppercase tracking-wider mb-1.5'
+
 export default function MyHoursPage() {
   const { user, employee, isLoading, logout } = useAuth()
   const today = localTodayStr()
+  const formRef = useRef<HTMLElement>(null)
 
   const [projects, setProjects] = useState<WorkerProject[]>([])
   const [entries, setEntries] = useState<HoursEntry[]>([])
@@ -127,15 +132,11 @@ export default function MyHoursPage() {
 
   const handleRefresh = async () => {
     setRefreshing(true)
-    // Attempt a sync pass first so any pending items land before we read
     try {
       const { runSync } = await import('@/lib/offline/sync-engine')
       await runSync({ userId: user?.id, companyId: user?.company_id })
     } catch { /* offline — just refetch */ }
-    await Promise.all([
-      fetchEntries(),
-      fetchHistory(),
-    ])
+    await Promise.all([fetchEntries(), fetchHistory()])
     setRefreshing(false)
   }
 
@@ -223,265 +224,272 @@ export default function MyHoursPage() {
   const projectedTotal = otherProjectsTotal + (parseFloat(hours) || 0)
   const wouldExceed24 = projectedTotal > 24
 
+  // Group history by date, most recent first
+  const historyByDate = history.reduce<Record<string, HoursEntry[]>>((acc, e) => {
+    if (!acc[e.work_date]) acc[e.work_date] = []
+    acc[e.work_date].push(e)
+    return acc
+  }, {})
+  const historyDates = Object.keys(historyByDate).sort((a, b) => b.localeCompare(a))
+
+  // Weekly total from history (last 7 days)
+  const sevenDaysAgo = new Date()
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6)
+  const weekTotal = history.reduce((sum, e) => {
+    const [y, m, d] = e.work_date.split('-').map(Number)
+    const date = new Date(y, m - 1, d)
+    const cutoff = new Date(sevenDaysAgo.getFullYear(), sevenDaysAgo.getMonth(), sevenDaysAgo.getDate())
+    return date >= cutoff ? sum + e.hours_worked : sum
+  }, 0)
+
   return (
-    <DashboardShell
-      user={user}
-      employee={employee}
-      title="Moji sati"
-      backHref="/dashboard"
-      onLogout={logout}
-    >
-      {/* Date header */}
-      <div className="mb-6 flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-xl font-bold text-white">Moji radni sati</h1>
-          <p className="text-slate-400 text-sm mt-1 capitalize">{formatHrDate(today)}</p>
+    <AppShell user={user} employee={employee} title="Moji sati" backHref="/dashboard" onLogout={logout}>
+      <div className="max-w-2xl mx-auto space-y-6">
+
+        {/* Page header */}
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-bold text-gi-text">Moji radni sati</h1>
+            <p className="text-gi-text-subtle text-sm mt-0.5 capitalize">{formatHrDate(today)}</p>
+          </div>
+          <button
+            onClick={() => void handleRefresh()}
+            disabled={refreshing || submitting}
+            className="shrink-0 text-sm text-gi-text-muted hover:text-gi-text border border-gi-border hover:border-gi-text-subtle px-3 py-2 rounded-lg transition-colors disabled:opacity-50"
+          >
+            {refreshing ? 'Osvježavanje…' : 'Osvježi'}
+          </button>
         </div>
-        <button
-          onClick={() => void handleRefresh()}
-          disabled={refreshing || submitting}
-          className="shrink-0 text-sm text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 px-3 py-2 rounded-lg transition disabled:opacity-50"
-        >
-          {refreshing ? 'Osvježavanje…' : 'Osvježi'}
-        </button>
-      </div>
 
-      {fetchError && (
-        <div className="bg-red-950 border border-red-800 rounded-lg px-4 py-3 mb-6">
-          <p className="text-red-300 text-sm">{fetchError}</p>
-        </div>
-      )}
+        {fetchError && (
+          <div className="bg-red-900/30 border border-red-800/60 rounded-lg px-4 py-3">
+            <p className="text-red-300 text-sm">{fetchError}</p>
+          </div>
+        )}
 
-      {/* Entry form */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 mb-6">
-        <h2 className="text-sm font-semibold text-slate-300 mb-4">Upiši sate za danas</h2>
+        {/* Entry form */}
+        <section ref={formRef} className="bg-gi-card border border-gi-border rounded-xl p-5">
+          <h2 className="text-sm font-semibold text-gi-text mb-4">
+            Upiši sate za <span className="text-gi-yellow">{today}</span>
+          </h2>
 
-        {loadingProjects ? (
-          <p className="text-slate-500 text-sm">Učitavanje projekata...</p>
-        ) : projects.length === 0 ? (
-          <p className="text-slate-500 text-sm">
-            Nema dostupnih aktivnih projekata za unos sati.
-          </p>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Project select */}
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">
-                Projekt <span className="text-red-400">*</span>
-              </label>
-              <select
-                value={selectedProject}
-                onChange={e => setSelectedProject(e.target.value)}
-                className="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-slate-500"
-                disabled={submitting}
-              >
-                <option value="">— Odaberi projekt —</option>
-                {projects.map(p => (
-                  <option key={p.id} value={p.id}>{p.name}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Hours */}
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">
-                Broj sati <span className="text-red-400">*</span>
-              </label>
-              <input
-                type="number"
-                min="0"
-                max="24"
-                step="0.5"
-                value={hours}
-                onChange={e => setHours(e.target.value)}
-                placeholder="npr. 8"
-                className="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500"
-                disabled={submitting}
-              />
-            </div>
-
-            {/* Work description */}
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">
-                Opis radova <span className="text-slate-500">(nije obavezno)</span>
-              </label>
-              <textarea
-                value={workDescription}
-                onChange={e => setWorkDescription(e.target.value)}
-                rows={3}
-                placeholder="Kratki opis izvedenih radova..."
-                className="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 resize-none"
-                disabled={submitting}
-              />
-            </div>
-
-            {/* Notes */}
-            <div>
-              <label className="block text-sm font-medium text-slate-300 mb-1.5">
-                Napomena <span className="text-slate-500">(nije obavezno)</span>
-              </label>
-              <textarea
-                value={notes}
-                onChange={e => setNotes(e.target.value)}
-                rows={2}
-                placeholder="Kratka napomena o radu..."
-                className="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 resize-none"
-                disabled={submitting}
-              />
-            </div>
-
-            {/* Opis rada — only visible to poslovoda */}
-            {user?.role === 'poslovoda' && (
+          {loadingProjects ? (
+            <p className="text-gi-text-subtle text-sm animate-pulse">Učitavanje projekata…</p>
+          ) : projects.length === 0 ? (
+            <p className="text-gi-text-subtle text-sm">Nema dostupnih aktivnih projekata za unos sati.</p>
+          ) : (
+            <form onSubmit={handleSubmit} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-slate-300 mb-1.5">
-                  Opis rada <span className="text-slate-500">(nije obavezno)</span>
+                <label className={labelCls}>
+                  Projekt <span className="text-red-400 normal-case">*</span>
+                </label>
+                <select
+                  value={selectedProject}
+                  onChange={e => setSelectedProject(e.target.value)}
+                  className={inputCls}
+                  disabled={submitting}
+                >
+                  <option value="">— Odaberi projekt —</option>
+                  {projects.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className={labelCls}>
+                  Broj sati <span className="text-red-400 normal-case">*</span>
+                </label>
+                <input
+                  type="number"
+                  min="0"
+                  max="24"
+                  step="0.5"
+                  inputMode="decimal"
+                  value={hours}
+                  onChange={e => setHours(e.target.value)}
+                  placeholder="npr. 8"
+                  className={inputCls}
+                  disabled={submitting}
+                />
+              </div>
+
+              {/* Opis radova — always visible; payload only sent for poslovoda (server-enforced) */}
+              <div>
+                <label className={labelCls}>
+                  Opis radova <span className="text-gi-text-subtle normal-case font-normal">(nije obavezno)</span>
                 </label>
                 <textarea
                   value={workDescription}
                   onChange={e => setWorkDescription(e.target.value)}
                   rows={3}
-                  placeholder="Opis obavljenog rada na projektu..."
-                  className="w-full px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 resize-none"
+                  placeholder="Kratki opis izvedenih radova…"
+                  className={`${inputCls} resize-none`}
                   disabled={submitting}
                 />
               </div>
-            )}
 
-            {isUpdate && selectedProject && (
-              <p className="text-xs text-amber-400">
-                Već ste upisali sate za ovaj projekt danas — potvrdom ćete ažurirati postojeći unos.
-              </p>
-            )}
-
-            {wouldExceed24 && selectedProject && hours && (
-              <div className="bg-red-950 border border-red-800 rounded-lg px-4 py-3">
-                <p className="text-red-300 text-sm">
-                  Ukupni sati za danas bi premašili 24 sata (već upisano na ostalim projektima: {otherProjectsTotal.toFixed(1)} h).
-                </p>
+              <div>
+                <label className={labelCls}>
+                  Napomena <span className="text-gi-text-subtle normal-case font-normal">(nije obavezno)</span>
+                </label>
+                <textarea
+                  value={notes}
+                  onChange={e => setNotes(e.target.value)}
+                  rows={2}
+                  placeholder="Kratka napomena o radu…"
+                  className={`${inputCls} resize-none`}
+                  disabled={submitting}
+                />
               </div>
-            )}
 
-            {submitError && (
-              <div className="bg-red-950 border border-red-800 rounded-lg px-4 py-3">
-                <p className="text-red-300 text-sm">{submitError}</p>
-              </div>
-            )}
+              {isUpdate && selectedProject && (
+                <div className="flex items-start gap-2 bg-amber-900/20 border border-amber-700/40 rounded-lg px-3 py-2.5">
+                  <svg className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01M12 3a9 9 0 110 18A9 9 0 0112 3z" />
+                  </svg>
+                  <p className="text-xs text-amber-300">
+                    Već ste upisali sate za ovaj projekt danas — potvrdom ćete ažurirati postojeći unos.
+                  </p>
+                </div>
+              )}
 
-            {submitSuccess && (
-              <div className="bg-green-950 border border-green-800 rounded-lg px-4 py-3">
-                <p className="text-green-300 text-sm">{submitSuccess}</p>
-              </div>
-            )}
+              {wouldExceed24 && selectedProject && hours && (
+                <div className="bg-red-900/30 border border-red-800/60 rounded-lg px-3 py-2.5">
+                  <p className="text-red-300 text-sm">
+                    Ukupni sati za danas bi premašili 24 h (na ostalim projektima: {otherProjectsTotal.toFixed(1)} h).
+                  </p>
+                </div>
+              )}
 
-            <button
-              type="submit"
-              disabled={submitting || !selectedProject || !hours || wouldExceed24}
-              className="w-full py-2.5 px-4 bg-white text-slate-900 font-semibold rounded-lg text-sm hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition"
-            >
-              {submitting ? 'Upisivanje...' : isUpdate ? 'Ažuriraj sate' : 'Upiši sate'}
-            </button>
-          </form>
-        )}
-      </div>
+              {submitError && (
+                <div className="bg-red-900/30 border border-red-800/60 rounded-lg px-3 py-2.5">
+                  <p className="text-red-300 text-sm">{submitError}</p>
+                </div>
+              )}
 
-      {/* Today's submitted entries */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold text-slate-300">Upisani sati za danas</h2>
-          {entries.length > 0 && (
-            <span className="text-xs text-slate-400">
-              Ukupno: <span className="text-white font-semibold">{totalToday.toFixed(1)} h</span>
-            </span>
+              {submitSuccess && (
+                <div className="bg-emerald-900/30 border border-emerald-700/60 rounded-lg px-3 py-2.5">
+                  <p className="text-emerald-300 text-sm">{submitSuccess}</p>
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={submitting || !selectedProject || !hours || wouldExceed24}
+                className="w-full py-2.5 px-4 bg-gi-yellow hover:bg-gi-yellow-hover text-gi-navy font-semibold rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                {submitting ? 'Upisivanje…' : isUpdate ? 'Ažuriraj sate' : 'Upiši sate'}
+              </button>
+            </form>
           )}
-        </div>
+        </section>
 
-        {loadingEntries ? (
-          <p className="text-slate-500 text-sm">Učitavanje...</p>
-        ) : entries.length === 0 ? (
-          <p className="text-slate-500 text-sm">Nema upisanih sati za danas.</p>
-        ) : (
-          <ul className="space-y-3">
-            {entries.map(entry => (
-              <li
-                key={entry.id}
-                className="flex items-start justify-between gap-4 py-3 border-b border-slate-800 last:border-0"
-              >
-                <div className="min-w-0">
-                  <p className="text-sm font-medium text-white truncate">{entry.project_name}</p>
-                  {entry.work_description && (
-                    <p className="text-xs text-slate-300 mt-0.5 line-clamp-2">{entry.work_description}</p>
-                  )}
-                  {entry.notes && (
-                    <p className="text-xs text-slate-400 mt-0.5 truncate">{entry.notes}</p>
-                  )}
-                  {user?.role === 'poslovoda' && entry.work_description && (
-                    <p className="text-xs text-slate-500 mt-0.5 truncate italic">{entry.work_description}</p>
-                  )}
-                </div>
-                <div className="shrink-0 text-right">
-                  <span className="text-lg font-bold text-white">{entry.hours_worked}</span>
-                  <span className="text-slate-400 text-sm ml-0.5">h</span>
-                  <button
-                    onClick={() => {
-                      setSelectedProject(entry.project_id)
-                      setSubmitSuccess(null)
-                      setSubmitError(null)
-                      window.scrollTo({ top: 0, behavior: 'smooth' })
-                    }}
-                    className="block text-xs text-slate-500 hover:text-slate-300 mt-0.5 transition"
-                  >
-                    Izmijeni
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+        {/* Today's submitted entries */}
+        <section className="bg-gi-card border border-gi-border rounded-xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-gi-text">Upisani sati za danas</h2>
+            {entries.length > 0 && (
+              <span className="text-xs text-gi-text-muted">
+                Ukupno: <span className="text-gi-yellow font-semibold">{totalToday.toFixed(1)} h</span>
+              </span>
+            )}
+          </div>
 
-      {/* Previous entries — read-only */}
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 mt-6">
-        <h2 className="text-sm font-semibold text-slate-300 mb-4">Prethodni unosi</h2>
-
-        {loadingHistory ? (
-          <p className="text-slate-500 text-sm">Učitavanje...</p>
-        ) : historyError ? (
-          <p className="text-red-400 text-sm">{historyError}</p>
-        ) : history.length === 0 ? (
-          <p className="text-slate-500 text-sm">Još nema prethodnih unosa.</p>
-        ) : (
-          <ul className="space-y-3">
-            {history.map(entry => (
-              <li
-                key={entry.id}
-                className="bg-slate-800/50 border border-slate-700/60 rounded-lg px-4 py-3"
-              >
-                <div className="flex items-start justify-between gap-3">
+          {loadingEntries ? (
+            <p className="text-gi-text-subtle text-sm animate-pulse">Učitavanje…</p>
+          ) : entries.length === 0 ? (
+            <p className="text-gi-text-subtle text-sm">Nema upisanih sati za danas.</p>
+          ) : (
+            <ul className="divide-y divide-gi-border">
+              {entries.map(entry => (
+                <li key={entry.id} className="flex items-start justify-between gap-4 py-3 first:pt-0 last:pb-0">
                   <div className="min-w-0">
-                    <p className="text-xs text-slate-500 mb-0.5 capitalize">
-                      {formatHistoryDate(entry.work_date)}
-                    </p>
-                    <p className="text-sm font-medium text-white truncate">{entry.project_name}</p>
+                    <p className="text-sm font-medium text-gi-text truncate">{entry.project_name}</p>
                     {entry.work_description && (
-                      <p className="text-xs text-slate-300 mt-1 line-clamp-2">{entry.work_description}</p>
+                      <p className="text-xs text-gi-text-muted mt-0.5 line-clamp-2">{entry.work_description}</p>
                     )}
                     {entry.notes && (
-                      <p className="text-xs text-slate-400 mt-1">{entry.notes}</p>
-                    )}
-                    {user?.role === 'poslovoda' && entry.work_description && (
-                      <p className="text-xs text-slate-500 mt-0.5 italic">{entry.work_description}</p>
+                      <p className="text-xs text-gi-text-subtle mt-0.5 truncate">{entry.notes}</p>
                     )}
                   </div>
                   <div className="shrink-0 text-right">
-                    <span className="text-lg font-bold text-white">{entry.hours_worked}</span>
-                    <span className="text-slate-400 text-sm ml-0.5">h</span>
+                    <span className="text-lg font-bold text-gi-text">{entry.hours_worked}</span>
+                    <span className="text-gi-text-subtle text-sm ml-0.5">h</span>
+                    <button
+                      onClick={() => {
+                        setSelectedProject(entry.project_id)
+                        setSubmitSuccess(null)
+                        setSubmitError(null)
+                        formRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+                      }}
+                      className="block text-xs text-gi-text-subtle hover:text-gi-yellow mt-0.5 transition-colors"
+                    >
+                      Izmijeni
+                    </button>
                   </div>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        {/* History — grouped by date */}
+        <section className="bg-gi-card border border-gi-border rounded-xl p-5">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="text-sm font-semibold text-gi-text">Prethodni unosi</h2>
+            {weekTotal > 0 && (
+              <span className="text-xs text-gi-text-muted">
+                Ovaj tjedan: <span className="text-gi-yellow font-semibold">{weekTotal.toFixed(1)} h</span>
+              </span>
+            )}
+          </div>
+
+          {loadingHistory ? (
+            <p className="text-gi-text-subtle text-sm animate-pulse">Učitavanje…</p>
+          ) : historyError ? (
+            <p className="text-red-400 text-sm">{historyError}</p>
+          ) : history.length === 0 ? (
+            <p className="text-gi-text-subtle text-sm">Još nema prethodnih unosa.</p>
+          ) : (
+            <div className="space-y-5">
+              {historyDates.map(date => {
+                const dateEntries = historyByDate[date]
+                const dateTotal = dateEntries.reduce((s, e) => s + e.hours_worked, 0)
+                return (
+                  <div key={date}>
+                    <div className="flex items-center justify-between mb-2">
+                      <p className="text-xs font-semibold text-gi-text-muted uppercase tracking-wider capitalize">
+                        {formatHistoryDate(date)}
+                      </p>
+                      <span className="text-xs text-gi-text-subtle">{dateTotal.toFixed(1)} h</span>
+                    </div>
+                    <ul className="divide-y divide-gi-border/60">
+                      {dateEntries.map(entry => (
+                        <li key={entry.id} className="flex items-start justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gi-text truncate">{entry.project_name}</p>
+                            {entry.work_description && (
+                              <p className="text-xs text-gi-text-muted mt-0.5 line-clamp-2">{entry.work_description}</p>
+                            )}
+                            {entry.notes && (
+                              <p className="text-xs text-gi-text-subtle mt-0.5 truncate">{entry.notes}</p>
+                            )}
+                          </div>
+                          <span className="shrink-0 text-sm font-semibold text-gi-text">
+                            {entry.hours_worked} <span className="font-normal text-gi-text-subtle">h</span>
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </section>
+
       </div>
-    </DashboardShell>
+    </AppShell>
   )
 }
