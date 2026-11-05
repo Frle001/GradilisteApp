@@ -2,10 +2,10 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
+import { Plus, Upload, AlertTriangle } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import LoadingScreen from '@/components/ui/LoadingScreen'
-import LoadingOverlay from '@/components/ui/LoadingOverlay'
-import DashboardShell from '@/components/layout/DashboardShell'
+import AppShell from '@/components/layout/AppShell'
 import ProjectMaterialTable from '@/components/project-materials/ProjectMaterialTable'
 import ProjectMaterialForm from '@/components/project-materials/ProjectMaterialForm'
 import ProjectMaterialImport from '@/components/project-materials/ProjectMaterialImport'
@@ -18,6 +18,7 @@ import {
 import apiClient from '@/lib/api-client'
 
 type FormMode = 'none' | 'create' | 'edit'
+type Panel = 'list' | 'import'
 
 export default function ProjectMaterialsPage() {
   const { id: projectId } = useParams<{ id: string }>()
@@ -30,6 +31,7 @@ export default function ProjectMaterialsPage() {
   const [search, setSearch] = useState('')
   const [showInactive, setShowInactive] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [activePanel, setActivePanel] = useState<Panel>('list')
 
   const [formMode, setFormMode] = useState<FormMode>('none')
   const [editTarget, setEditTarget] = useState<MaterialListItem | null>(null)
@@ -40,7 +42,6 @@ export default function ProjectMaterialsPage() {
   const canManage = !!user && canManageMaterials(user.role) && projectStatus === 'active'
   const canImport = !!user && canImportMaterials(user.role) && projectStatus === 'active'
 
-  // Load project name + status
   useEffect(() => {
     if (!user) return
     apiClient.get(`/projects/${projectId}`).then((res) => {
@@ -66,9 +67,7 @@ export default function ProjectMaterialsPage() {
       .finally(() => setIsLoadingMaterials(false))
   }, [user, projectId, search, showInactive])
 
-  useEffect(() => {
-    fetchMaterials()
-  }, [fetchMaterials])
+  useEffect(() => { fetchMaterials() }, [fetchMaterials])
 
   async function handleFormSubmit(data: CreateMaterialPayload) {
     setIsSubmitting(true)
@@ -113,6 +112,7 @@ export default function ProjectMaterialsPage() {
     setEditTarget(m)
     setFormMode('edit')
     setFormError(null)
+    setActivePanel('list')
   }
 
   function openCreate() {
@@ -125,31 +125,48 @@ export default function ProjectMaterialsPage() {
   if (!user) return null
 
   return (
-    <DashboardShell
+    <AppShell
       user={user}
       employee={employee}
-      title="Materijali projekta"
+      title={`${projectName} — Materijali`}
       backHref={`/dashboard/projects/${projectId}`}
       onLogout={logout}
       action={
         canManage && formMode === 'none' ? (
-          <button
-            onClick={openCreate}
-            className="px-4 py-2 bg-white text-slate-900 font-semibold rounded-lg text-sm hover:bg-slate-100 transition"
-          >
-            + Dodaj materijal
-          </button>
+          <div className="flex items-center gap-2">
+            {canImport && (
+              <button
+                onClick={() => setActivePanel((prev: Panel) => prev === 'import' ? 'list' : 'import')}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-medium transition-colors ${
+                  activePanel === 'import'
+                    ? 'bg-gi-yellow/10 border-gi-yellow/40 text-gi-yellow'
+                    : 'bg-gi-card-elevated border-gi-border text-gi-text-muted hover:text-gi-text'
+                }`}
+              >
+                <Upload className="w-3.5 h-3.5" />Excel
+              </button>
+            )}
+            <button
+              onClick={openCreate}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-gi-yellow hover:bg-gi-yellow-hover text-gi-navy text-xs font-semibold rounded-lg transition-colors"
+            >
+              <Plus className="w-3.5 h-3.5" />Dodaj
+            </button>
+          </div>
         ) : undefined
       }
     >
-      <div className="space-y-5 max-w-5xl">
-        <h1 className="text-xl font-bold text-white">{projectName} — Materijali</h1>
+      <div className="space-y-5">
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-xl font-bold text-gi-text">{projectName}</h1>
+            <p className="text-gi-text-subtle text-sm mt-0.5">Plan i praćenje materijala</p>
+          </div>
+        </div>
 
         {projectStatus !== 'active' && (
-          <div className="bg-amber-950 border border-amber-800 rounded-lg px-4 py-3 flex items-center gap-3">
-            <svg className="w-4 h-4 text-amber-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-              <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m-9.303 3.376c-.866 1.5.217 3.374 1.948 3.374h14.71c1.73 0 2.813-1.874 1.948-3.374L13.949 3.378c-.866-1.5-3.032-1.5-3.898 0L2.697 16.126zM12 15.75h.007v.008H12v-.008z" />
-            </svg>
+          <div className="flex items-center gap-2.5 bg-amber-900/20 border border-amber-800/40 rounded-lg px-4 py-3">
+            <AlertTriangle className="w-4 h-4 text-amber-400 flex-shrink-0" />
             <p className="text-amber-300 text-sm">
               Projekt je <strong>{projectStatus === 'closed' ? 'zatvoren' : 'arhiviran'}</strong> — dodavanje i uređivanje materijala nije dozvoljeno.
             </p>
@@ -158,10 +175,18 @@ export default function ProjectMaterialsPage() {
 
         {/* Inline form */}
         {formMode !== 'none' && (
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
-            <h2 className="text-white font-medium text-sm mb-4">
-              {formMode === 'edit' ? 'Uredi materijal' : 'Novi materijal'}
-            </h2>
+          <div className="bg-gi-card border border-gi-border rounded-xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-gi-text font-semibold text-sm">
+                {formMode === 'edit' ? 'Uredi materijal' : 'Novi materijal'}
+              </h2>
+              <button
+                onClick={() => { setFormMode('none'); setEditTarget(null) }}
+                className="text-gi-text-subtle hover:text-gi-text text-xs transition-colors"
+              >
+                Odustani
+              </button>
+            </div>
             <ProjectMaterialForm
               initial={editTarget}
               onSubmit={handleFormSubmit}
@@ -172,75 +197,86 @@ export default function ProjectMaterialsPage() {
           </div>
         )}
 
-        {/* Excel import */}
-        {canImport && formMode === 'none' && (
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
-            <h2 className="text-white font-medium text-sm mb-3">Uvoz iz Excela</h2>
-            <ProjectMaterialImport projectId={projectId} onConfirmed={fetchMaterials} />
-          </div>
-        )}
-
-        {/* Filters */}
-        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-          <input
-            type="text"
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            placeholder="Pretraži po nazivu ili šifri..."
-            className="flex-1 px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500"
-          />
-          <label className="flex items-center gap-2 text-slate-400 text-sm cursor-pointer whitespace-nowrap">
-            <input
-              type="checkbox"
-              checked={showInactive}
-              onChange={(e) => setShowInactive(e.target.checked)}
-              className="accent-slate-500"
-            />
-            Prikaži neaktivne
-          </label>
-        </div>
-
-        {deleteNotice && (
-          <div className={`border rounded-lg px-4 py-3 flex items-start justify-between gap-3 ${
-            deleteNotice.kind === 'deleted'
-              ? 'bg-emerald-950 border-emerald-800'
-              : 'bg-amber-950 border-amber-800'
-          }`}>
-            <p className={`text-sm ${deleteNotice.kind === 'deleted' ? 'text-emerald-300' : 'text-amber-300'}`}>
-              {deleteNotice.kind === 'deleted'
-                ? `"${deleteNotice.name}" je trajno obrisan.`
-                : `"${deleteNotice.name}" je deaktiviran — postoje povezani zapisi (dnevna izvješća, kupnje ili zaduženja).`}
-            </p>
-            <button
-              onClick={() => setDeleteNotice(null)}
-              className="text-slate-500 hover:text-slate-300 shrink-0 text-xs"
-            >
-              ✕
-            </button>
+        {/* Excel import panel */}
+        {canImport && formMode === 'none' && activePanel === 'import' && (
+          <div className="bg-gi-card border border-gi-border rounded-xl p-5">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-gi-text font-semibold text-sm">Uvoz iz Excela</h2>
+              <button
+                onClick={() => setActivePanel('list')}
+                className="text-gi-text-subtle hover:text-gi-text text-xs transition-colors"
+              >
+                Zatvori
+              </button>
+            </div>
+            <ProjectMaterialImport projectId={projectId} onConfirmed={() => { fetchMaterials(); setActivePanel('list') }} />
           </div>
         )}
 
         {error && (
-          <div className="bg-red-950 border border-red-800 rounded-lg px-4 py-3">
+          <div className="bg-red-900/30 border border-red-800/60 rounded-lg px-4 py-3">
             <p className="text-red-300 text-sm">{error}</p>
           </div>
         )}
 
-        {/* Materials list */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-5">
-          {isLoadingMaterials ? (
-            <LoadingOverlay />
-          ) : (
-            <ProjectMaterialTable
-              materials={materials}
-              canManage={canManage}
-              onEdit={openEdit}
-              onDelete={handleDelete}
-              showInactive={showInactive}
+        <div className="bg-gi-card border border-gi-border rounded-xl overflow-hidden">
+          {/* Table toolbar */}
+          <div className="px-4 py-3 border-b border-gi-border flex flex-col sm:flex-row gap-2">
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Pretraži po nazivu ili šifri..."
+              className="flex-1 px-3 py-1.5 bg-gi-card-elevated border border-gi-border rounded-lg text-gi-text placeholder:text-gi-text-subtle text-sm focus:outline-none focus:border-gi-yellow transition-colors"
             />
+            <label className="flex items-center gap-2 text-gi-text-muted text-sm cursor-pointer whitespace-nowrap px-3 py-1.5 bg-gi-card-elevated border border-gi-border rounded-lg">
+              <input
+                type="checkbox"
+                checked={showInactive}
+                onChange={(e) => setShowInactive(e.target.checked)}
+                className="accent-gi-yellow w-3.5 h-3.5"
+              />
+              Prikaži neaktivne
+            </label>
+          </div>
+
+          {deleteNotice && (
+            <div className={`flex items-start justify-between gap-3 border-b px-4 py-3 ${
+              deleteNotice.kind === 'deleted'
+                ? 'bg-green-900/20 border-green-800/40'
+                : 'bg-amber-900/20 border-amber-800/40'
+            }`}>
+              <p className={`text-sm ${deleteNotice.kind === 'deleted' ? 'text-green-300' : 'text-amber-300'}`}>
+                {deleteNotice.kind === 'deleted'
+                  ? `"${deleteNotice.name}" je trajno obrisan.`
+                  : `"${deleteNotice.name}" je deaktiviran — postoje povezani zapisi (dnevna izvješća, kupnje ili zaduženja).`}
+              </p>
+              <button
+                onClick={() => setDeleteNotice(null)}
+                className="text-gi-text-subtle hover:text-gi-text shrink-0 text-xs"
+              >
+                ✕
+              </button>
+            </div>
           )}
+
+          <div className="p-5">
+            {isLoadingMaterials ? (
+              <div className="flex items-center justify-center h-32">
+                <p className="text-gi-text-subtle text-sm animate-pulse">Učitavanje materijala...</p>
+              </div>
+            ) : (
+              <ProjectMaterialTable
+                materials={materials}
+                canManage={canManage}
+                onEdit={openEdit}
+                onDelete={handleDelete}
+                showInactive={showInactive}
+              />
+            )}
+          </div>
         </div>
       </div>
-    </DashboardShell>
+    </AppShell>
   )
 }

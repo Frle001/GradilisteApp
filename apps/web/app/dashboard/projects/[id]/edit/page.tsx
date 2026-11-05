@@ -4,8 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import LoadingScreen from '@/components/ui/LoadingScreen'
-import LoadingOverlay from '@/components/ui/LoadingOverlay'
-import DashboardShell from '@/components/layout/DashboardShell'
+import AppShell from '@/components/layout/AppShell'
 import ProjectForm from '@/components/projects/ProjectForm'
 import { type CreateProjectPayload, type ProjectDetail, canManageProjects } from '@/lib/types/projects'
 import apiClient from '@/lib/api-client'
@@ -69,27 +68,29 @@ export default function EditProjectPage() {
   }
 
   return (
-    <DashboardShell
+    <AppShell
       user={user}
       employee={employee}
       title="Uredi projekt"
       backHref={`/dashboard/projects/${id}`}
       onLogout={logout}
     >
-      <div className="max-w-lg">
+      <div className="max-w-xl mx-auto">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-white">Uredi projekt</h1>
-          {project && <p className="text-slate-400 text-sm mt-1">{project.name}</p>}
+          <h1 className="text-xl font-bold text-gi-text">Uredi projekt</h1>
+          {project && <p className="text-gi-text-subtle text-sm mt-1">{project.name}</p>}
         </div>
 
         {isLoadingProject ? (
-          <LoadingOverlay />
+          <div className="flex items-center justify-center h-32 border border-gi-border rounded-xl bg-gi-card">
+            <p className="text-gi-text-subtle text-sm animate-pulse">Učitavanje...</p>
+          </div>
         ) : !project ? (
-          <div className="bg-red-950 border border-red-800 rounded-lg px-4 py-3">
+          <div className="bg-red-900/30 border border-red-800/60 rounded-lg px-4 py-3">
             <p className="text-red-300 text-sm">Projekt nije pronađen.</p>
           </div>
         ) : (
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+          <div className="bg-gi-card border border-gi-border rounded-xl p-6">
             <ProjectForm
               defaultValues={{
                 name: project.name,
@@ -107,6 +108,6 @@ export default function EditProjectPage() {
           </div>
         )}
       </div>
-    </DashboardShell>
+    </AppShell>
   )
 }

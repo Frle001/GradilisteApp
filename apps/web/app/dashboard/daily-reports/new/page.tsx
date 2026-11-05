@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import LoadingScreen from '@/components/ui/LoadingScreen'
-import DashboardShell from '@/components/layout/DashboardShell'
+import AppShell from '@/components/layout/AppShell'
 import DailyReportForm from '@/components/daily-reports/DailyReportForm'
 import { type DailyReportFormData, type CreateDailyReportPayload } from '@/lib/types/daily-reports'
 import apiClient from '@/lib/api-client'
@@ -82,24 +82,29 @@ export default function NewDailyReportPage() {
   if (!user) { router.replace('/login'); return null }
 
   return (
-    <DashboardShell
+    <AppShell
       user={user}
       employee={employee}
       title="Novi dnevni izvještaj"
       backHref="/dashboard/daily-reports"
       onLogout={logout}
     >
-      <div className="max-w-3xl space-y-6">
-        <h1 className="text-2xl font-bold text-white">Novi dnevni izvještaj</h1>
+      <div className="max-w-5xl mx-auto">
+        <div className="mb-6">
+          <h1 className="text-xl font-bold text-gi-text">Novi dnevni izvještaj</h1>
+          <p className="text-gi-text-subtle text-xs mt-0.5">Zabilježite aktivnosti i materijale za današnji radni dan</p>
+        </div>
 
         {loadError && (
-          <div className="bg-red-950 border border-red-800 rounded-lg px-4 py-3">
+          <div className="bg-red-900/30 border border-red-800/60 rounded-lg px-4 py-3 mb-5">
             <p className="text-red-300 text-sm">{loadError}</p>
           </div>
         )}
 
         {!formData && !loadError && (
-          <p className="text-slate-400 text-sm">Učitavanje podataka…</p>
+          <div className="bg-gi-card border border-gi-border rounded-xl p-10 text-center">
+            <p className="text-gi-text-subtle text-sm animate-pulse">Učitavanje podataka…</p>
+          </div>
         )}
 
         {formData && (
@@ -113,6 +118,6 @@ export default function NewDailyReportPage() {
           />
         )}
       </div>
-    </DashboardShell>
+    </AppShell>
   )
 }

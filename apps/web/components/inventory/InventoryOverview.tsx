@@ -22,8 +22,8 @@ interface Props {
 
 function SectionCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
-      <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">{title}</h2>
+    <div className="bg-gi-card border border-gi-border rounded-xl p-5 space-y-4">
+      <h2 className="text-xs font-semibold text-gi-text-muted uppercase tracking-wider">{title}</h2>
       {children}
     </div>
   )

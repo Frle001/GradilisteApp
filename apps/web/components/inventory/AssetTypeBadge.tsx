@@ -5,7 +5,7 @@ const colourMap: Record<string, string> = {
   tool:      'bg-amber-900/50 text-amber-300 border-amber-700',
   equipment: 'bg-violet-900/50 text-violet-300 border-violet-700',
   material:  'bg-emerald-900/50 text-emerald-300 border-emerald-700',
-  other:     'bg-slate-800 text-slate-400 border-slate-600',
+  other:     'bg-gi-card-elevated text-gi-text-subtle border-gi-border',
 }
 
 export default function AssetTypeBadge({ type }: { type: string }) {

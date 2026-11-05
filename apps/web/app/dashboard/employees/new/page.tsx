@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import LoadingScreen from '@/components/ui/LoadingScreen'
-import DashboardShell from '@/components/layout/DashboardShell'
+import AppShell from '@/components/layout/AppShell'
 import EmployeeForm from '@/components/employees/EmployeeForm'
 import { type CreateEmployeePayload, canManageEmployees } from '@/lib/types/employees'
 import apiClient from '@/lib/api-client'
@@ -59,64 +59,67 @@ export default function NewEmployeePage() {
   }
 
   return (
-    <DashboardShell
+    <AppShell
       user={user}
       employee={employee}
       title="Novi zaposlenik"
       backHref="/dashboard/employees"
       onLogout={logout}
     >
-      <div className="max-w-lg">
+      <div className="max-w-xl mx-auto">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-white">Novi zaposlenik</h1>
-          <p className="text-slate-400 text-sm mt-1">Dodajte novog zaposlenika u sustav</p>
+          <h1 className="text-2xl font-bold text-gi-text">Novi zaposlenik</h1>
+          <p className="text-gi-text-muted text-sm mt-1">Dodajte novog zaposlenika u sustav</p>
         </div>
 
         {createResult ? (
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6 space-y-4">
+          <div className="bg-gi-card border border-gi-border rounded-xl p-6 space-y-4">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-green-900 flex items-center justify-center shrink-0">
-                <span className="text-green-400 text-sm font-bold">✓</span>
+              <div className="w-8 h-8 rounded-full bg-green-900/40 border border-green-800 flex items-center justify-center shrink-0">
+                <svg className="w-4 h-4 text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+                </svg>
               </div>
-              <p className="text-white font-semibold">Zaposlenik je kreiran</p>
+              <p className="text-gi-text font-semibold">Zaposlenik je kreiran</p>
             </div>
 
             {createResult.loginCreated && createResult.temporaryPassword ? (
-              <div className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-3 space-y-1">
-                <p className="text-slate-300 text-sm">Kreiran korisnički račun za prijavu u sustav.</p>
-                <p className="text-slate-400 text-sm">
+              <div className="bg-gi-card-elevated border border-gi-border rounded-lg px-4 py-3 space-y-2">
+                <p className="text-gi-text-muted text-sm">Kreiran korisnički račun za prijavu u sustav.</p>
+                <p className="text-gi-text-muted text-sm">
                   Privremena lozinka:{' '}
-                  <span className="font-mono text-white bg-slate-700 px-1.5 py-0.5 rounded text-xs">
+                  <span className="font-mono text-gi-text bg-gi-card px-2 py-0.5 rounded text-xs border border-gi-border select-all">
                     {createResult.temporaryPassword}
                   </span>
                 </p>
                 {createResult.mustChangePassword && (
-                  <p className="text-amber-400 text-xs">Zaposlenik mora promijeniti lozinku pri prvoj prijavi.</p>
+                  <p className="text-amber-400 text-xs font-medium">Zaposlenik mora promijeniti lozinku pri prvoj prijavi.</p>
                 )}
+                <p className="text-gi-text-subtle text-xs">Prikazano samo jednom — podijelite sigurnim kanalom.</p>
               </div>
             ) : (
-              <div className="bg-slate-800 border border-slate-700 rounded-lg px-4 py-3">
-                <p className="text-slate-300 text-sm">Nije kreiran korisnički račun za ulogu radnik.</p>
+              <div className="bg-gi-card-elevated border border-gi-border rounded-lg px-4 py-3">
+                <p className="text-gi-text-muted text-sm">Nije kreiran korisnički račun za ulogu radnik.</p>
               </div>
             )}
 
             <div className="flex flex-col sm:flex-row gap-3 pt-1">
               <Link
                 href={`/dashboard/employees/${createResult.id}`}
-                className="flex-1 py-2.5 px-4 bg-white text-slate-900 font-semibold rounded-lg text-sm text-center hover:bg-slate-100 transition"
+                className="flex-1 py-2.5 px-4 bg-gi-yellow hover:bg-gi-yellow-hover text-gi-navy font-semibold rounded-lg text-sm text-center transition-colors"
               >
                 Prikaži zaposlenika →
               </Link>
               <button
                 onClick={() => setCreateResult(null)}
-                className="flex-1 py-2.5 px-4 bg-slate-800 border border-slate-700 text-slate-300 font-medium rounded-lg text-sm hover:bg-slate-700 transition"
+                className="flex-1 py-2.5 px-4 bg-gi-card-elevated border border-gi-border text-gi-text-muted font-medium rounded-lg text-sm hover:bg-gi-border transition-colors"
               >
                 Kreiraj još jednog
               </button>
             </div>
           </div>
         ) : (
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-6">
+          <div className="bg-gi-card border border-gi-border rounded-xl p-6">
             <EmployeeForm
               onSubmit={handleSubmit}
               submitLabel="Kreiraj zaposlenika"
@@ -126,6 +129,6 @@ export default function NewEmployeePage() {
           </div>
         )}
       </div>
-    </DashboardShell>
+    </AppShell>
   )
 }

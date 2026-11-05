@@ -61,6 +61,9 @@ function localTodayStr(): string {
   return new Date().toLocaleDateString('sv') // YYYY-MM-DD in browser local time
 }
 
+const inputCls = 'w-full bg-gi-card-elevated border border-gi-border rounded-lg px-3 py-2 text-sm text-gi-text placeholder:text-gi-text-subtle focus:outline-none focus:border-gi-yellow transition-colors disabled:opacity-50'
+const labelCls = 'block text-xs font-medium text-gi-text-muted uppercase tracking-wider mb-1.5'
+
 export default function DailyReportForm({
   formData,
   existing,
@@ -112,6 +115,8 @@ export default function DailyReportForm({
     }))
   })
 
+  const [editingActivity, setEditingActivity] = useState<ActivityInputUI | null>(null)
+
   const [submitting, setSubmitting] = useState(false)
   const [serverError, setServerError] = useState<string | null>(null)
   const [uploadProgress, setUploadProgress] = useState<string | null>(null)
@@ -120,7 +125,6 @@ export default function DailyReportForm({
   const [materialsLoading, setMaterialsLoading] = useState(false)
 
   // ── Pending photos (create mode only) ──────────────────────────────────────
-  // Uncontrolled fallback: internal state used when the parent doesn't pass pendingPhotos.
   const [internalPhotos, setInternalPhotos] = useState<File[]>([])
   const photos = pendingPhotos ?? internalPhotos
   const photoInputRef = useRef<HTMLInputElement>(null)
@@ -209,10 +213,16 @@ export default function DailyReportForm({
 
   function addActivity(a: ActivityInputUI) {
     setActivities(prev => [...prev, a])
+    setEditingActivity(null)
   }
 
   function removeActivity(tempId: string) {
     setActivities(prev => prev.filter(a => a._tempId !== tempId))
+  }
+
+  function handleEditActivity(activity: ActivityInputUI) {
+    setActivities(prev => prev.filter(a => a._tempId !== activity._tempId))
+    setEditingActivity(activity)
   }
 
   function validate(): string[] {
@@ -304,222 +314,306 @@ export default function DailyReportForm({
       ? 'Spremanje…'
       : submitLabel
 
+  const selectedProject = formData.projects.find(p => p.id === projectId)
+
   return (
-    <form onSubmit={handleSubmit} className="space-y-8">
-      {/* ── Header fields ──────────────────────────────────────────────────── */}
-      <section className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
-        <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">Osnovni podaci</h2>
+    <form onSubmit={handleSubmit}>
+      <div className="grid grid-cols-1 xl:grid-cols-[minmax(0,1fr)_300px] xl:gap-8 xl:items-start space-y-6 xl:space-y-0">
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs text-slate-400 mb-1">Projekt *</label>
-            <select
-              value={projectId}
-              onChange={e => setProjectId(e.target.value)}
-              disabled={submitting || !!existing}
-              className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
-            >
-              <option value="">Odaberite projekt</option>
-              {formData.projects.map(p => (
-                <option key={p.id} value={p.id}>{p.name}</option>
-              ))}
-            </select>
-          </div>
+        {/* ── Main column ──────────────────────────────────────────────────── */}
+        <div className="space-y-6">
 
-          <div>
-            <label className="block text-xs text-slate-400 mb-1">Datum *</label>
-            <input
-              type="date"
-              value={reportDate}
-              onChange={() => {}}
-              disabled={submitting || !!existing || !isEditMode}
-              className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
-            />
-            {!isEditMode && (
-              <p className="text-slate-500 text-xs mt-1">Dnevni izvještaj se može kreirati samo za današnji datum.</p>
-            )}
-          </div>
-
-          <div className="sm:col-span-2">
-            <label className="block text-xs text-slate-400 mb-1">Napomena</label>
-            <textarea
-              value={notes}
-              onChange={e => setNotes(e.target.value)}
-              disabled={submitting}
-              rows={2}
-              placeholder="Opcionalne napomene o radnom danu…"
-              className="w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500 resize-none disabled:opacity-50"
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* ── Worker hours info ─────────────────────────────────────────────── */}
-      <div className="flex items-start gap-3 bg-blue-950/40 border border-blue-800/50 rounded-xl px-4 py-3">
-        <svg className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-        <p className="text-sm text-blue-300">
-          Radnici sada samostalno unose svoje radne sate kroz modul <span className="font-medium text-blue-200">Moji sati</span>.
-        </p>
-      </div>
-
-      {/* ── Activities ────────────────────────────────────────────────────── */}
-      <section className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
-        <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
-          Aktivnosti
-          <span className="ml-2 text-slate-600 font-normal normal-case text-xs">
-            ({activities.length} stavki)
-          </span>
-        </h2>
-
-        <ActivityListPreview
-          activities={activities}
-          onRemove={removeActivity}
-          disabled={submitting}
-        />
-
-        <ActivityEntryForm
-          key={projectId}
-          materials={projectMaterials}
-          materialsLoading={materialsLoading}
-          onAdd={addActivity}
-          disabled={submitting || !projectId}
-          projectId={projectId || undefined}
-          onMaterialAdded={m => setProjectMaterials(prev => [...prev, m])}
-        />
-      </section>
-
-      {/* ── Pending photos (create mode only) ────────────────────────────── */}
-      {!isEditMode && (
-        <section className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
-              Fotografije s gradilišta
-              <span className="ml-2 text-slate-600 font-normal normal-case text-xs">
-                {photos.length} / {MAX_PHOTOS}
-              </span>
-            </h2>
-            {photos.length < MAX_PHOTOS && (
-              <button
-                type="button"
-                disabled={submitting}
-                onClick={() => photoInputRef.current?.click()}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 text-xs font-medium rounded-lg transition disabled:opacity-50"
-              >
-                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
-                </svg>
-                Dodaj fotografije
-              </button>
-            )}
-          </div>
-
-          <input
-            ref={photoInputRef}
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            multiple
-            className="hidden"
-            onChange={handlePhotoSelect}
-          />
-
-          {photoErrors.length > 0 && (
-            <div className="space-y-1">
-              {photoErrors.map((err, i) => (
-                <p key={i} className="text-xs text-amber-400">{err}</p>
-              ))}
+          {/* ── Section 1: Osnovni podaci ─────────────────────────────────── */}
+          <section className="bg-gi-card border border-gi-border rounded-xl p-5 space-y-4">
+            <div>
+              <h2 className="text-xs font-medium text-gi-text-subtle uppercase tracking-wider">Osnovni podaci</h2>
+              <p className="text-xs text-gi-text-subtle/60 mt-0.5">Projekt, datum i opcionalne napomene.</p>
             </div>
-          )}
 
-          {photos.length === 0 ? (
-            <button
-              type="button"
-              disabled={submitting}
-              onClick={() => photoInputRef.current?.click()}
-              className="w-full flex flex-col items-center gap-2 py-6 border border-dashed border-slate-700 rounded-lg text-slate-500 hover:border-slate-500 hover:text-slate-400 transition disabled:pointer-events-none"
-            >
-              <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
-              </svg>
-              <span className="text-xs">Kliknite za dodavanje fotografija s gradilišta</span>
-              <span className="text-xs text-slate-600">JPEG, PNG, WebP &middot; maks. 10 MB po slici</span>
-            </button>
-          ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-              {photos.map((file, idx) => (
-                <div
-                  key={idx}
-                  className="relative group rounded-lg overflow-hidden border border-slate-700 bg-slate-800"
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className={labelCls}>Projekt *</label>
+                <select
+                  value={projectId}
+                  onChange={e => setProjectId(e.target.value)}
+                  disabled={submitting || !!existing}
+                  className={inputCls}
                 >
-                  <img
-                    src={getPhotoUrl(file)}
-                    alt={file.name}
-                    loading="lazy"
-                    className="w-full aspect-square object-cover"
-                  />
-                  <button
-                    type="button"
-                    disabled={submitting}
-                    onClick={() => removePhoto(file)}
-                    className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity bg-red-700 hover:bg-red-600 text-white rounded p-0.5 disabled:pointer-events-none"
-                    title="Ukloni"
-                  >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-                    </svg>
-                  </button>
-                  <div className="px-1.5 py-1 bg-slate-900/80">
-                    <p className="text-xs text-slate-300 truncate">{file.name}</p>
-                    <p className="text-xs text-slate-500">{formatBytes(file.size)}</p>
+                  <option value="">Odaberite projekt</option>
+                  {formData.projects.map(p => (
+                    <option key={p.id} value={p.id}>{p.name}</option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className={labelCls}>Datum *</label>
+                <input
+                  type="date"
+                  value={reportDate}
+                  onChange={() => {}}
+                  disabled={submitting || !!existing || !isEditMode}
+                  className={inputCls}
+                />
+                {!isEditMode && (
+                  <p className="text-gi-text-subtle text-xs mt-1">Dnevni izvještaj se može kreirati samo za današnji datum.</p>
+                )}
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className={labelCls}>Napomena</label>
+                <textarea
+                  value={notes}
+                  onChange={e => setNotes(e.target.value)}
+                  disabled={submitting}
+                  rows={2}
+                  placeholder="Opcionalne napomene o radnom danu…"
+                  className={inputCls + ' resize-none'}
+                />
+              </div>
+            </div>
+          </section>
+
+          {/* ── Worker hours info banner ───────────────────────────────────── */}
+          <div className="flex items-start gap-3 bg-blue-950/30 border border-blue-800/40 rounded-xl px-4 py-3">
+            <svg className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <p className="text-sm text-blue-300">
+              Radnici sada samostalno unose svoje radne sate kroz modul <span className="font-medium text-blue-200">Moji sati</span>.
+            </p>
+          </div>
+
+          {/* ── Section 2: Aktivnosti ──────────────────────────────────────── */}
+          <section className="bg-gi-card border border-gi-border rounded-xl p-5 space-y-4">
+            <div>
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-xs font-medium text-gi-text-subtle uppercase tracking-wider">Aktivnosti</h2>
+                {activities.length > 0 && (
+                  <span className="text-xs text-gi-text-subtle bg-gi-card-elevated border border-gi-border px-2 py-0.5 rounded-full">
+                    {activities.length}
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-gi-text-subtle/60 mt-0.5">Materijali ugrađeni ili skinuti s gradilišta.</p>
+            </div>
+
+            <ActivityListPreview
+              activities={activities}
+              onRemove={removeActivity}
+              onEdit={!submitting ? handleEditActivity : undefined}
+              disabled={submitting}
+            />
+
+            <ActivityEntryForm
+              key={editingActivity?._tempId ?? projectId}
+              initialActivity={editingActivity ?? undefined}
+              materials={projectMaterials}
+              materialsLoading={materialsLoading}
+              onAdd={addActivity}
+              disabled={submitting || !projectId}
+              projectId={projectId || undefined}
+              onMaterialAdded={m => setProjectMaterials(prev => [...prev, m])}
+            />
+          </section>
+
+          {/* ── Section 3: Fotografije (create mode only) ─────────────────── */}
+          {!isEditMode && (
+            <section className="bg-gi-card border border-gi-border rounded-xl p-5 space-y-4">
+              <div>
+                <div className="flex items-center justify-between gap-2">
+                  <h2 className="text-xs font-medium text-gi-text-subtle uppercase tracking-wider">Fotografije s gradilišta</h2>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gi-text-subtle">{photos.length} / {MAX_PHOTOS}</span>
+                    {photos.length < MAX_PHOTOS && (
+                      <button
+                        type="button"
+                        disabled={submitting}
+                        onClick={() => photoInputRef.current?.click()}
+                        className="flex items-center gap-1.5 px-3 py-1.5 bg-gi-card-elevated hover:bg-gi-border border border-gi-border text-gi-text-muted text-xs font-medium rounded-lg transition disabled:opacity-50"
+                      >
+                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" />
+                        </svg>
+                        Dodaj fotografije
+                      </button>
+                    )}
                   </div>
                 </div>
-              ))}
+                <p className="text-xs text-gi-text-subtle/60 mt-0.5">JPEG, PNG ili WebP do 10 MB po slici.</p>
+              </div>
+
+              <input
+                ref={photoInputRef}
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                multiple
+                className="hidden"
+                onChange={handlePhotoSelect}
+              />
+
+              {photoErrors.length > 0 && (
+                <div className="space-y-1">
+                  {photoErrors.map((err, i) => (
+                    <p key={i} className="text-xs text-amber-400">{err}</p>
+                  ))}
+                </div>
+              )}
+
+              {photos.length === 0 ? (
+                <button
+                  type="button"
+                  disabled={submitting}
+                  onClick={() => photoInputRef.current?.click()}
+                  className="w-full flex flex-col items-center gap-2 py-6 border border-dashed border-gi-border rounded-lg text-gi-text-subtle hover:border-gi-border/80 hover:text-gi-text-muted transition disabled:pointer-events-none"
+                >
+                  <svg className="w-7 h-7" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M6.827 6.175A2.31 2.31 0 015.186 7.23c-.38.054-.757.112-1.134.175C2.999 7.58 2.25 8.507 2.25 9.574V18a2.25 2.25 0 002.25 2.25h15A2.25 2.25 0 0021.75 18V9.574c0-1.067-.75-1.994-1.802-2.169a47.865 47.865 0 00-1.134-.175 2.31 2.31 0 01-1.64-1.055l-.822-1.316a2.192 2.192 0 00-1.736-1.039 48.774 48.774 0 00-5.232 0 2.192 2.192 0 00-1.736 1.039l-.821 1.316z" />
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 12.75a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM18.75 10.5h.008v.008h-.008V10.5z" />
+                  </svg>
+                  <span className="text-xs">Kliknite za dodavanje fotografija s gradilišta</span>
+                  <span className="text-xs text-gi-text-subtle">JPEG, PNG, WebP &middot; maks. 10 MB po slici</span>
+                </button>
+              ) : (
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {photos.map((file, idx) => (
+                    <div
+                      key={idx}
+                      className="relative group rounded-lg overflow-hidden border border-gi-border bg-gi-card-elevated"
+                    >
+                      <img
+                        src={getPhotoUrl(file)}
+                        alt={file.name}
+                        loading="lazy"
+                        className="w-full aspect-square object-cover"
+                      />
+                      <button
+                        type="button"
+                        disabled={submitting}
+                        onClick={() => removePhoto(file)}
+                        className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity bg-red-700 hover:bg-red-600 text-white rounded p-0.5 disabled:pointer-events-none"
+                        title="Ukloni"
+                      >
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+                        </svg>
+                      </button>
+                      <div className="px-1.5 py-1 bg-gi-navy/80">
+                        <p className="text-xs text-gi-text-muted truncate">{file.name}</p>
+                        <p className="text-xs text-gi-text-subtle">{formatBytes(file.size)}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {uploadProgress && (
+                <div className="flex items-center gap-2 text-sm text-blue-300">
+                  <svg className="w-4 h-4 animate-spin shrink-0" fill="none" viewBox="0 0 24 24">
+                    <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                    <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                  </svg>
+                  Prijenos fotografija ({uploadProgress})…
+                </div>
+              )}
+            </section>
+          )}
+
+          {/* ── Submit ────────────────────────────────────────────────────── */}
+          {serverError && (
+            <div className="bg-red-900/30 border border-red-800/60 rounded-lg px-4 py-3 text-sm text-red-300">
+              {serverError}
             </div>
           )}
 
-          {uploadProgress && (
-            <div className="flex items-center gap-2 text-sm text-blue-300">
-              <svg className="w-4 h-4 animate-spin shrink-0" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-              </svg>
-              Prijenos fotografija ({uploadProgress})…
-            </div>
-          )}
-        </section>
-      )}
-
-      {/* ── Submit ────────────────────────────────────────────────────────── */}
-      {serverError && (
-        <div className="bg-red-900/30 border border-red-800 rounded-lg px-4 py-3 text-sm text-red-300">
-          {serverError}
+          <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => router.back()}
+              disabled={submitting}
+              className="w-full sm:w-auto px-4 py-3 sm:py-2.5 text-sm text-gi-text-muted hover:text-gi-text disabled:opacity-50 transition-colors text-center border border-gi-border rounded-lg hover:bg-gi-card-elevated"
+            >
+              Odustani
+            </button>
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full sm:w-auto px-5 py-3 sm:py-2.5 bg-gi-yellow hover:bg-gi-yellow-hover disabled:opacity-50 text-gi-navy text-sm font-semibold rounded-lg transition-colors"
+            >
+              {submitting && (
+                <svg className="inline w-4 h-4 animate-spin mr-1.5 -mt-0.5" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+              )}
+              {submitButtonLabel}
+            </button>
+          </div>
         </div>
-      )}
 
-      <div className="flex flex-col-reverse sm:flex-row sm:items-center sm:justify-end gap-3">
-        <button
-          type="button"
-          onClick={() => router.back()}
-          disabled={submitting}
-          className="w-full sm:w-auto px-4 py-3 sm:py-2 text-sm text-slate-400 hover:text-slate-200 disabled:opacity-50 transition-colors text-center border border-slate-800 rounded-lg sm:border-0 sm:rounded-none"
-        >
-          Odustani
-        </button>
-        <button
-          type="submit"
-          disabled={submitting}
-          className="w-full sm:w-auto px-5 py-3 sm:py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors"
-        >
-          {submitting && (
-            <svg className="inline w-4 h-4 animate-spin mr-1.5 -mt-0.5" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-            </svg>
-          )}
-          {submitButtonLabel}
-        </button>
+        {/* ── Summary sidebar (wide desktop only) ─────────────────────────── */}
+        <div className="hidden xl:block">
+          <div className="xl:sticky xl:top-4 bg-gi-card border border-gi-border rounded-xl p-4 space-y-4">
+            <h3 className="text-xs font-medium text-gi-text-subtle uppercase tracking-wider">Pregled</h3>
+
+            <dl className="space-y-3">
+              <div>
+                <dt className="text-[10px] text-gi-text-subtle uppercase tracking-wider mb-0.5">Projekt</dt>
+                <dd className="text-sm text-gi-text font-medium leading-snug">
+                  {selectedProject ? selectedProject.name : (
+                    <span className="text-gi-text-subtle italic">Nije odabran</span>
+                  )}
+                </dd>
+              </div>
+
+              <div>
+                <dt className="text-[10px] text-gi-text-subtle uppercase tracking-wider mb-0.5">Datum</dt>
+                <dd className="text-sm text-gi-text-muted">
+                  {new Date(reportDate).toLocaleDateString('hr-HR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                </dd>
+              </div>
+
+              <div>
+                <dt className="text-[10px] text-gi-text-subtle uppercase tracking-wider mb-0.5">Aktivnosti</dt>
+                <dd className="flex items-center gap-2">
+                  <span className={`text-sm font-semibold ${activities.length > 0 ? 'text-gi-yellow' : 'text-gi-text-subtle'}`}>
+                    {activities.length}
+                  </span>
+                  {activities.length === 0 && (
+                    <span className="text-xs text-gi-text-subtle">— dodajte barem jednu</span>
+                  )}
+                </dd>
+              </div>
+
+              {!isEditMode && (
+                <div>
+                  <dt className="text-[10px] text-gi-text-subtle uppercase tracking-wider mb-0.5">Fotografije</dt>
+                  <dd className="text-sm text-gi-text-muted">{photos.length} / {MAX_PHOTOS}</dd>
+                </div>
+              )}
+
+              {notes.trim() && (
+                <div>
+                  <dt className="text-[10px] text-gi-text-subtle uppercase tracking-wider mb-0.5">Napomena</dt>
+                  <dd className="text-xs text-gi-text-muted line-clamp-3">{notes.trim()}</dd>
+                </div>
+              )}
+            </dl>
+
+            {!projectId && (
+              <p className="text-xs text-amber-400/80 border-t border-gi-border pt-3">
+                Odaberite projekt za pristup materijalima.
+              </p>
+            )}
+
+            {projectId && activities.length === 0 && (
+              <p className="text-xs text-amber-400/80 border-t border-gi-border pt-3">
+                Dodajte barem jednu aktivnost prije slanja.
+              </p>
+            )}
+          </div>
+        </div>
+
       </div>
     </form>
   )

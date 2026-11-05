@@ -51,9 +51,6 @@ export default function ProjectForm({
       .catch(() => {})
   }, [])
 
-  // React Hook Form initialises the select value before async options load, so
-  // the browser keeps the empty option selected. Re-apply the default value once
-  // the option that matches it is available in the DOM.
   const defaultPoslovodaId = defaultValues?.primary_poslovoda_id ?? ''
   useEffect(() => {
     if (
@@ -69,7 +66,7 @@ export default function ProjectForm({
     <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-5">
       {/* Name */}
       <div>
-        <label className="block text-sm font-medium text-slate-300 mb-1.5">
+        <label className="block text-xs font-medium text-gi-text-muted mb-1.5">
           Naziv projekta <span className="text-red-400">*</span>
         </label>
         <input
@@ -83,7 +80,7 @@ export default function ProjectForm({
 
       {/* Address */}
       <div>
-        <label className="block text-sm font-medium text-slate-300 mb-1.5">Adresa</label>
+        <label className="block text-xs font-medium text-gi-text-muted mb-1.5">Adresa</label>
         <input
           type="text"
           className={inputCls(false)}
@@ -94,7 +91,7 @@ export default function ProjectForm({
 
       {/* Description */}
       <div>
-        <label className="block text-sm font-medium text-slate-300 mb-1.5">Opis</label>
+        <label className="block text-xs font-medium text-gi-text-muted mb-1.5">Opis</label>
         <textarea
           rows={3}
           className={inputCls(false) + ' resize-none'}
@@ -106,17 +103,17 @@ export default function ProjectForm({
       {/* Dates */}
       {hideEndDate ? (
         <div>
-          <label className="block text-sm font-medium text-slate-300 mb-1.5">Datum početka</label>
+          <label className="block text-xs font-medium text-gi-text-muted mb-1.5">Datum početka</label>
           <input type="date" className={inputCls(false)} {...register('start_date')} />
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1.5">Datum početka</label>
+            <label className="block text-xs font-medium text-gi-text-muted mb-1.5">Datum početka</label>
             <input type="date" className={inputCls(false)} {...register('start_date')} />
           </div>
           <div>
-            <label className="block text-sm font-medium text-slate-300 mb-1.5">Datum završetka</label>
+            <label className="block text-xs font-medium text-gi-text-muted mb-1.5">Datum završetka</label>
             <input type="date" className={inputCls(false)} {...register('end_date')} />
           </div>
         </div>
@@ -124,7 +121,7 @@ export default function ProjectForm({
 
       {/* Primary Poslovoda */}
       <div>
-        <label className="block text-sm font-medium text-slate-300 mb-1.5">Poslovođa</label>
+        <label className="block text-xs font-medium text-gi-text-muted mb-1.5">Poslovođa</label>
         <select className={inputCls(false)} {...register('primary_poslovoda_id')}>
           <option value="">— Bez poslovođe —</option>
           {poslovodaOptions.map((o) => (
@@ -134,22 +131,20 @@ export default function ProjectForm({
           ))}
         </select>
         {poslovodaOptions.length === 0 && (
-          <p className="text-slate-500 text-xs mt-1">Nema dostupnih poslovođa.</p>
+          <p className="text-gi-text-subtle text-xs mt-1">Nema dostupnih poslovođa.</p>
         )}
       </div>
 
-      {/* Server error */}
       {serverError && (
-        <div className="bg-red-950 border border-red-800 rounded-lg px-4 py-3">
+        <div className="bg-red-900/30 border border-red-800/60 rounded-lg px-4 py-3">
           <p className="text-red-300 text-sm">{serverError}</p>
         </div>
       )}
 
-      {/* Submit */}
       <button
         type="submit"
         disabled={isSubmitting}
-        className="w-full py-2.5 px-4 bg-white text-slate-900 font-semibold rounded-lg text-sm hover:bg-slate-100 disabled:opacity-50 disabled:cursor-not-allowed transition"
+        className="w-full py-2.5 px-4 bg-gi-yellow hover:bg-gi-yellow-hover text-gi-navy font-semibold rounded-lg text-sm disabled:opacity-50 disabled:cursor-not-allowed transition"
       >
         {isSubmitting ? 'Sprema...' : submitLabel}
       </button>
@@ -158,9 +153,9 @@ export default function ProjectForm({
 }
 
 function inputCls(hasError: boolean) {
-  return `w-full px-3.5 py-2.5 bg-slate-800 border ${
-    hasError ? 'border-red-600' : 'border-slate-700'
-  } rounded-lg text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent transition`
+  return `w-full px-3.5 py-2.5 bg-gi-card-elevated border ${
+    hasError ? 'border-red-600' : 'border-gi-border'
+  } rounded-lg text-gi-text placeholder:text-gi-text-subtle text-sm focus:outline-none focus:border-gi-yellow transition`
 }
 
 function FieldError({ msg }: { msg?: string }) {

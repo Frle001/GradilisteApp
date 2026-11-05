@@ -2,9 +2,10 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
+import { Plus } from 'lucide-react'
 import { useAuth } from '@/hooks/useAuth'
 import LoadingScreen from '@/components/ui/LoadingScreen'
-import DashboardShell from '@/components/layout/DashboardShell'
+import AppShell from '@/components/layout/AppShell'
 import PurchaseItemsPreview from '@/components/material-purchases/PurchaseItemsPreview'
 import ReceiptUploadInput from '@/components/material-purchases/ReceiptUploadInput'
 import MaterialPicker from '@/components/daily-reports/MaterialPicker'
@@ -16,15 +17,14 @@ import {
   type PurchaseItemDraft,
 } from '@/lib/types/material-purchases'
 
-// ── Shared style tokens (match daily-reports form style) ──────────────────────
 const inputCls = [
-  'w-full bg-slate-800 border border-slate-700 rounded px-3 py-2 text-sm text-slate-100',
-  'placeholder-slate-500',
-  'focus:outline-none focus:ring-1 focus:ring-blue-500',
+  'w-full bg-gi-card-elevated border border-gi-border rounded-lg px-3.5 py-2.5 text-sm text-gi-text',
+  'placeholder:text-gi-text-subtle',
+  'focus:outline-none focus:border-gi-yellow transition-colors',
   'disabled:opacity-50',
 ].join(' ')
 
-const labelCls = 'block text-xs text-slate-400 mb-1'
+const labelCls = 'block text-xs font-medium text-gi-text-muted mb-1.5'
 
 let tempIdCounter = 0
 function nextTempId() {
@@ -35,7 +35,6 @@ export default function MaterialPurchasesNewPage() {
   const { user, employee, isLoading, logout } = useAuth()
   const router = useRouter()
 
-  // ── Form state (unchanged) ──────────────────────────────────────────────────
   const [projects, setProjects] = useState<PurchaseFormProject[]>([])
   const [materials, setMaterials] = useState<PurchaseFormMaterial[]>([])
   const [projectID, setProjectID] = useState('')
@@ -44,23 +43,17 @@ export default function MaterialPurchasesNewPage() {
   const [notes, setNotes] = useState('')
   const [purchasedAt, setPurchasedAt] = useState(() => new Date().toISOString().slice(0, 10))
 
-  // ── Item entry state (unchanged) ────────────────────────────────────────────
   const [selectedMaterialID, setSelectedMaterialID] = useState('')
   const [quantity, setQuantity] = useState('')
   const [unit, setUnit] = useState('')
 
-  // ── Submission state (unchanged) ────────────────────────────────────────────
   const [submitting, setSubmitting] = useState(false)
   const [loadingMaterials, setLoadingMaterials] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [createModalName, setCreateModalName] = useState<string | null>(null)
 
-  // ── Load materials when project changes (unchanged) ─────────────────────────
   const loadMaterials = useCallback(async (pid: string) => {
-    if (!pid) {
-      setMaterials([])
-      return
-    }
+    if (!pid) { setMaterials([]); return }
     setLoadingMaterials(true)
     try {
       const res = await apiClient.get(`/material-purchases/form-data?project_id=${pid}`)
@@ -72,7 +65,6 @@ export default function MaterialPurchasesNewPage() {
     }
   }, [])
 
-  // ── Load projects on mount; auto-select when only one is available (unchanged)
   useEffect(() => {
     apiClient.get('/material-purchases/form-data').then(res => {
       const projs: PurchaseFormProject[] = res.data.projects ?? []
@@ -84,7 +76,6 @@ export default function MaterialPurchasesNewPage() {
     }).catch(() => {})
   }, [loadMaterials])
 
-  // ── Handlers (unchanged) ────────────────────────────────────────────────────
   function handleProjectChange(pid: string) {
     setProjectID(pid)
     setItems([])
@@ -94,9 +85,9 @@ export default function MaterialPurchasesNewPage() {
     loadMaterials(pid)
   }
 
-  function handleMaterialChange(id: string, unit: string) {
+  function handleMaterialChange(id: string, u: string) {
     setSelectedMaterialID(id)
-    setUnit(unit)
+    setUnit(u)
   }
 
   function handleAddItem() {
@@ -146,11 +137,8 @@ export default function MaterialPurchasesNewPage() {
         quantity: i.quantity,
         unit: i.unit,
       }))))
-      if (receiptFile) {
-        formData.append('receipt', receiptFile)
-      }
+      if (receiptFile) formData.append('receipt', receiptFile)
 
-      // Clear Content-Type so browser sets multipart/form-data with correct boundary.
       const res = await apiClient.post('/material-purchases', formData, {
         headers: { 'Content-Type': null },
       })
@@ -170,7 +158,7 @@ export default function MaterialPurchasesNewPage() {
   const canAdd = selectedMaterialID !== '' && parseFloat(quantity) > 0
 
   return (
-    <DashboardShell
+    <AppShell
       user={user}
       employee={employee}
       title="Novi upis materijala"
@@ -178,24 +166,22 @@ export default function MaterialPurchasesNewPage() {
       onLogout={logout}
     >
       <div className="max-w-3xl space-y-6">
-
-        {/* ── Page heading ────────────────────────────────────────────────── */}
         <div>
-          <h1 className="text-2xl font-bold text-white">Novi upis materijala</h1>
-          <p className="text-sm text-slate-400 mt-1">Evidentirajte kupljeni materijal za gradilište</p>
+          <h1 className="text-xl font-bold text-gi-text">Novi upis materijala</h1>
+          <p className="text-sm text-gi-text-subtle mt-0.5">Evidentirajte kupljeni materijal za gradilište</p>
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-8">
+        <form onSubmit={handleSubmit} className="space-y-5">
 
-          {/* ── Card 1: GRADILIŠTE I DATUM ──────────────────────────────── */}
-          <section className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
-            <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
+          {/* ── Gradilište i datum ── */}
+          <section className="bg-gi-card border border-gi-border rounded-xl p-5 space-y-4">
+            <h2 className="text-xs font-semibold text-gi-text-muted uppercase tracking-wider">
               Gradilište i datum
             </h2>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <label className={labelCls}>Gradilište *</label>
+                <label className={labelCls}>Gradilište <span className="text-red-400">*</span></label>
                 <select
                   className={inputCls}
                   value={projectID}
@@ -209,12 +195,12 @@ export default function MaterialPurchasesNewPage() {
                   ))}
                 </select>
                 {projects.length === 0 && (
-                  <p className="text-xs text-slate-500 mt-1">Nema aktivnih gradilišta koja su vam dodijeljena.</p>
+                  <p className="text-xs text-gi-text-subtle mt-1">Nema aktivnih gradilišta koja su vam dodijeljena.</p>
                 )}
               </div>
 
               <div>
-                <label className={labelCls}>Datum kupnje *</label>
+                <label className={labelCls}>Datum kupnje <span className="text-red-400">*</span></label>
                 <input
                   type="date"
                   className={inputCls}
@@ -227,28 +213,26 @@ export default function MaterialPurchasesNewPage() {
             </div>
           </section>
 
-          {/* ── Card 2: MATERIJALI (list + add form together) ──────────── */}
-          <section className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-4">
-            <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
+          {/* ── Materijali ── */}
+          <section className="bg-gi-card border border-gi-border rounded-xl p-5 space-y-4">
+            <h2 className="text-xs font-semibold text-gi-text-muted uppercase tracking-wider">
               Materijali
-              <span className="ml-2 text-slate-600 font-normal normal-case text-xs">
+              <span className="ml-2 text-gi-text-subtle font-normal normal-case">
                 ({items.length} stavki)
               </span>
             </h2>
 
             {!projectID ? (
-              <p className="text-slate-500 text-sm">Prvo odaberite gradilište.</p>
+              <p className="text-gi-text-subtle text-sm">Prvo odaberite gradilište.</p>
             ) : (
               <div className="space-y-4">
-                {/* Items list — always visible; empty state handled inside component */}
                 <PurchaseItemsPreview
                   items={items}
                   onRemove={tempId => setItems(prev => prev.filter(i => i._tempId !== tempId))}
                   disabled={submitting}
                 />
 
-                {/* Add form */}
-                <div className="space-y-3">
+                <div className="space-y-3 pt-2 border-t border-gi-border">
                   <div>
                     <label className={labelCls}>Dodaj materijal</label>
                     <MaterialPicker
@@ -261,8 +245,8 @@ export default function MaterialPurchasesNewPage() {
                       onCreateNew={name => setCreateModalName(name)}
                     />
                     {selectedMaterial && (
-                      <p className="text-xs text-slate-500 mt-1">
-                        Dostupno: {selectedMaterial.available_quantity.toFixed(2)} {selectedMaterial.unit}
+                      <p className="text-xs text-gi-text-subtle mt-1">
+                        Dostupno: <span className="text-gi-text-muted font-medium">{selectedMaterial.available_quantity.toFixed(2)} {selectedMaterial.unit}</span>
                       </p>
                     )}
                   </div>
@@ -282,7 +266,7 @@ export default function MaterialPurchasesNewPage() {
                       />
                     </div>
                     <div>
-                      <label className={labelCls}>Jedinica</label>
+                      <label className={labelCls}>Jedinica mjere</label>
                       <input
                         type="text"
                         placeholder="kom, m, kg…"
@@ -298,11 +282,9 @@ export default function MaterialPurchasesNewPage() {
                     type="button"
                     onClick={handleAddItem}
                     disabled={!canAdd || submitting}
-                    className="w-full py-2 rounded border border-slate-600 bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                    className="w-full py-2 rounded-lg border border-gi-border bg-gi-card-elevated hover:bg-gi-border text-gi-text-muted hover:text-gi-text text-sm font-medium transition-colors disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                   >
-                    <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
-                    </svg>
+                    <Plus className="w-4 h-4" />
                     Dodaj na listu
                   </button>
                 </div>
@@ -310,20 +292,20 @@ export default function MaterialPurchasesNewPage() {
             )}
           </section>
 
-          {/* ── Card 3: FOTOGRAFIJA RAČUNA ──────────────────────────────── */}
-          <section className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-3">
+          {/* ── Fotografija računa ── */}
+          <section className="bg-gi-card border border-gi-border rounded-xl p-5 space-y-3">
             <div>
-              <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">
+              <h2 className="text-xs font-semibold text-gi-text-muted uppercase tracking-wider">
                 Fotografija računa
               </h2>
-              <p className="text-xs text-slate-500 mt-0.5">Nije obavezno, ali preporučeno za evidenciju.</p>
+              <p className="text-xs text-gi-text-subtle mt-0.5">Nije obavezno, ali preporučeno za evidenciju.</p>
             </div>
             <ReceiptUploadInput file={receiptFile} onChange={setReceiptFile} disabled={submitting} />
           </section>
 
-          {/* ── Card 4: NAPOMENA ────────────────────────────────────────── */}
-          <section className="bg-slate-900 border border-slate-800 rounded-xl p-5 space-y-2">
-            <h2 className="text-sm font-semibold text-slate-300 uppercase tracking-wide">Napomena</h2>
+          {/* ── Napomena ── */}
+          <section className="bg-gi-card border border-gi-border rounded-xl p-5 space-y-2">
+            <h2 className="text-xs font-semibold text-gi-text-muted uppercase tracking-wider">Napomena</h2>
             <textarea
               rows={3}
               placeholder="Dodatne napomene o kupnji…"
@@ -334,27 +316,25 @@ export default function MaterialPurchasesNewPage() {
             />
           </section>
 
-          {/* ── Error ───────────────────────────────────────────────────── */}
           {error && (
-            <div className="bg-red-900/30 border border-red-800 rounded-lg px-4 py-3 text-sm text-red-300">
+            <div className="bg-red-900/30 border border-red-800/60 rounded-lg px-4 py-3 text-sm text-red-300">
               {error}
             </div>
           )}
 
-          {/* ── Submit (right-aligned, matches daily-reports style) ─────── */}
           <div className="flex items-center justify-end gap-3">
             <button
               type="button"
               onClick={() => router.back()}
               disabled={submitting}
-              className="px-4 py-2 text-sm text-slate-400 hover:text-slate-200 disabled:opacity-50 transition-colors"
+              className="px-4 py-2 text-sm text-gi-text-subtle hover:text-gi-text-muted disabled:opacity-50 transition-colors"
             >
               Odustani
             </button>
             <button
               type="submit"
               disabled={submitting || items.length === 0 || !projectID}
-              className="px-5 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition-colors flex items-center gap-2"
+              className="px-5 py-2.5 bg-gi-yellow hover:bg-gi-yellow-hover disabled:opacity-50 text-gi-navy text-sm font-semibold rounded-lg transition-colors flex items-center gap-2"
             >
               {submitting ? (
                 <>
@@ -370,6 +350,7 @@ export default function MaterialPurchasesNewPage() {
 
         </form>
       </div>
+
       {createModalName !== null && projectID && (
         <CreateMaterialModal
           projectId={projectID}
@@ -382,6 +363,6 @@ export default function MaterialPurchasesNewPage() {
           onClose={() => setCreateModalName(null)}
         />
       )}
-    </DashboardShell>
+    </AppShell>
   )
 }

@@ -5,9 +5,9 @@ interface Props {
 }
 
 const statusStyles: Record<ProjectStatus, string> = {
-  active: 'bg-green-900 text-green-300 border-green-800',
-  closed: 'bg-slate-800 text-slate-400 border-slate-700',
-  archived: 'bg-amber-900 text-amber-300 border-amber-800',
+  active: 'bg-green-900/50 text-green-300 border-green-800/60',
+  closed: 'bg-gi-card-elevated text-gi-text-muted border-gi-border',
+  archived: 'bg-amber-900/40 text-amber-300 border-amber-800/50',
 }
 
 export default function ProjectStatusBadge({ status }: Props) {

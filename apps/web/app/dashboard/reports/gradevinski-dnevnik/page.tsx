@@ -10,7 +10,7 @@ import {
   type ReportFilter,
   type ReportFilterOptions,
 } from '@/lib/types/reports'
-import DashboardShell from '@/components/layout/DashboardShell'
+import AppShell from '@/components/layout/AppShell'
 import ReportFilters from '@/components/reports/ReportFilters'
 import GradevinskiDnevnikTable from '@/components/reports/GradevinskiDnevnikTable'
 import { DnevnikSummaryCards } from '@/components/reports/ReportSummaryCards'
@@ -98,25 +98,24 @@ export default function GradevinskiDnevnikPage() {
   if (!user) return null
 
   return (
-    <DashboardShell
+    <AppShell
       user={user}
       employee={employee}
       title="Građevinski dnevnik"
       backHref="/dashboard"
       onLogout={logout}
-      wide
     >
       <div className="space-y-5">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">Građevinski dnevnik</h1>
-            <p className="text-sm text-slate-400 mt-1">Pregled radnih sati po radnicima i gradilištu</p>
+            <h1 className="text-xl font-bold text-gi-text tracking-tight">Građevinski dnevnik</h1>
+            <p className="text-sm text-gi-text-subtle mt-0.5">Pregled radnih sati po radnicima i gradilištu</p>
           </div>
           <div className="flex items-center gap-3">
             <button
               onClick={() => void handleRefresh()}
               disabled={refreshing || loading}
-              className="text-sm text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 px-3 py-2 rounded-lg transition disabled:opacity-50"
+              className="text-sm text-gi-text-muted hover:text-gi-text border border-gi-border hover:border-gi-text-subtle px-3 py-2 rounded-lg transition-colors disabled:opacity-50"
             >
               {refreshing ? 'Osvježavanje…' : 'Osvježi'}
             </button>
@@ -138,7 +137,7 @@ export default function GradevinskiDnevnikPage() {
         />
 
         {optionsError && (
-          <div className="rounded-xl bg-amber-950 border border-amber-800 text-amber-300 text-sm px-4 py-3">
+          <div className="rounded-xl bg-amber-900/20 border border-amber-700/40 text-amber-300 text-sm px-4 py-3">
             {optionsError}
           </div>
         )}
@@ -146,7 +145,7 @@ export default function GradevinskiDnevnikPage() {
         {data && <DnevnikSummaryCards summary={data.summary} />}
 
         {error && (
-          <div className="rounded-xl bg-red-950 border border-red-800 text-red-300 text-sm px-4 py-3 flex items-center gap-2">
+          <div className="rounded-xl bg-red-900/30 border border-red-800/60 text-red-300 text-sm px-4 py-3 flex items-center gap-2">
             <svg className="w-4 h-4 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
               <path strokeLinecap="round" strokeLinejoin="round" d="M12 9v3.75m9-.75a9 9 0 11-18 0 9 9 0 0118 0zm-9 3.75h.008v.008H12v-.008z" />
             </svg>
@@ -160,6 +159,6 @@ export default function GradevinskiDnevnikPage() {
           <ReportPaginationBar pagination={data.pagination} onPageChange={handlePageChange} />
         )}
       </div>
-    </DashboardShell>
+    </AppShell>
   )
 }

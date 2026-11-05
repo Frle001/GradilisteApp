@@ -62,7 +62,7 @@ export default function EmployeeAssetForm({ employeeID, asset, onSuccess, onCanc
       {/* Asset type + Name */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-slate-300 mb-1.5">
+          <label className="block text-xs font-medium text-gi-text-muted uppercase tracking-wider mb-1.5">
             Vrsta <span className="text-red-400">*</span>
           </label>
           <select
@@ -77,7 +77,7 @@ export default function EmployeeAssetForm({ employeeID, asset, onSuccess, onCanc
           {errors.asset_type && <p className="text-red-400 text-xs mt-1">{errors.asset_type.message}</p>}
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-300 mb-1.5">
+          <label className="block text-xs font-medium text-gi-text-muted uppercase tracking-wider mb-1.5">
             Naziv <span className="text-red-400">*</span>
           </label>
           <input
@@ -93,7 +93,7 @@ export default function EmployeeAssetForm({ employeeID, asset, onSuccess, onCanc
       {/* Quantity + Unit */}
       <div className="grid grid-cols-2 gap-4">
         <div>
-          <label className="block text-sm font-medium text-slate-300 mb-1.5">
+          <label className="block text-xs font-medium text-gi-text-muted uppercase tracking-wider mb-1.5">
             Količina <span className="text-red-400">*</span>
           </label>
           <input
@@ -110,7 +110,7 @@ export default function EmployeeAssetForm({ employeeID, asset, onSuccess, onCanc
           {errors.quantity && <p className="text-red-400 text-xs mt-1">{errors.quantity.message}</p>}
         </div>
         <div>
-          <label className="block text-sm font-medium text-slate-300 mb-1.5">Jedinica</label>
+          <label className="block text-xs font-medium text-gi-text-muted uppercase tracking-wider mb-1.5">Jedinica</label>
           <input
             type="text"
             className={inputCls(false)}
@@ -122,7 +122,7 @@ export default function EmployeeAssetForm({ employeeID, asset, onSuccess, onCanc
 
       {/* Serial number */}
       <div>
-        <label className="block text-sm font-medium text-slate-300 mb-1.5">Serijski broj</label>
+        <label className="block text-xs font-medium text-gi-text-muted uppercase tracking-wider mb-1.5">Serijski broj</label>
         <input
           type="text"
           className={inputCls(false)}
@@ -133,7 +133,7 @@ export default function EmployeeAssetForm({ employeeID, asset, onSuccess, onCanc
 
       {/* Notes */}
       <div>
-        <label className="block text-sm font-medium text-slate-300 mb-1.5">Napomena</label>
+        <label className="block text-xs font-medium text-gi-text-muted uppercase tracking-wider mb-1.5">Napomena</label>
         <textarea
           rows={2}
           className={inputCls(false) + ' resize-none'}
@@ -143,7 +143,7 @@ export default function EmployeeAssetForm({ employeeID, asset, onSuccess, onCanc
       </div>
 
       {serverError && (
-        <div className="bg-red-950 border border-red-800 rounded-lg px-4 py-3">
+        <div className="bg-red-900/30 border border-red-800/60 rounded-lg px-4 py-3">
           <p className="text-red-300 text-sm">{serverError}</p>
         </div>
       )}
@@ -152,14 +152,14 @@ export default function EmployeeAssetForm({ employeeID, asset, onSuccess, onCanc
         <button
           type="submit"
           disabled={isSubmitting}
-          className="flex-1 py-2 px-4 bg-white text-slate-900 font-semibold rounded-lg text-sm hover:bg-slate-100 disabled:opacity-50 transition"
+          className="flex-1 py-2.5 px-4 bg-gi-yellow hover:bg-gi-yellow-hover text-gi-navy font-semibold rounded-lg text-sm disabled:opacity-50 transition-colors"
         >
           {isSubmitting ? 'Sprema...' : asset ? 'Spremi izmjene' : 'Dodaj zaduženje'}
         </button>
         <button
           type="button"
           onClick={onCancel}
-          className="py-2 px-4 text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 rounded-lg text-sm transition"
+          className="py-2.5 px-4 text-gi-text-muted hover:text-gi-text border border-gi-border hover:bg-gi-card-elevated rounded-lg text-sm transition-colors"
         >
           Odustani
         </button>
@@ -169,7 +169,9 @@ export default function EmployeeAssetForm({ employeeID, asset, onSuccess, onCanc
 }
 
 function inputCls(hasError: boolean) {
-  return `w-full px-3.5 py-2.5 bg-slate-800 border ${
-    hasError ? 'border-red-600' : 'border-slate-700'
-  } rounded-lg text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 focus:border-transparent transition`
+  return [
+    'w-full px-3.5 py-2.5 bg-gi-card-elevated border rounded-lg text-gi-text placeholder:text-gi-text-subtle text-sm',
+    'focus:outline-none focus:border-gi-yellow transition-colors',
+    hasError ? 'border-red-600' : 'border-gi-border',
+  ].join(' ')
 }

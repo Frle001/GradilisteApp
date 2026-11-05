@@ -49,6 +49,9 @@ function fmtDate(dateStr: string): string {
   })
 }
 
+const inputCls =
+  'w-full bg-gi-card-elevated border border-gi-border rounded-lg px-3 py-2 text-sm text-gi-text placeholder:text-gi-text-subtle focus:outline-none focus:border-gi-yellow transition-colors disabled:opacity-50'
+
 interface Props {
   entryId: string
   onClose: () => void
@@ -153,15 +156,26 @@ export default function WorkerHoursDetailPanel({ entryId, onClose }: Props) {
 
       {/* Panel */}
       <div
-        className="relative w-full max-w-lg h-full bg-slate-950 border-l border-slate-800 overflow-y-auto shadow-2xl"
+        className="relative w-full max-w-lg h-full bg-gi-navy border-l border-gi-border overflow-y-auto shadow-2xl"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="sticky top-0 z-10 bg-slate-900 border-b border-slate-800 px-5 py-4 flex items-center justify-between gap-3">
-          <h2 className="text-base font-semibold text-white">Detalji upisanih sati</h2>
+        <div className="sticky top-0 z-10 bg-gi-workspace border-b border-gi-border px-5 py-3 flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-gi-text">Detalji upisanih sati</h2>
+            {detail && (
+              <p className="text-xs text-gi-text-subtle mt-0.5 truncate">
+                {detail.worker_name}
+                <span className="mx-1 text-gi-border">·</span>
+                <span className="text-gi-yellow font-semibold">{detail.hours_worked} h</span>
+                <span className="mx-1 text-gi-border">·</span>
+                {fmtDate(detail.work_date)}
+              </p>
+            )}
+          </div>
           <button
             onClick={onClose}
-            className="text-slate-400 hover:text-white p-1 rounded transition"
+            className="text-gi-text-muted hover:text-gi-text p-1 rounded transition-colors shrink-0 mt-0.5"
             aria-label="Zatvori"
           >
             <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -172,9 +186,9 @@ export default function WorkerHoursDetailPanel({ entryId, onClose }: Props) {
 
         <div className="p-5 space-y-6">
           {loading ? (
-            <p className="text-slate-500 text-sm">Učitavanje...</p>
+            <p className="text-gi-text-subtle text-sm animate-pulse">Učitavanje…</p>
           ) : fetchError ? (
-            <div className="bg-red-950 border border-red-800 rounded-lg px-4 py-3">
+            <div className="bg-red-900/30 border border-red-800/60 rounded-lg px-4 py-3">
               <p className="text-red-300 text-sm">{fetchError}</p>
             </div>
           ) : detail && (
@@ -183,12 +197,12 @@ export default function WorkerHoursDetailPanel({ entryId, onClose }: Props) {
               <div className="space-y-4">
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <p className="text-lg font-bold text-white">{detail.worker_name}</p>
-                    <p className="text-sm text-slate-400">{ROLE_LABELS[detail.worker_role] ?? detail.worker_role}</p>
+                    <p className="text-lg font-bold text-gi-text">{detail.worker_name}</p>
+                    <p className="text-sm text-gi-text-muted">{ROLE_LABELS[detail.worker_role] ?? detail.worker_role}</p>
                   </div>
                   <div className="text-right shrink-0">
-                    <span className="text-3xl font-bold text-white">{detail.hours_worked}</span>
-                    <span className="text-slate-400 ml-1 text-sm">h</span>
+                    <span className="text-3xl font-bold text-gi-yellow">{detail.hours_worked}</span>
+                    <span className="text-gi-text-muted ml-1 text-sm">h</span>
                     {originalHours !== null && originalHours !== detail.hours_worked && (
                       <p className="text-xs text-amber-400 mt-0.5">
                         Originalno: <span className="line-through">{originalHours} h</span>
@@ -199,30 +213,30 @@ export default function WorkerHoursDetailPanel({ entryId, onClose }: Props) {
 
                 <div className="grid grid-cols-2 gap-3 text-sm">
                   <div>
-                    <p className="text-xs text-slate-500 uppercase tracking-wide mb-0.5">Projekt</p>
-                    <p className="text-white">{detail.project_name}</p>
+                    <p className="text-xs text-gi-text-subtle uppercase tracking-wide mb-0.5">Projekt</p>
+                    <p className="text-gi-text">{detail.project_name}</p>
                   </div>
                   <div>
-                    <p className="text-xs text-slate-500 uppercase tracking-wide mb-0.5">Datum</p>
-                    <p className="text-white capitalize">{fmtDate(detail.work_date)}</p>
+                    <p className="text-xs text-gi-text-subtle uppercase tracking-wide mb-0.5">Datum</p>
+                    <p className="text-gi-text capitalize">{fmtDate(detail.work_date)}</p>
                   </div>
 
                   {detail.notes && (
                     <div className="col-span-2">
-                      <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Napomena</p>
-                      <p className="text-slate-300 whitespace-pre-wrap break-words">{detail.notes}</p>
+                      <p className="text-xs text-gi-text-subtle uppercase tracking-wide mb-1">Napomena</p>
+                      <p className="text-gi-text-muted whitespace-pre-wrap break-words">{detail.notes}</p>
                     </div>
                   )}
 
                   {detail.work_description && (
                     <div className="col-span-2">
-                      <p className="text-xs text-slate-500 uppercase tracking-wide mb-1">Opis rada</p>
-                      <p className="text-slate-300 whitespace-pre-wrap break-words">{detail.work_description}</p>
+                      <p className="text-xs text-gi-text-subtle uppercase tracking-wide mb-1">Opis rada</p>
+                      <p className="text-gi-text-muted whitespace-pre-wrap break-words">{detail.work_description}</p>
                     </div>
                   )}
                 </div>
 
-                <p className="text-xs text-slate-600">
+                <p className="text-xs text-gi-text-subtle">
                   Upisano: {fmt(detail.created_at)}
                   {detail.updated_at !== detail.created_at && (
                     <> · Ažurirano: {fmt(detail.updated_at)}</>
@@ -237,7 +251,7 @@ export default function WorkerHoursDetailPanel({ entryId, onClose }: Props) {
                       setNewHours(String(detail.hours_worked))
                       setCorrectionError(null)
                     }}
-                    className="text-sm text-amber-400 hover:text-amber-300 border border-amber-700/60 hover:border-amber-500 px-3 py-1.5 rounded-lg transition"
+                    className="text-sm text-gi-text-muted hover:text-gi-yellow border border-gi-border hover:border-gi-yellow px-3 py-1.5 rounded-lg transition-colors"
                   >
                     Ispravi sate
                   </button>
@@ -248,25 +262,26 @@ export default function WorkerHoursDetailPanel({ entryId, onClose }: Props) {
                   <form onSubmit={handleCorrect} className="border border-amber-800/50 rounded-xl p-4 space-y-3 bg-amber-950/20">
                     <p className="text-xs font-semibold text-amber-300 uppercase tracking-wide">Ispravak sati</p>
                     <div>
-                      <label className="block text-xs text-slate-400 mb-1">Ispravljeni sati</label>
+                      <label className="block text-xs text-gi-text-muted mb-1">Ispravljeni sati</label>
                       <input
                         type="number" min="0" max="24" step="0.5"
+                        inputMode="decimal"
                         value={newHours}
                         onChange={e => setNewHours(e.target.value)}
-                        className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+                        className={inputCls}
                         disabled={correcting}
                       />
                     </div>
                     <div>
-                      <label className="block text-xs text-slate-400 mb-1">
+                      <label className="block text-xs text-gi-text-muted mb-1">
                         Razlog izmjene <span className="text-red-400">*</span>
                       </label>
                       <textarea
                         value={reason}
                         onChange={e => setReason(e.target.value)}
                         rows={2}
-                        placeholder="Npr. Greška u unosu..."
-                        className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 resize-none"
+                        placeholder="Npr. Greška u unosu…"
+                        className={`${inputCls} resize-none`}
                         disabled={correcting}
                       />
                     </div>
@@ -275,14 +290,14 @@ export default function WorkerHoursDetailPanel({ entryId, onClose }: Props) {
                       <button
                         type="submit"
                         disabled={correcting}
-                        className="px-3 py-1.5 bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium rounded-lg transition disabled:opacity-50"
+                        className="px-3 py-1.5 bg-gi-yellow hover:bg-gi-yellow-hover text-gi-navy text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
                       >
-                        {correcting ? 'Spremanje...' : 'Spremi'}
+                        {correcting ? 'Spremanje…' : 'Spremi'}
                       </button>
                       <button
                         type="button"
                         onClick={() => setShowCorrectionForm(false)}
-                        className="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-sm rounded-lg transition"
+                        className="px-3 py-1.5 bg-gi-card-elevated hover:bg-gi-border text-gi-text-muted text-sm rounded-lg transition-colors"
                       >
                         Odustani
                       </button>
@@ -294,19 +309,19 @@ export default function WorkerHoursDetailPanel({ entryId, onClose }: Props) {
               {/* Revision history */}
               {detail.revisions.length > 0 && (
                 <div>
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">
+                  <p className="text-xs font-semibold text-gi-text-muted uppercase tracking-wide mb-3">
                     Povijest ispravaka
                   </p>
                   <ul className="space-y-3">
                     {detail.revisions.map(rev => (
-                      <li key={rev.id} className="border-l-2 border-amber-700 pl-3">
-                        <p className="text-sm text-white">
-                          <span className="line-through text-slate-500">{rev.previous_hours} h</span>
-                          {' → '}
-                          <span className="font-semibold">{rev.new_hours} h</span>
+                      <li key={rev.id} className="border-l-2 border-gi-yellow/60 pl-3">
+                        <p className="text-sm text-gi-text">
+                          <span className="line-through text-gi-text-subtle">{rev.previous_hours} h</span>
+                          <span className="text-gi-text-muted mx-1">→</span>
+                          <span className="font-semibold text-gi-yellow">{rev.new_hours} h</span>
                         </p>
-                        <p className="text-xs text-slate-400 mt-0.5 whitespace-pre-wrap break-words">{rev.reason}</p>
-                        <p className="text-xs text-slate-600 mt-0.5">
+                        <p className="text-xs text-gi-text-muted mt-0.5 whitespace-pre-wrap break-words">{rev.reason}</p>
+                        <p className="text-xs text-gi-text-subtle mt-0.5">
                           {rev.changed_by_name ?? 'Nepoznat'} · {fmt(rev.created_at)}
                         </p>
                       </li>
@@ -317,19 +332,17 @@ export default function WorkerHoursDetailPanel({ entryId, onClose }: Props) {
 
               {/* Internal comments */}
               <div>
-                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">
+                <p className="text-xs font-semibold text-gi-text-muted uppercase tracking-wide mb-1">
                   Interni komentari
-                  <span className="ml-2 text-slate-600 font-normal normal-case">
-                    (samo direktor / inženjer)
-                  </span>
                 </p>
+                <p className="text-xs text-gi-text-subtle mb-3">(samo direktor / inženjer)</p>
 
                 {detail.comments.length > 0 && (
                   <ul className="space-y-2 mb-3">
                     {detail.comments.map(c => (
-                      <li key={c.id} className="bg-slate-800/60 border border-slate-700/60 rounded-lg px-3 py-2.5">
-                        <p className="text-sm text-slate-200 whitespace-pre-wrap break-words">{c.comment_text}</p>
-                        <p className="text-xs text-slate-500 mt-1">
+                      <li key={c.id} className="bg-gi-card-elevated border border-gi-border rounded-lg px-3 py-2.5">
+                        <p className="text-sm text-gi-text whitespace-pre-wrap break-words">{c.comment_text}</p>
+                        <p className="text-xs text-gi-text-subtle mt-1">
                           {c.author_name ?? 'Nepoznat'} · {fmt(c.created_at)}
                         </p>
                       </li>
@@ -342,17 +355,17 @@ export default function WorkerHoursDetailPanel({ entryId, onClose }: Props) {
                     value={commentText}
                     onChange={e => setCommentText(e.target.value)}
                     rows={2}
-                    placeholder="Dodaj interni komentar..."
-                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 resize-none"
+                    placeholder="Dodaj interni komentar…"
+                    className={`${inputCls} resize-none`}
                     disabled={addingComment}
                   />
                   {commentError && <p className="text-sm text-red-400">{commentError}</p>}
                   <button
                     type="submit"
                     disabled={addingComment || !commentText.trim()}
-                    className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-slate-200 text-sm font-medium rounded-lg transition disabled:opacity-50"
+                    className="px-3 py-1.5 bg-gi-card-elevated hover:bg-gi-border border border-gi-border text-gi-text-muted hover:text-gi-text text-sm font-medium rounded-lg transition-colors disabled:opacity-50"
                   >
-                    {addingComment ? 'Dodavanje...' : 'Dodaj komentar'}
+                    {addingComment ? 'Dodavanje…' : 'Dodaj komentar'}
                   </button>
                 </form>
               </div>

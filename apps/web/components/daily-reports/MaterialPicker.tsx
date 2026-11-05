@@ -90,7 +90,6 @@ export default function MaterialPicker({
     if (disabled || loading) return
     setQuery('')
     setOpen(true)
-    // defer focus so the input element is in the DOM
     setTimeout(() => inputRef.current?.focus(), 0)
   }
 
@@ -155,28 +154,28 @@ export default function MaterialPicker({
             if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openPicker() }
           }}
           className={[
-            'w-full bg-slate-900 border border-slate-600 rounded px-3 py-1.5 text-sm',
+            'w-full bg-gi-card-elevated border border-gi-border rounded-lg px-3 py-2 text-sm',
             'flex items-center justify-between gap-2 select-none transition-colors',
             disabled
               ? 'opacity-50 cursor-not-allowed'
-              : 'cursor-pointer hover:border-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500',
+              : 'cursor-pointer hover:border-gi-yellow/60 focus:outline-none focus:border-gi-yellow',
           ].join(' ')}
         >
           {selected ? (
             <>
-              <span className="text-slate-100 truncate min-w-0">{selected.material_name}</span>
+              <span className="text-gi-text truncate min-w-0">{selected.material_name}</span>
               <button
                 type="button"
                 onClick={clear}
                 disabled={disabled}
                 aria-label="Ukloni odabir"
-                className="shrink-0 text-slate-500 hover:text-slate-200 px-0.5 text-lg leading-none focus:outline-none"
+                className="shrink-0 text-gi-text-subtle hover:text-gi-text px-0.5 text-lg leading-none focus:outline-none"
               >
                 ×
               </button>
             </>
           ) : (
-            <span className="text-slate-500 truncate">
+            <span className="text-gi-text-subtle truncate">
               {loading ? 'Učitavanje materijala…' : placeholder}
             </span>
           )}
@@ -193,19 +192,19 @@ export default function MaterialPicker({
           onKeyDown={handleKeyDown}
           placeholder="Pretraži po nazivu, šifri ili jedinici…"
           autoComplete="off"
-          className="w-full bg-slate-900 border border-blue-500 ring-1 ring-blue-500 rounded px-3 py-1.5 text-sm text-slate-100 placeholder-slate-500 focus:outline-none"
+          className="w-full bg-gi-card-elevated border border-gi-yellow ring-1 ring-gi-yellow/40 rounded-lg px-3 py-2 text-sm text-gi-text placeholder:text-gi-text-subtle focus:outline-none"
         />
       )}
 
       {/* ── Dropdown panel ───────────────────────────────────────────────── */}
       {open && (
-        <div className="absolute z-50 left-0 right-0 mt-1 bg-slate-900 border border-slate-700 rounded-lg shadow-2xl overflow-hidden">
+        <div className="absolute z-50 left-0 right-0 mt-1 bg-gi-workspace border border-gi-border rounded-xl shadow-2xl overflow-hidden">
           {materials.length === 0 && !showCreate ? (
-            <p className="px-3 py-2.5 text-sm text-slate-500">
+            <p className="px-3 py-2.5 text-sm text-gi-text-subtle">
               {emptyMessage}
             </p>
           ) : filtered.length === 0 && !showCreate ? (
-            <p className="px-3 py-2.5 text-sm text-slate-500">
+            <p className="px-3 py-2.5 text-sm text-gi-text-subtle">
               Nema pronađenih materijala.
             </p>
           ) : (
@@ -213,7 +212,7 @@ export default function MaterialPicker({
               ref={listRef}
               role="listbox"
               aria-label="Popis materijala"
-              className="max-h-56 overflow-y-auto divide-y divide-slate-800/60"
+              className="max-h-56 overflow-y-auto divide-y divide-gi-border/60"
             >
               {filtered.map((m, idx) => {
                 const itemDisabled = isItemDisabled ? isItemDisabled(m) : false
@@ -223,7 +222,7 @@ export default function MaterialPicker({
                     {showSeparator && (
                       <li
                         role="separator"
-                        className="px-3 py-1.5 text-xs font-medium text-slate-400 uppercase tracking-wider bg-slate-800/60 border-t border-slate-700/60 select-none pointer-events-none"
+                        className="px-3 py-1.5 text-xs font-medium text-gi-text-subtle uppercase tracking-wider bg-gi-card-elevated border-t border-gi-border select-none pointer-events-none"
                       >
                         Nema na stanju
                       </li>
@@ -237,19 +236,19 @@ export default function MaterialPicker({
                       className={[
                         'px-3 py-2.5 transition-colors',
                         itemDisabled
-                          ? 'opacity-50 cursor-not-allowed'
-                          : ['cursor-pointer', idx === highlighted ? 'bg-blue-600/20' : 'hover:bg-slate-800'].join(' '),
-                        m.id === value ? 'bg-blue-900/30' : '',
+                          ? 'opacity-40 cursor-not-allowed'
+                          : ['cursor-pointer', idx === highlighted ? 'bg-gi-yellow/10' : 'hover:bg-gi-card-elevated'].join(' '),
+                        m.id === value ? 'bg-gi-yellow/5' : '',
                       ].join(' ')}
                     >
-                      <p className="text-sm text-slate-100 leading-snug break-words line-clamp-2">
+                      <p className="text-sm text-gi-text leading-snug break-words line-clamp-2">
                         {m.material_name}
                       </p>
-                      <p className="text-xs text-slate-500 mt-0.5 truncate">
+                      <p className="text-xs text-gi-text-subtle mt-0.5 truncate">
                         {m.unit}
                         {m.material_code ? ` · ${m.material_code}` : ''}
                         {m.tracking_type === 'work'
-                          ? <span className="text-emerald-600"> · radna aktivnost</span>
+                          ? <span className="text-emerald-500"> · radna aktivnost</span>
                           : ` · kol: ${m.available_quantity}`}
                       </p>
                     </li>
@@ -264,11 +263,11 @@ export default function MaterialPicker({
                   onMouseEnter={() => setHighlighted(filtered.length)}
                   className={[
                     'px-3 py-2.5 cursor-pointer transition-colors',
-                    filtered.length > 0 ? 'border-t border-slate-700/60' : '',
-                    highlighted === filtered.length ? 'bg-blue-600/20' : 'hover:bg-slate-800',
+                    filtered.length > 0 ? 'border-t border-gi-border' : '',
+                    highlighted === filtered.length ? 'bg-gi-yellow/10' : 'hover:bg-gi-card-elevated',
                   ].join(' ')}
                 >
-                  <p className="text-sm text-blue-400 leading-snug">
+                  <p className="text-sm text-gi-yellow leading-snug">
                     + Dodaj novi materijal: &ldquo;{trimmedQuery}&rdquo;
                   </p>
                 </li>

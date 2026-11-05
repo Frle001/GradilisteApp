@@ -4,8 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { useAuth } from '@/hooks/useAuth'
 import LoadingScreen from '@/components/ui/LoadingScreen'
-import LoadingOverlay from '@/components/ui/LoadingOverlay'
-import DashboardShell from '@/components/layout/DashboardShell'
+import AppShell from '@/components/layout/AppShell'
 import DailyReportStatusBadge from '@/components/daily-reports/DailyReportStatusBadge'
 import {
   type DailyReportListItem,
@@ -35,6 +34,8 @@ function formatTime(dateStr: string | null) {
   return new Date(dateStr).toLocaleTimeString('hr-HR', { hour: '2-digit', minute: '2-digit' })
 }
 
+const controlCls = 'px-3 py-2 bg-gi-card-elevated border border-gi-border rounded-lg text-gi-text placeholder:text-gi-text-subtle text-sm focus:outline-none focus:border-gi-yellow transition-colors'
+
 export default function DailyReportsPage() {
   const { user, employee, isLoading, logout } = useAuth()
 
@@ -48,6 +49,14 @@ export default function DailyReportsPage() {
   const [dateTo, setDateTo] = useState('')
 
   const canCreate = !!user && canCreateDailyReport(user.role)
+  const hasActiveFilters = !!(search || statusFilter || dateFrom || dateTo)
+
+  function resetFilters() {
+    setSearch('')
+    setStatusFilter('')
+    setDateFrom('')
+    setDateTo('')
+  }
 
   const fetchReports = useCallback(() => {
     if (!user) return
@@ -97,7 +106,7 @@ export default function DailyReportsPage() {
     : reports
 
   return (
-    <DashboardShell
+    <AppShell
       user={user}
       employee={employee}
       title="Dnevni izvještaji"
@@ -107,38 +116,36 @@ export default function DailyReportsPage() {
         canCreate ? (
           <Link
             href="/dashboard/daily-reports/new"
-            className="px-4 py-2 bg-white text-slate-900 font-semibold rounded-lg text-sm hover:bg-slate-100 transition"
+            className="inline-flex items-center gap-1.5 text-sm font-semibold bg-gi-yellow hover:bg-gi-yellow-hover text-gi-navy px-4 py-2 rounded-lg transition-colors"
           >
-            + Novi izvještaj
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M12 4.5v15m7.5-7.5h-15" />
+            </svg>
+            Novi izvještaj
           </Link>
         ) : undefined
       }
     >
-      <div className="space-y-5">
-        <div className="flex items-center justify-between gap-4">
-          <h1 className="text-2xl font-bold text-white">Dnevni izvještaji</h1>
-          <button
-            onClick={() => void handleRefresh()}
-            disabled={refreshing || isLoadingReports}
-            className="shrink-0 text-sm text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 px-3 py-2 rounded-lg transition disabled:opacity-50"
-          >
-            {refreshing ? 'Osvježavanje…' : 'Osvježi'}
-          </button>
+      <div className="space-y-4">
+        {/* Page heading */}
+        <div>
+          <h1 className="text-xl font-bold text-gi-text">Dnevni izvještaji</h1>
+          <p className="text-gi-text-subtle text-xs mt-0.5">Pregled i praćenje izvještaja s gradilišta</p>
         </div>
 
-        {/* Filters */}
-        <div className="flex flex-wrap gap-3">
+        {/* Filter toolbar */}
+        <div className="flex flex-wrap gap-2">
           <input
             type="text"
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Pretraži po projektu ili poslovođi…"
-            className="flex-1 min-w-48 px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white placeholder-slate-500 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 transition"
+            placeholder="Pretraži projekt ili poslovođu…"
+            className={controlCls + ' flex-1 min-w-[180px]'}
           />
           <select
             value={statusFilter}
             onChange={e => setStatusFilter(e.target.value)}
-            className="px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 transition"
+            className={controlCls}
           >
             {STATUS_FILTERS.map(f => (
               <option key={f.value} value={f.value}>{f.label}</option>
@@ -149,74 +156,98 @@ export default function DailyReportsPage() {
             value={dateFrom}
             onChange={e => setDateFrom(e.target.value)}
             title="Datum od"
-            className="px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 transition"
+            className={controlCls}
           />
           <input
             type="date"
             value={dateTo}
             onChange={e => setDateTo(e.target.value)}
             title="Datum do"
-            className="px-3.5 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:ring-2 focus:ring-slate-500 transition"
+            className={controlCls}
           />
+          {hasActiveFilters && (
+            <button
+              onClick={resetFilters}
+              className="text-xs text-gi-text-muted hover:text-gi-text border border-gi-border hover:border-gi-border/80 bg-gi-card-elevated px-3 py-2 rounded-lg transition whitespace-nowrap"
+            >
+              Poništi filtere
+            </button>
+          )}
+          <button
+            onClick={() => void handleRefresh()}
+            disabled={refreshing || isLoadingReports}
+            className="text-xs text-gi-text-muted hover:text-gi-text border border-gi-border hover:border-gi-border/80 bg-gi-card-elevated px-3 py-2 rounded-lg transition disabled:opacity-50 whitespace-nowrap"
+          >
+            {refreshing ? 'Osvježavanje…' : 'Osvježi'}
+          </button>
         </div>
 
         {error && (
-          <div className="bg-red-950 border border-red-800 rounded-lg px-4 py-3">
+          <div className="bg-red-900/30 border border-red-800/60 rounded-lg px-4 py-3">
             <p className="text-red-300 text-sm">{error}</p>
           </div>
         )}
 
         {isLoadingReports ? (
-          <LoadingOverlay />
+          <div className="bg-gi-card border border-gi-border rounded-xl p-10 text-center">
+            <p className="text-gi-text-subtle text-sm animate-pulse">Učitavanje izvještaja…</p>
+          </div>
         ) : filtered.length === 0 ? (
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-10 text-center">
-            <p className="text-slate-400 text-sm">Nema izvještaja koji odgovaraju odabranim filterima.</p>
+          <div className="bg-gi-card border border-gi-border rounded-xl p-10 text-center space-y-3">
+            <p className="text-gi-text-subtle text-sm">Nema izvještaja koji odgovaraju odabranim filterima.</p>
             {canCreate && (
               <Link
                 href="/dashboard/daily-reports/new"
-                className="mt-4 inline-block px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-sm font-medium rounded-lg transition"
+                className="inline-flex items-center gap-1.5 px-4 py-2 bg-gi-yellow hover:bg-gi-yellow-hover text-gi-navy text-sm font-semibold rounded-lg transition"
               >
                 Kreiraj prvi izvještaj
               </Link>
             )}
           </div>
         ) : (
-          <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
-            <div className="overflow-x-auto overscroll-x-contain touch-pan-x table-scroll-touch">
-            <table className="min-w-[760px] w-full text-sm">
+          <div className="bg-gi-card border border-gi-border rounded-xl overflow-hidden">
+            {/* Desktop table */}
+            <table className="hidden sm:table w-full text-sm">
               <thead>
-                <tr className="border-b border-slate-800">
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wide">Datum</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wide">Projekt</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wide hidden sm:table-cell">Poslovođa</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wide hidden md:table-cell">Radnici / Sati</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wide hidden md:table-cell">Aktivnosti</th>
-                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-400 uppercase tracking-wide">Status</th>
+                <tr className="border-b border-gi-border">
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gi-text-subtle uppercase tracking-wider">Datum</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gi-text-subtle uppercase tracking-wider">Projekt</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gi-text-subtle uppercase tracking-wider hidden md:table-cell">Poslovođa</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gi-text-subtle uppercase tracking-wider hidden lg:table-cell">Radnici / Sati</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gi-text-subtle uppercase tracking-wider hidden lg:table-cell">Aktivnosti</th>
+                  <th className="text-left px-4 py-3 text-xs font-medium text-gi-text-subtle uppercase tracking-wider">Status</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-800">
+              <tbody className="divide-y divide-gi-border/60">
                 {filtered.map(r => (
-                  <tr key={r.id} className="hover:bg-slate-800/40 transition-colors">
-                    <td className="px-4 py-3 text-slate-300 whitespace-nowrap">
+                  <tr key={r.id} className="hover:bg-gi-card-elevated/40 transition-colors">
+                    <td className="px-4 py-3 text-gi-text-muted whitespace-nowrap">
                       {formatDate(r.report_date)}
                       {formatTime(r.submitted_at ?? r.created_at) && (
-                        <span className="block text-xs text-slate-500">{formatTime(r.submitted_at ?? r.created_at)}</span>
+                        <span className="block text-xs text-gi-text-subtle">{formatTime(r.submitted_at ?? r.created_at)}</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-slate-200 font-medium max-w-48 truncate">{r.project_name}</td>
-                    <td className="px-4 py-3 text-slate-400 hidden sm:table-cell whitespace-nowrap">{r.poslovoda_name}</td>
-                    <td className="px-4 py-3 text-slate-400 hidden md:table-cell whitespace-nowrap">
+                    <td className="px-4 py-3">
+                      <Link
+                        href={`/dashboard/daily-reports/${r.id}`}
+                        className="font-medium text-gi-text hover:text-gi-yellow transition-colors max-w-48 truncate block"
+                      >
+                        {r.project_name}
+                      </Link>
+                    </td>
+                    <td className="px-4 py-3 text-gi-text-muted hidden md:table-cell whitespace-nowrap">{r.poslovoda_name}</td>
+                    <td className="px-4 py-3 text-gi-text-muted hidden lg:table-cell whitespace-nowrap">
                       {r.worker_hours_count} / {r.total_hours}h
                     </td>
-                    <td className="px-4 py-3 text-slate-400 hidden md:table-cell">{r.activities_count}</td>
+                    <td className="px-4 py-3 text-gi-text-muted hidden lg:table-cell">{r.activities_count}</td>
                     <td className="px-4 py-3">
                       <DailyReportStatusBadge status={r.status} />
                     </td>
                     <td className="px-4 py-3 text-right">
                       <Link
                         href={`/dashboard/daily-reports/${r.id}`}
-                        className="text-xs text-blue-400 hover:text-blue-300 font-medium"
+                        className="text-xs text-gi-text-subtle hover:text-gi-yellow transition-colors font-medium"
                       >
                         Otvori →
                       </Link>
@@ -225,10 +256,41 @@ export default function DailyReportsPage() {
                 ))}
               </tbody>
             </table>
+
+            {/* Mobile cards */}
+            <div className="sm:hidden divide-y divide-gi-border/60">
+              {filtered.map(r => (
+                <Link
+                  key={r.id}
+                  href={`/dashboard/daily-reports/${r.id}`}
+                  className="block p-4 hover:bg-gi-card-elevated/40 transition-colors"
+                >
+                  <div className="flex items-start justify-between gap-2 mb-1.5">
+                    <p className="font-semibold text-gi-text text-sm truncate">{r.project_name}</p>
+                    <DailyReportStatusBadge status={r.status} />
+                  </div>
+                  <p className="text-xs text-gi-text-muted mb-1">{formatDate(r.report_date)}</p>
+                  <div className="flex items-center gap-3 text-xs text-gi-text-subtle flex-wrap">
+                    <span>{r.poslovoda_name}</span>
+                    {r.activities_count > 0 && (
+                      <>
+                        <span>·</span>
+                        <span>{r.activities_count} aktivnosti</span>
+                      </>
+                    )}
+                    {r.total_hours > 0 && (
+                      <>
+                        <span>·</span>
+                        <span>{r.total_hours}h</span>
+                      </>
+                    )}
+                  </div>
+                </Link>
+              ))}
             </div>
           </div>
         )}
       </div>
-    </DashboardShell>
+    </AppShell>
   )
 }

@@ -128,11 +128,11 @@ func TestCompanyAssets_AdminOnly_List(t *testing.T) {
 	}
 }
 
-func TestCompanyAssets_ForbiddenDirector(t *testing.T) {
+func TestCompanyAssets_Direktor_Allowed(t *testing.T) {
 	svc := newAssetSvc(&mockAssetRepo{})
 	_, err := svc.List(context.Background(), "company-1", "direktor", dto.CompanyAssetFilter{})
-	if !errors.Is(err, ErrForbidden) {
-		t.Errorf("expected ErrForbidden for direktor, got: %v", err)
+	if err != nil {
+		t.Errorf("direktor should be allowed to list assets, got: %v", err)
 	}
 }
 
@@ -638,12 +638,12 @@ func TestCompanyAssets_Leasing_MessageOverdue(t *testing.T) {
 
 // ── Leasing MarkLeasingPayment – service method ───────────────────────────────
 
-func TestCompanyAssets_MarkLeasing_NonAdminForbidden(t *testing.T) {
+func TestCompanyAssets_MarkLeasing_InzenjerForbidden(t *testing.T) {
 	svc := newAssetSvc(&mockAssetRepo{})
-	_, err := svc.MarkLeasingPayment(context.Background(), "c1", "direktor", "u1", "v1",
+	_, err := svc.MarkLeasingPayment(context.Background(), "c1", "inzenjer", "u1", "v1",
 		dto.LeasingPaymentRequest{PeriodMonth: "2026-09-01"})
 	if !errors.Is(err, ErrForbidden) {
-		t.Errorf("expected ErrForbidden for non-admin, got: %v", err)
+		t.Errorf("expected ErrForbidden for inzenjer, got: %v", err)
 	}
 }
 

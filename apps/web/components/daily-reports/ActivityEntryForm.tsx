@@ -17,20 +17,26 @@ interface Props {
   disabled?: boolean
   projectId?: string
   onMaterialAdded?: (material: FormDataMaterial) => void
+  /** Pre-fills form fields when editing an existing local activity. */
+  initialActivity?: ActivityInputUI
 }
 
 const ACTIVITY_TYPES: ActivityType[] = ['montaza', 'demontaza', 'other']
 
-export default function ActivityEntryForm({ materials, materialsLoading = false, onAdd, disabled = false, projectId, onMaterialAdded }: Props) {
-  const [isVtk, setIsVtk] = useState(false)
-  const [materialId, setMaterialId] = useState<string>('')
-  const [customName, setCustomName] = useState('')
-  const [quantity, setQuantity] = useState('')
-  const [unit, setUnit] = useState('')
-  const [activityType, setActivityType] = useState<ActivityType>('montaza')
-  const [notes, setNotes] = useState('')
+const inputCls = 'w-full bg-gi-card-elevated border border-gi-border rounded-lg px-3 py-2 text-sm text-gi-text placeholder:text-gi-text-subtle focus:outline-none focus:border-gi-yellow transition-colors disabled:opacity-50'
+const labelCls = 'block text-xs font-medium text-gi-text-muted uppercase tracking-wider mb-1.5'
+
+export default function ActivityEntryForm({ materials, materialsLoading = false, onAdd, disabled = false, projectId, onMaterialAdded, initialActivity }: Props) {
+  const [isVtk, setIsVtk] = useState(initialActivity?.is_vtk ?? false)
+  const [materialId, setMaterialId] = useState<string>(initialActivity?.project_material_id ?? '')
+  const [customName, setCustomName] = useState(initialActivity?.custom_material_name ?? '')
+  const [quantity, setQuantity] = useState(initialActivity ? String(initialActivity.quantity) : '')
+  const [unit, setUnit] = useState(initialActivity?.unit ?? '')
+  const [activityType, setActivityType] = useState<ActivityType>(initialActivity?.activity_type ?? 'montaza')
+  const [notes, setNotes] = useState(initialActivity?.notes ?? '')
   const [errors, setErrors] = useState<string[]>([])
   const [createModalName, setCreateModalName] = useState<string | null>(null)
+  const isEditing = !!initialActivity
 
   const selectedMat = !isVtk && materialId ? materials.find(m => m.id === materialId) ?? null : null
   const isWorkItem = selectedMat?.tracking_type === 'work'
@@ -53,7 +59,6 @@ export default function ActivityEntryForm({ materials, materialsLoading = false,
   function validate(): string[] {
     const errs: string[] = []
 
-    // Contradictory state: should never occur via UI, but defend anyway
     if (isVtk && materialId) {
       errs.push('Nije moguće odabrati projekt-materijal i VTR način istovremeno.')
     }
@@ -62,7 +67,6 @@ export default function ActivityEntryForm({ materials, materialsLoading = false,
       if (!customName.trim()) errs.push('Naziv materijala je obavezan za VTR aktivnost.')
     } else {
       if (!materialId) errs.push('Odaberite materijal.')
-      // Stock check only for stock-type montaža; work items have no stock pool.
       if (materialId && activityType === 'montaza' && !isWorkItem) {
         if (selectedMat && selectedMat.available_quantity <= 0) {
           errs.push('Nije moguće utrošiti novi materijal bez raspoložive količine.')
@@ -78,7 +82,6 @@ export default function ActivityEntryForm({ materials, materialsLoading = false,
   function handleVtkToggle() {
     if (disabled) return
     if (!isVtk) {
-      // Enabling VTK: clear any selected project material so state is never contradictory.
       setMaterialId('')
       setUnit('')
     }
@@ -99,7 +102,6 @@ export default function ActivityEntryForm({ materials, materialsLoading = false,
     return selectedMat?.unit ?? ''
   }
 
-  // unit comes directly from the picker so no materials.find() needed
   function handleMaterialChange(id: string, pickerUnit: string) {
     setMaterialId(id)
     setUnit(id ? pickerUnit : '')
@@ -124,7 +126,6 @@ export default function ActivityEntryForm({ materials, materialsLoading = false,
     }
     onAdd(activity)
 
-    // reset
     setMaterialId('')
     setCustomName('')
     setQuantity('')
@@ -135,16 +136,27 @@ export default function ActivityEntryForm({ materials, materialsLoading = false,
   }
 
   return (
-    <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4 space-y-4">
-      <div className="flex items-center gap-3">
-        <h4 className="text-sm font-medium text-slate-300 flex-1">Dodaj aktivnost</h4>
-        <label className="flex items-center gap-2 cursor-pointer select-none">
-          <span className="text-xs text-slate-400">VTR aktivnost</span>
+    <div className="bg-gi-workspace border border-gi-border rounded-lg p-4 space-y-4">
+      {/* Header: title + VTR toggle */}
+      <div className="flex items-start gap-3">
+        <div className="flex-1">
+          <h4 className="text-sm font-medium text-gi-text">
+            {isEditing ? 'Uredi aktivnost' : 'Dodaj aktivnost'}
+          </h4>
+          {isEditing && (
+            <p className="text-xs text-gi-text-subtle mt-0.5">Izmijeni i klikni spremi za ažuriranje.</p>
+          )}
+        </div>
+        <label className="flex items-center gap-2 cursor-pointer select-none shrink-0">
+          <div className="text-right">
+            <span className="text-xs text-gi-text-subtle block">VTR aktivnost</span>
+            <span className="text-[10px] text-gi-text-subtle/60 block leading-tight">Materijal izvan liste projekta</span>
+          </div>
           <div
             role="checkbox"
             aria-checked={isVtk}
             onClick={handleVtkToggle}
-            className={`relative w-9 h-5 rounded-full transition-colors cursor-pointer ${isVtk ? 'bg-amber-500' : 'bg-slate-600'}`}
+            className={`relative w-9 h-5 rounded-full transition-colors cursor-pointer ${isVtk ? 'bg-amber-500' : 'bg-gi-card-elevated border border-gi-border'}`}
           >
             <span
               className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${isVtk ? 'translate-x-4' : ''}`}
@@ -157,19 +169,19 @@ export default function ActivityEntryForm({ materials, materialsLoading = false,
         {/* Material / Custom Name */}
         {isVtk ? (
           <div className="sm:col-span-2">
-            <label className="block text-xs text-slate-400 mb-1">Naziv materijala (VTR) *</label>
+            <label className={labelCls}>Naziv materijala (VTR) *</label>
             <input
               type="text"
               value={customName}
               disabled={disabled}
               onChange={e => setCustomName(e.target.value)}
               placeholder="Unesi naziv…"
-              className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-1.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+              className={inputCls}
             />
           </div>
         ) : (
           <div className="sm:col-span-2">
-            <label className="block text-xs text-slate-400 mb-1">Materijal *</label>
+            <label className={labelCls}>Materijal *</label>
             <MaterialPicker
               materials={sortedMaterials}
               loading={materialsLoading}
@@ -189,40 +201,49 @@ export default function ActivityEntryForm({ materials, materialsLoading = false,
                 Upisana količina evidentira izvedeni rad i ne oduzima se sa zalihe.
               </p>
             )}
+            {selectedMat && !isWorkItem && (
+              <p className="mt-1.5 text-xs text-gi-text-subtle">
+                Na stanju:{' '}
+                <span className={selectedMat.available_quantity > 0 ? 'text-emerald-400 font-medium' : 'text-red-400 font-medium'}>
+                  {selectedMat.available_quantity} {selectedMat.unit}
+                </span>
+              </p>
+            )}
           </div>
         )}
 
         {/* Quantity */}
         <div>
-          <label className="block text-xs text-slate-400 mb-1">Količina *</label>
+          <label className={labelCls}>Količina *</label>
           <input
             type="number"
+            inputMode="decimal"
             min={0}
             step="any"
             value={quantity}
             disabled={disabled}
             onChange={e => setQuantity(e.target.value)}
             placeholder="0"
-            className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-1.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+            className={inputCls}
           />
         </div>
 
         {/* Unit */}
         <div>
-          <label className="block text-xs text-slate-400 mb-1">Jedinica mjere *</label>
+          <label className={labelCls}>Jedinica mjere *</label>
           <input
             type="text"
             value={unit}
             disabled={disabled}
             onChange={e => setUnit(e.target.value)}
             placeholder="kom, m, m², kg…"
-            className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-1.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+            className={inputCls}
           />
         </div>
 
         {/* Activity Type */}
         <div>
-          <label className="block text-xs text-slate-400 mb-1">Vrsta aktivnosti *</label>
+          <label className={labelCls}>Vrsta aktivnosti *</label>
           <select
             value={activityType}
             disabled={disabled}
@@ -238,7 +259,7 @@ export default function ActivityEntryForm({ materials, materialsLoading = false,
                 }
               }
             }}
-            className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-1.5 text-sm text-slate-100 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+            className={inputCls}
           >
             {ACTIVITY_TYPES.map(t => (
               <option key={t} value={t}>{ACTIVITY_TYPE_LABELS[t]}</option>
@@ -248,14 +269,14 @@ export default function ActivityEntryForm({ materials, materialsLoading = false,
 
         {/* Notes */}
         <div>
-          <label className="block text-xs text-slate-400 mb-1">Napomena</label>
+          <label className={labelCls}>Napomena</label>
           <input
             type="text"
             value={notes}
             disabled={disabled}
             onChange={e => setNotes(e.target.value)}
             placeholder="Opcionalno…"
-            className="w-full bg-slate-900 border border-slate-600 rounded px-3 py-1.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+            className={inputCls}
           />
         </div>
       </div>
@@ -272,9 +293,14 @@ export default function ActivityEntryForm({ materials, materialsLoading = false,
         type="button"
         disabled={disabled}
         onClick={handleAdd}
-        className="w-full sm:w-auto px-4 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium rounded transition-colors"
+        className={[
+          'w-full sm:w-auto px-4 py-2 text-sm font-medium rounded-lg transition-colors disabled:opacity-50',
+          isEditing
+            ? 'bg-gi-yellow hover:bg-gi-yellow-hover text-gi-navy'
+            : 'bg-gi-card-elevated hover:bg-gi-border border border-gi-border text-gi-text-muted hover:text-gi-text',
+        ].join(' ')}
       >
-        + Dodaj aktivnost
+        {isEditing ? 'Spremi izmjene' : '+ Dodaj aktivnost'}
       </button>
 
       {createModalName !== null && projectId && (

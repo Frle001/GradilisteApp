@@ -17,6 +17,8 @@ export default function CreateMaterialModal({ projectId, initialName, onCreated,
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  const inputCls = 'w-full bg-gi-card-elevated border border-gi-border rounded-lg px-3 py-2 text-sm text-gi-text placeholder:text-gi-text-subtle focus:outline-none focus:border-gi-yellow transition-colors disabled:opacity-50'
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const trimmedName = name.trim()
@@ -43,37 +45,48 @@ export default function CreateMaterialModal({ projectId, initialName, onCreated,
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4"
       onClick={onClose}
     >
       <div
-        className="bg-slate-900 border border-slate-700 rounded-xl p-6 w-full max-w-sm space-y-4"
+        className="bg-gi-card border border-gi-border rounded-xl p-6 w-full max-w-sm space-y-4 shadow-2xl"
         onClick={e => e.stopPropagation()}
       >
-        <h3 className="text-sm font-semibold text-slate-200">Dodaj novi materijal</h3>
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-gi-text">Dodaj novi materijal</h3>
+          <button onClick={onClose} className="text-gi-text-subtle hover:text-gi-text transition-colors p-0.5">
+            <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+            </svg>
+          </button>
+        </div>
 
         <form onSubmit={handleSubmit} className="space-y-3">
           <div>
-            <label className="block text-xs text-slate-400 mb-1">Naziv materijala *</label>
+            <label className="block text-xs font-medium text-gi-text-muted uppercase tracking-wider mb-1.5">
+              Naziv materijala *
+            </label>
             <input
               type="text"
               value={name}
               onChange={e => setName(e.target.value)}
               disabled={saving}
               autoFocus
-              className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-1.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+              className={inputCls}
             />
           </div>
 
           <div>
-            <label className="block text-xs text-slate-400 mb-1">Jedinica mjere *</label>
+            <label className="block text-xs font-medium text-gi-text-muted uppercase tracking-wider mb-1.5">
+              Jedinica mjere *
+            </label>
             <input
               type="text"
               value={unit}
               onChange={e => setUnit(e.target.value)}
               disabled={saving}
               placeholder="kom, m, m², kg…"
-              className="w-full bg-slate-800 border border-slate-600 rounded px-3 py-1.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:opacity-50"
+              className={inputCls}
             />
           </div>
 
@@ -84,14 +97,14 @@ export default function CreateMaterialModal({ projectId, initialName, onCreated,
               type="button"
               onClick={onClose}
               disabled={saving}
-              className="flex-1 px-3 py-2 text-sm text-slate-400 hover:text-slate-200 border border-slate-700 rounded-lg transition disabled:opacity-50"
+              className="flex-1 px-3 py-2 text-sm text-gi-text-muted hover:text-gi-text border border-gi-border hover:bg-gi-card-elevated rounded-lg transition disabled:opacity-50"
             >
               Odustani
             </button>
             <button
               type="submit"
               disabled={saving || !name.trim() || !unit.trim()}
-              className="flex-1 px-3 py-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-sm font-medium rounded-lg transition"
+              className="flex-1 px-3 py-2 bg-gi-yellow hover:bg-gi-yellow-hover disabled:opacity-50 text-gi-navy text-sm font-semibold rounded-lg transition"
             >
               {saving ? 'Dodavanje…' : 'Dodaj'}
             </button>

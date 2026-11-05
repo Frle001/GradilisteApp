@@ -14,12 +14,12 @@ function formatDate(iso: string) {
 export default function TransferHistoryTable({ items, loading, currentEmployeeId }: Props) {
   if (loading) {
     return (
-      <div className="py-12 text-center text-slate-500 text-sm">Učitavanje...</div>
+      <div className="py-12 text-center text-gi-text-subtle text-sm animate-pulse">Učitavanje...</div>
     )
   }
   if (items.length === 0) {
     return (
-      <div className="py-12 text-center text-slate-500 text-sm">Nema evidentiranih prijenosa.</div>
+      <div className="py-12 text-center text-gi-text-subtle text-sm">Nema evidentiranih prijenosa.</div>
     )
   }
 
@@ -27,36 +27,36 @@ export default function TransferHistoryTable({ items, loading, currentEmployeeId
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
-          <tr className="border-b border-slate-700">
-            <th className="text-left text-xs font-medium text-slate-400 uppercase tracking-wider pb-2 pr-4">Datum</th>
-            <th className="text-left text-xs font-medium text-slate-400 uppercase tracking-wider pb-2 pr-4">Predao</th>
-            <th className="text-left text-xs font-medium text-slate-400 uppercase tracking-wider pb-2 pr-4">Primio</th>
-            <th className="text-left text-xs font-medium text-slate-400 uppercase tracking-wider pb-2 pr-4">Vrsta</th>
-            <th className="text-left text-xs font-medium text-slate-400 uppercase tracking-wider pb-2 pr-4">Stavka</th>
-            <th className="text-right text-xs font-medium text-slate-400 uppercase tracking-wider pb-2">Kol.</th>
+          <tr className="border-b border-gi-border">
+            <th className="text-left text-xs font-medium text-gi-text-subtle uppercase tracking-wider pb-2.5 pr-4">Datum</th>
+            <th className="text-left text-xs font-medium text-gi-text-subtle uppercase tracking-wider pb-2.5 pr-4">Predao</th>
+            <th className="text-left text-xs font-medium text-gi-text-subtle uppercase tracking-wider pb-2.5 pr-4">Primio</th>
+            <th className="text-left text-xs font-medium text-gi-text-subtle uppercase tracking-wider pb-2.5 pr-4">Vrsta</th>
+            <th className="text-left text-xs font-medium text-gi-text-subtle uppercase tracking-wider pb-2.5 pr-4">Stavka</th>
+            <th className="text-right text-xs font-medium text-gi-text-subtle uppercase tracking-wider pb-2.5">Kol.</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-800">
+        <tbody className="divide-y divide-gi-border/60">
           {items.map(t => {
             const isFrom = currentEmployeeId && t.from_employee_id === currentEmployeeId
             const isTo   = currentEmployeeId && t.to_employee_id === currentEmployeeId
             return (
-              <tr key={t.id} className="hover:bg-slate-800/40 transition-colors">
-                <td className="py-2.5 pr-4 text-slate-400 whitespace-nowrap">{formatDate(t.transferred_at)}</td>
-                <td className={`py-2.5 pr-4 ${isFrom ? 'text-red-400 font-medium' : 'text-slate-300'}`}>
+              <tr key={t.id} className="hover:bg-gi-card-elevated/40 transition-colors">
+                <td className="py-2.5 pr-4 text-gi-text-subtle whitespace-nowrap">{formatDate(t.transferred_at)}</td>
+                <td className={`py-2.5 pr-4 ${isFrom ? 'text-red-400 font-medium' : 'text-gi-text-muted'}`}>
                   {t.from_employee_name}
                 </td>
-                <td className={`py-2.5 pr-4 ${isTo ? 'text-emerald-400 font-medium' : 'text-slate-300'}`}>
+                <td className={`py-2.5 pr-4 ${isTo ? 'text-green-400 font-medium' : 'text-gi-text-muted'}`}>
                   {t.to_employee_name}
                 </td>
                 <td className="py-2.5 pr-4">
                   <AssetTypeBadge type={t.asset_type} />
                 </td>
-                <td className="py-2.5 pr-4 text-white">
+                <td className="py-2.5 pr-4 text-gi-text">
                   {t.item_name || '—'}
-                  {t.notes && <span className="block text-xs text-slate-500">{t.notes}</span>}
+                  {t.notes && <span className="block text-xs text-gi-text-subtle">{t.notes}</span>}
                 </td>
-                <td className="py-2.5 text-right text-slate-300">{t.quantity.toFixed(2)}</td>
+                <td className="py-2.5 text-right text-gi-text-muted tabular-nums">{t.quantity.toFixed(2)}</td>
               </tr>
             )
           })}

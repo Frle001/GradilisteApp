@@ -2,188 +2,258 @@
 
 import Link from 'next/link'
 import { useAuth } from '@/hooks/useAuth'
-import { ROLE_LABELS } from '@/lib/types/employees'
 import LoadingScreen from '@/components/ui/LoadingScreen'
-import MobileBottomNav from '@/components/layout/MobileBottomNav'
+import AppShell from '@/components/layout/AppShell'
+import {
+  FolderOpen,
+  FileText,
+  Users,
+  Clock,
+  CalendarDays,
+  ClipboardList,
+  Receipt,
+  BarChart2,
+  Archive,
+  BookOpen,
+  Briefcase,
+  ShoppingCart,
+  Package,
+  Wrench,
+  ArrowRight,
+  PlusCircle,
+  Droplets,
+} from 'lucide-react'
+import type { LucideIcon } from 'lucide-react'
 
 interface DashboardCard {
   title: string
   description: string
-  icon: string
-  href?: string // set when the module is implemented
+  Icon: LucideIcon
+  href: string
+  highlight?: boolean
 }
 
-const roleCards: Record<string, DashboardCard[]> = {
+interface CardSection {
+  label: string
+  cards: DashboardCard[]
+}
+
+const cardSections: Record<string, CardSection[]> = {
   direktor: [
-    { title: 'Zaposlenici', description: 'Upravljanje osobljem', icon: '👥', href: '/dashboard/employees' },
-    { title: 'Projekti / Gradilišta', description: 'Pregled i upravljanje projektima', icon: '🏗️', href: '/dashboard/projects' },
-    { title: 'Raspored smjena', description: 'Tjedni raspored radnih smjena', icon: '📅', href: '/dashboard/schedule' },
-    { title: 'Novi projekt', description: 'Pokretanje novog gradilišta', icon: '➕', href: '/dashboard/projects/new' },
-    { title: 'Arhiva projekata', description: 'Zatvoreni i arhivirani projekti', icon: '🗄️', href: '/dashboard/projects/archive' },
-    { title: 'Dnevni izvještaji', description: 'Pregled svih dnevnih izvještaja', icon: '📋', href: '/dashboard/daily-reports' },
-    { title: 'Upisi materijala', description: 'Evidencija kupljenog materijala', icon: '📦', href: '/dashboard/material-purchases' },
-    { title: 'Stanje robe', description: 'Osobna zadužnica i prijenosi', icon: '🗂️', href: '/dashboard/inventory' },
-    { title: 'Sati zaposlenika', description: 'Pregled i ispravak upisanih radnih sati', icon: '⏱️', href: '/dashboard/worker-hours' },
-    { title: 'Moji sati', description: 'Evidencija vlastitih radnih sati', icon: '🕐', href: '/dashboard/management-hours' },
-    { title: 'Računi', description: 'Evidencija ulaznih računa tvrtke', icon: '🧾', href: '/dashboard/racuni' },
-    { title: 'R1 računi', description: 'Osobni R1 računi zaposlenika', icon: '📄', href: '/dashboard/r1' },
-    { title: 'Gorivo računi', description: 'Pregled i upravljanje gorivo računima', icon: '⛽', href: '/dashboard/gorivo' },
-    { title: 'Analitika', description: 'Plaće i troškovi zaposlenika', icon: '📊', href: '/dashboard/analytics' },
-    { title: 'Građevinski dnevnik', description: 'Evidencija radnih sati po gradilištu', icon: '📓', href: '/dashboard/reports/gradevinski-dnevnik' },
-    { title: 'Građevinska knjiga', description: 'Aktivnosti i utrošak materijala', icon: '📚', href: '/dashboard/reports/gradevinska-knjiga' },
+    {
+      label: 'Operativa',
+      cards: [
+        { title: 'Projekti / Gradilišta', description: 'Pregled i upravljanje projektima', Icon: FolderOpen, href: '/dashboard/projects' },
+        { title: 'Novi projekt', description: 'Pokretanje novog gradilišta', Icon: PlusCircle, href: '/dashboard/projects/new', highlight: true },
+        { title: 'Raspored smjena', description: 'Tjedni raspored radnih smjena', Icon: CalendarDays, href: '/dashboard/schedule' },
+        { title: 'Dnevni izvještaji', description: 'Pregled svih dnevnih izvještaja', Icon: FileText, href: '/dashboard/daily-reports' },
+        { title: 'Sati zaposlenika', description: 'Pregled i ispravak upisanih radnih sati', Icon: Clock, href: '/dashboard/worker-hours' },
+        { title: 'Moji sati', description: 'Evidencija vlastitih radnih sati', Icon: Briefcase, href: '/dashboard/management-hours' },
+      ],
+    },
+    {
+      label: 'Materijali',
+      cards: [
+        { title: 'Upisi materijala', description: 'Evidencija kupljenog materijala', Icon: ShoppingCart, href: '/dashboard/material-purchases' },
+        { title: 'Stanje robe', description: 'Osobna zadužnica i prijenosi', Icon: Package, href: '/dashboard/inventory' },
+      ],
+    },
+    {
+      label: 'Upravljanje',
+      cards: [
+        { title: 'Zaposlenici', description: 'Upravljanje osobljem', Icon: Users, href: '/dashboard/employees' },
+        { title: 'Analitika', description: 'Plaće i troškovi zaposlenika', Icon: BarChart2, href: '/dashboard/analytics' },
+        { title: 'Računi', description: 'Evidencija ulaznih računa tvrtke', Icon: Receipt, href: '/dashboard/racuni' },
+        { title: 'R1 računi', description: 'Osobni R1 računi zaposlenika', Icon: BookOpen, href: '/dashboard/r1' },
+        { title: 'Gorivo računi', description: 'Pregled i upravljanje gorivo računima', Icon: Droplets, href: '/dashboard/gorivo' },
+        { title: 'Građevinski dnevnik', description: 'Evidencija radnih sati po gradilištu', Icon: ClipboardList, href: '/dashboard/reports/gradevinski-dnevnik' },
+        { title: 'Građevinska knjiga', description: 'Aktivnosti i utrošak materijala', Icon: Archive, href: '/dashboard/reports/gradevinska-knjiga' },
+      ],
+    },
   ],
   inzenjer: [
-    { title: 'Zaposlenici', description: 'Pregled osoblja', icon: '👥', href: '/dashboard/employees' },
-    { title: 'Projekti / Gradilišta', description: 'Pregled i upravljanje projektima', icon: '🏗️', href: '/dashboard/projects' },
-    { title: 'Raspored smjena', description: 'Tjedni raspored radnih smjena', icon: '📅', href: '/dashboard/schedule' },
-    { title: 'Novi projekt', description: 'Pokretanje novog gradilišta', icon: '➕', href: '/dashboard/projects/new' },
-    { title: 'Arhiva projekata', description: 'Zatvoreni i arhivirani projekti', icon: '🗄️', href: '/dashboard/projects/archive' },
-    { title: 'Dnevni izvještaji', description: 'Pregled svih dnevnih izvještaja', icon: '📋', href: '/dashboard/daily-reports' },
-    { title: 'Upisi materijala', description: 'Evidencija kupljenog materijala', icon: '📦', href: '/dashboard/material-purchases' },
-    { title: 'Stanje robe', description: 'Osobna zadužnica i prijenosi', icon: '🗂️', href: '/dashboard/inventory' },
-    { title: 'Sati zaposlenika', description: 'Pregled i ispravak upisanih radnih sati', icon: '⏱️', href: '/dashboard/worker-hours' },
-    { title: 'Moji sati', description: 'Evidencija vlastitih radnih sati', icon: '🕐', href: '/dashboard/management-hours' },
-    { title: 'Moji R1 računi', description: 'Unos i pregled R1 računa', icon: '📄', href: '/dashboard/r1' },
-    { title: 'Gorivo računi', description: 'Pregled vlastitih gorivo računa', icon: '⛽', href: '/dashboard/gorivo' },
-    { title: 'Analitika', description: 'Plaće i troškovi zaposlenika', icon: '📊', href: '/dashboard/analytics' },
-    { title: 'Građevinski dnevnik', description: 'Evidencija radnih sati po gradilištu', icon: '📓', href: '/dashboard/reports/gradevinski-dnevnik' },
-    { title: 'Građevinska knjiga', description: 'Aktivnosti i utrošak materijala', icon: '📚', href: '/dashboard/reports/gradevinska-knjiga' },
+    {
+      label: 'Operativa',
+      cards: [
+        { title: 'Projekti / Gradilišta', description: 'Pregled i upravljanje projektima', Icon: FolderOpen, href: '/dashboard/projects' },
+        { title: 'Novi projekt', description: 'Pokretanje novog gradilišta', Icon: PlusCircle, href: '/dashboard/projects/new', highlight: true },
+        { title: 'Raspored smjena', description: 'Tjedni raspored radnih smjena', Icon: CalendarDays, href: '/dashboard/schedule' },
+        { title: 'Dnevni izvještaji', description: 'Pregled svih dnevnih izvještaja', Icon: FileText, href: '/dashboard/daily-reports' },
+        { title: 'Sati zaposlenika', description: 'Pregled i ispravak upisanih radnih sati', Icon: Clock, href: '/dashboard/worker-hours' },
+        { title: 'Moji sati', description: 'Evidencija vlastitih radnih sati', Icon: Briefcase, href: '/dashboard/management-hours' },
+      ],
+    },
+    {
+      label: 'Materijali',
+      cards: [
+        { title: 'Upisi materijala', description: 'Evidencija kupljenog materijala', Icon: ShoppingCart, href: '/dashboard/material-purchases' },
+        { title: 'Stanje robe', description: 'Osobna zadužnica i prijenosi', Icon: Package, href: '/dashboard/inventory' },
+      ],
+    },
+    {
+      label: 'Upravljanje',
+      cards: [
+        { title: 'Zaposlenici', description: 'Pregled osoblja', Icon: Users, href: '/dashboard/employees' },
+        { title: 'Analitika', description: 'Plaće i troškovi zaposlenika', Icon: BarChart2, href: '/dashboard/analytics' },
+        { title: 'Moji R1 računi', description: 'Unos i pregled R1 računa', Icon: BookOpen, href: '/dashboard/r1' },
+        { title: 'Gorivo računi', description: 'Pregled vlastitih gorivo računa', Icon: Droplets, href: '/dashboard/gorivo' },
+        { title: 'Građevinski dnevnik', description: 'Evidencija radnih sati po gradilištu', Icon: ClipboardList, href: '/dashboard/reports/gradevinski-dnevnik' },
+        { title: 'Građevinska knjiga', description: 'Aktivnosti i utrošak materijala', Icon: Archive, href: '/dashboard/reports/gradevinska-knjiga' },
+      ],
+    },
   ],
   administracija: [
-    { title: 'Zaposlenici', description: 'Upravljanje zaposlenicima', icon: '👥', href: '/dashboard/employees' },
-    { title: 'Moji sati', description: 'Evidencija vlastitih radnih sati', icon: '🕐', href: '/dashboard/management-hours' },
-    { title: 'Stanje robe', description: 'Osobna zadužnica i prijenosi', icon: '🗂️', href: '/dashboard/inventory' },
-    { title: 'Zaduženja', description: 'Evidencija alata, opreme i vozila', icon: '🔧', href: '/dashboard/zaduzenja' },
-    { title: 'Dokumentacija', description: 'HR dokumenti i compliance zaposlenika', icon: '📋', href: '/dashboard/dokumentacija' },
-    { title: 'Računi', description: 'Evidencija ulaznih računa tvrtke', icon: '🧾', href: '/dashboard/racuni' },
-    { title: 'Gorivo računi', description: 'Pregled i upravljanje gorivo računima', icon: '⛽', href: '/dashboard/gorivo' },
+    {
+      label: 'Upravljanje',
+      cards: [
+        { title: 'Zaposlenici', description: 'Upravljanje zaposlenicima', Icon: Users, href: '/dashboard/employees' },
+        { title: 'Moji sati', description: 'Evidencija vlastitih radnih sati', Icon: Clock, href: '/dashboard/management-hours' },
+        { title: 'Stanje robe', description: 'Osobna zadužnica i prijenosi', Icon: Package, href: '/dashboard/inventory' },
+        { title: 'Zaduženja', description: 'Evidencija alata, opreme i vozila', Icon: Wrench, href: '/dashboard/zaduzenja' },
+        { title: 'Dokumentacija', description: 'HR dokumenti i compliance zaposlenika', Icon: ClipboardList, href: '/dashboard/dokumentacija' },
+        { title: 'Računi', description: 'Evidencija ulaznih računa tvrtke', Icon: Receipt, href: '/dashboard/racuni' },
+        { title: 'Gorivo računi', description: 'Pregled i upravljanje gorivo računima', Icon: Droplets, href: '/dashboard/gorivo' },
+      ],
+    },
   ],
   poslovoda: [
-    { title: 'Moj tim', description: 'Pregled vaših zaposlenika', icon: '👥', href: '/dashboard/employees' },
-    { title: 'Raspored smjena', description: 'Tjedni raspored radnih smjena', icon: '📅', href: '/dashboard/schedule' },
-    { title: 'Moja gradilišta', description: 'Aktivni projekti dodijeljeni vama', icon: '🏗️', href: '/dashboard/projects' },
-    { title: 'Moji sati', description: 'Unos vlastitih dnevnih radnih sati po projektu.', icon: '⏱️', href: '/dashboard/my-hours' },
-    { title: 'Dnevni izvještaj', description: 'Unos dnevnog izvještaja', icon: '📋', href: '/dashboard/daily-reports' },
-    { title: 'Upis materijala', description: 'Evidentiranje kupljenog materijala', icon: '📦', href: '/dashboard/material-purchases/new' },
-    { title: 'Moji upisi', description: 'Pregled vaših upisa materijala', icon: '🛒', href: '/dashboard/material-purchases' },
-    { title: 'Osobno stanje robe', description: 'Zadužnica, oprema i prijenosi', icon: '🗂️', href: '/dashboard/inventory' },
-    { title: 'Moji R1 računi', description: 'Unos i pregled R1 računa', icon: '📄', href: '/dashboard/r1' },
-    { title: 'Gorivo računi', description: 'Pregled vlastitih gorivo računa', icon: '⛽', href: '/dashboard/gorivo' },
-    { title: 'Građevinski dnevnik', description: 'Evidencija radnih sati', icon: '📓', href: '/dashboard/reports/gradevinski-dnevnik' },
-    { title: 'Građevinska knjiga', description: 'Aktivnosti i utrošak materijala', icon: '📚', href: '/dashboard/reports/gradevinska-knjiga' },
+    {
+      label: 'Operativa',
+      cards: [
+        { title: 'Moja gradilišta', description: 'Aktivni projekti dodijeljeni vama', Icon: FolderOpen, href: '/dashboard/projects' },
+        { title: 'Raspored smjena', description: 'Tjedni raspored radnih smjena', Icon: CalendarDays, href: '/dashboard/schedule' },
+        { title: 'Dnevni izvještaj', description: 'Unos dnevnog izvještaja', Icon: FileText, href: '/dashboard/daily-reports', highlight: true },
+        { title: 'Moji sati', description: 'Unos vlastitih dnevnih radnih sati', Icon: Clock, href: '/dashboard/my-hours' },
+      ],
+    },
+    {
+      label: 'Materijali',
+      cards: [
+        { title: 'Upis materijala', description: 'Evidentiranje kupljenog materijala', Icon: ShoppingCart, href: '/dashboard/material-purchases' },
+        { title: 'Osobno stanje robe', description: 'Zadužnica, oprema i prijenosi', Icon: Package, href: '/dashboard/inventory' },
+      ],
+    },
+    {
+      label: 'Izvještaji',
+      cards: [
+        { title: 'Moji R1 računi', description: 'Unos i pregled R1 računa', Icon: BookOpen, href: '/dashboard/r1' },
+        { title: 'Gorivo računi', description: 'Pregled vlastitih gorivo računa', Icon: Droplets, href: '/dashboard/gorivo' },
+        { title: 'Građevinski dnevnik', description: 'Evidencija radnih sati', Icon: ClipboardList, href: '/dashboard/reports/gradevinski-dnevnik' },
+        { title: 'Građevinska knjiga', description: 'Aktivnosti i utrošak materijala', Icon: Archive, href: '/dashboard/reports/gradevinska-knjiga' },
+      ],
+    },
   ],
   radnik: [
-    { title: 'Raspored smjena', description: 'Moje smjene i raspored', icon: '📅', href: '/dashboard/schedule' },
-    { title: 'Moji sati', description: 'Unos vlastitih dnevnih radnih sati po projektu.', icon: '⏱️', href: '/dashboard/my-hours' },
-    { title: 'Projekti / Gradilišta', description: 'Pregled projekata tvrtke', icon: '🏗️', href: '/dashboard/projects' },
-    { title: 'Moji R1 računi', description: 'Unos i pregled R1 računa', icon: '📄', href: '/dashboard/r1' },
-    { title: 'Gorivo računi', description: 'Pregled vlastitih gorivo računa', icon: '⛽', href: '/dashboard/gorivo' },
+    {
+      label: 'Operativa',
+      cards: [
+        { title: 'Raspored smjena', description: 'Moje smjene i raspored', Icon: CalendarDays, href: '/dashboard/schedule' },
+        { title: 'Moji sati', description: 'Unos vlastitih dnevnih radnih sati', Icon: Clock, href: '/dashboard/my-hours', highlight: true },
+        { title: 'Projekti / Gradilišta', description: 'Pregled projekata tvrtke', Icon: FolderOpen, href: '/dashboard/projects' },
+        { title: 'Moji R1 računi', description: 'Unos i pregled R1 računa', Icon: BookOpen, href: '/dashboard/r1' },
+        { title: 'Gorivo računi', description: 'Pregled vlastitih gorivo računa', Icon: Droplets, href: '/dashboard/gorivo' },
+      ],
+    },
   ],
+}
+
+function getGreeting(): string {
+  const h = new Date().getHours()
+  if (h < 12) return 'Dobro jutro'
+  if (h < 18) return 'Dobar dan'
+  return 'Dobra večer'
+}
+
+function getTodayLabel(): string {
+  return new Date().toLocaleDateString('hr-HR', {
+    weekday: 'long',
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric',
+  })
 }
 
 export default function DashboardPage() {
   const { user, employee, isLoading, logout } = useAuth()
 
   if (isLoading) return <LoadingScreen />
-
   if (!user) return null
 
-  const displayName = employee
-    ? `${employee.first_name} ${employee.last_name}`
-    : user.email
-
-  const cards = roleCards[user.role] ?? []
+  const firstName = employee ? employee.first_name : user.email.split('@')[0]
+  const sections = cardSections[user.role] ?? []
 
   return (
-    <div className="min-h-screen bg-slate-950 text-white">
-      {/* Header */}
-      <header className="border-b border-slate-800 bg-slate-900 pwa-header">
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between">
-          <div>
-            <span className="font-bold text-white text-base sm:text-lg">Gradilište</span>
-          </div>
-          <div className="flex items-center gap-3 sm:gap-4">
-            <div className="text-right hidden sm:block">
-              <p className="text-sm font-medium text-white">{displayName}</p>
-              <p className="text-xs text-slate-400">{ROLE_LABELS[user.role] ?? user.role}</p>
-            </div>
-            <button
-              onClick={logout}
-              className="text-sm text-slate-400 hover:text-white border border-slate-700 hover:border-slate-500 px-3 py-2 sm:py-1.5 rounded-lg transition"
-            >
-              Odjava
-            </button>
-          </div>
-        </div>
-      </header>
+    <AppShell user={user} employee={employee} title="Početna" onLogout={logout}>
+      {/* ── Welcome ── */}
+      <div className="mb-5 sm:mb-7">
+        <p className="text-gi-text-subtle text-[11px] font-medium uppercase tracking-widest mb-1 capitalize">
+          {getTodayLabel()}
+        </p>
+        <h1 className="text-gi-text text-[26px] sm:text-[30px] font-bold leading-tight">
+          {getGreeting()}, {firstName}
+        </h1>
+      </div>
 
-      {/* Main */}
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 sm:py-10 pb-nav sm:pb-10">
-        {/* Welcome */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-white">
-            Dobrodošli, {displayName}
-          </h1>
-          <p className="text-slate-400 text-sm mt-1">
-            {ROLE_LABELS[user.role] ?? user.role} &middot; {user.email}
-          </p>
-        </div>
-
-        {/* Role-based navigation cards */}
-        {cards.length > 0 ? (
-          <>
-            <h2 className="text-sm font-semibold text-slate-400 uppercase tracking-wider mb-4">
-              Dostupni moduli
-            </h2>
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-              {cards.map((card) =>
-                card.href ? (
+      {/* ── Card sections ── */}
+      {sections.length > 0 ? (
+        <div className="space-y-5 sm:space-y-7">
+          {sections.map((section) => (
+            <div key={section.label}>
+              <h2 className="text-gi-text-subtle text-[10px] font-semibold uppercase tracking-widest mb-2.5">
+                {section.label}
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-2 sm:gap-2.5">
+                {section.cards.map((card) => (
                   <Link
-                    key={card.title}
+                    key={card.href}
                     href={card.href}
-                    className="bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col gap-3 hover:border-slate-600 hover:bg-slate-800/50 transition cursor-pointer"
+                    className={`group flex items-start gap-3.5 p-4 rounded-xl border transition-all duration-150 hover:bg-gi-card-elevated ${
+                      card.highlight
+                        ? 'bg-gi-card border-gi-yellow/30 hover:border-gi-yellow/60'
+                        : 'bg-gi-card border-gi-border hover:border-gi-border/80'
+                    }`}
                   >
-                    <span className="text-2xl">{card.icon}</span>
-                    <div>
-                      <h3 className="font-semibold text-white text-sm">{card.title}</h3>
-                      <p className="text-slate-400 text-xs mt-0.5">{card.description}</p>
+                    {/* Icon */}
+                    <div
+                      className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5 transition-colors duration-150 ${
+                        card.highlight
+                          ? 'bg-gi-yellow/15 text-gi-yellow'
+                          : 'bg-white/[0.06] text-gi-text-muted group-hover:bg-gi-yellow/10 group-hover:text-gi-yellow'
+                      }`}
+                    >
+                      <card.Icon className="w-[17px] h-[17px]" strokeWidth={1.8} />
                     </div>
-                    <span className="text-xs text-slate-500 font-medium">Otvori →</span>
+
+                    {/* Text */}
+                    <div className="flex-1 min-w-0">
+                      <h3 className="text-gi-text text-[13px] font-semibold leading-snug">
+                        {card.title}
+                      </h3>
+                      <p className="text-gi-text-subtle text-[11px] mt-0.5 leading-snug">
+                        {card.description}
+                      </p>
+                    </div>
+
+                    {/* Arrow */}
+                    <ArrowRight
+                      className={`w-3.5 h-3.5 flex-shrink-0 mt-1 transition-colors duration-150 ${
+                        card.highlight
+                          ? 'text-gi-yellow/60 group-hover:text-gi-yellow'
+                          : 'text-gi-text-subtle/50 group-hover:text-gi-yellow'
+                      }`}
+                      strokeWidth={2}
+                    />
                   </Link>
-                ) : (
-                  <div
-                    key={card.title}
-                    className="bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col gap-3 opacity-60"
-                  >
-                    <span className="text-2xl">{card.icon}</span>
-                    <div>
-                      <h3 className="font-semibold text-white text-sm">{card.title}</h3>
-                      <p className="text-slate-400 text-xs mt-0.5">{card.description}</p>
-                    </div>
-                    <span className="text-xs text-slate-600 font-medium">Uskoro dostupno</span>
-                  </div>
-                )
-              )}
+                ))}
+              </div>
             </div>
-          </>
-        ) : (
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-8 text-center">
-            <p className="text-slate-400 text-sm">Nema dostupnih modula za ovu ulogu.</p>
-          </div>
-        )}
-
-        {/* Debug info in development */}
-        {process.env.NODE_ENV === 'development' && (
-          <div className="mt-10 bg-slate-900 border border-slate-800 rounded-xl p-5">
-            <p className="text-xs font-mono text-slate-500 mb-2">Dev info</p>
-            <pre className="text-xs text-slate-400 overflow-auto">
-              {JSON.stringify({ user, employee }, null, 2)}
-            </pre>
-          </div>
-        )}
-      </main>
-
-      <MobileBottomNav role={user.role} />
-    </div>
+          ))}
+        </div>
+      ) : (
+        <div className="bg-gi-card border border-gi-border rounded-xl p-8 text-center">
+          <p className="text-gi-text-muted text-sm">Nema dostupnih modula za ovu ulogu.</p>
+        </div>
+      )}
+    </AppShell>
   )
 }

@@ -13,32 +13,32 @@ interface EmployeeTableProps {
 export default function EmployeeTable({ employees, canManage, onToggleActive }: EmployeeTableProps) {
   if (employees.length === 0) {
     return (
-      <div className="bg-slate-900 border border-slate-800 rounded-xl p-10 text-center">
-        <p className="text-slate-400 text-sm">Nema zaposlenika za prikaz.</p>
+      <div className="bg-gi-card border border-gi-border rounded-xl px-4 py-10 text-center">
+        <p className="text-gi-text-subtle text-sm">Nema zaposlenika za prikaz.</p>
       </div>
     )
   }
 
   return (
-    <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+    <div className="bg-gi-card border border-gi-border rounded-xl overflow-hidden">
       {/* Desktop table */}
       <table className="hidden sm:table w-full text-sm">
         <thead>
-          <tr className="border-b border-slate-800 text-slate-500 text-xs uppercase tracking-wider">
-            <th className="text-left px-5 py-3 font-medium">Ime i prezime</th>
-            <th className="text-left px-5 py-3 font-medium">Uloga</th>
-            <th className="text-left px-5 py-3 font-medium">Kontakt</th>
-            <th className="text-left px-5 py-3 font-medium">Status</th>
-            <th className="text-right px-5 py-3 font-medium">Akcije</th>
+          <tr className="border-b border-gi-border">
+            <th className="text-left px-5 py-3 text-xs font-medium text-gi-text-subtle uppercase tracking-wider">Ime i prezime</th>
+            <th className="text-left px-5 py-3 text-xs font-medium text-gi-text-subtle uppercase tracking-wider">Uloga</th>
+            <th className="text-left px-5 py-3 text-xs font-medium text-gi-text-subtle uppercase tracking-wider">Kontakt</th>
+            <th className="text-left px-5 py-3 text-xs font-medium text-gi-text-subtle uppercase tracking-wider">Status</th>
+            <th className="text-right px-5 py-3 text-xs font-medium text-gi-text-subtle uppercase tracking-wider">Akcije</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-slate-800">
+        <tbody className="divide-y divide-gi-border/60">
           {employees.map((emp) => (
-            <tr key={emp.id} className="hover:bg-slate-800/40 transition">
+            <tr key={emp.id} className="hover:bg-gi-card-elevated/40 transition-colors">
               <td className="px-5 py-3.5">
                 <Link
                   href={`/dashboard/employees/${emp.id}`}
-                  className="font-medium text-white hover:text-slate-200 transition"
+                  className="font-medium text-gi-text hover:text-gi-yellow transition-colors"
                 >
                   {fullName(emp)}
                 </Link>
@@ -46,35 +46,40 @@ export default function EmployeeTable({ employees, canManage, onToggleActive }: 
               <td className="px-5 py-3.5">
                 <RoleBadge role={emp.role} />
               </td>
-              <td className="px-5 py-3.5 text-slate-400">
+              <td className="px-5 py-3.5 text-gi-text-muted text-xs">
                 {emp.email ?? emp.phone ?? '—'}
               </td>
               <td className="px-5 py-3.5">
                 <StatusBadge active={emp.active} />
               </td>
               <td className="px-5 py-3.5">
-                <div className="flex items-center justify-end gap-3">
-                  <Link
-                    href={`/dashboard/employees/${emp.id}`}
-                    className="text-slate-400 hover:text-white transition text-xs"
-                  >
-                    Detalji
-                  </Link>
-                  {canManage && (
+                <div className="flex items-center justify-end gap-2">
+                  {canManage ? (
                     <>
                       <Link
                         href={`/dashboard/employees/${emp.id}/edit`}
-                        className="text-slate-400 hover:text-white transition text-xs"
+                        className="text-xs text-gi-text-muted hover:text-gi-text px-2.5 py-1 rounded border border-gi-border hover:border-gi-border/80 bg-gi-card-elevated hover:bg-gi-border transition-colors"
                       >
                         Uredi
                       </Link>
                       <button
                         onClick={() => onToggleActive(emp.id, emp.active)}
-                        className="text-slate-500 hover:text-red-400 transition text-xs"
+                        className={`text-xs px-2.5 py-1 rounded border transition-colors ${
+                          emp.active
+                            ? 'border-red-900/50 text-red-400/80 hover:bg-red-950/30 hover:text-red-400'
+                            : 'border-green-900/50 text-green-400/80 hover:bg-green-950/30 hover:text-green-400'
+                        }`}
                       >
                         {emp.active ? 'Deaktiviraj' : 'Aktiviraj'}
                       </button>
                     </>
+                  ) : (
+                    <Link
+                      href={`/dashboard/employees/${emp.id}`}
+                      className="text-xs text-gi-text-muted hover:text-gi-yellow transition-colors"
+                    >
+                      Detalji →
+                    </Link>
                   )}
                 </div>
               </td>
@@ -84,47 +89,43 @@ export default function EmployeeTable({ employees, canManage, onToggleActive }: 
       </table>
 
       {/* Mobile cards */}
-      <div className="sm:hidden divide-y divide-slate-800">
+      <div className="sm:hidden divide-y divide-gi-border/60">
         {employees.map((emp) => (
-          <div key={emp.id} className="p-4 space-y-2">
-            <div className="flex items-start justify-between gap-2">
-              <Link
-                href={`/dashboard/employees/${emp.id}`}
-                className="font-medium text-white hover:text-slate-200"
-              >
-                {fullName(emp)}
-              </Link>
+          <Link
+            key={emp.id}
+            href={`/dashboard/employees/${emp.id}`}
+            className="block p-4 hover:bg-gi-card-elevated/40 transition-colors"
+          >
+            <div className="flex items-start justify-between gap-2 mb-2">
+              <span className="font-medium text-gi-text">{fullName(emp)}</span>
               <StatusBadge active={emp.active} />
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2 flex-wrap mb-2">
               <RoleBadge role={emp.role} />
-              {emp.email && <span className="text-slate-400 text-xs">{emp.email}</span>}
+              {emp.email && <span className="text-gi-text-subtle text-xs">{emp.email}</span>}
             </div>
-            <div className="flex items-center gap-3 pt-1">
-              <Link
-                href={`/dashboard/employees/${emp.id}`}
-                className="text-xs text-slate-400 hover:text-white transition"
-              >
-                Detalji
-              </Link>
-              {canManage && (
-                <>
-                  <Link
-                    href={`/dashboard/employees/${emp.id}/edit`}
-                    className="text-xs text-slate-400 hover:text-white transition"
-                  >
-                    Uredi
-                  </Link>
-                  <button
-                    onClick={() => onToggleActive(emp.id, emp.active)}
-                    className="text-xs text-slate-500 hover:text-red-400 transition"
-                  >
-                    {emp.active ? 'Deaktiviraj' : 'Aktiviraj'}
-                  </button>
-                </>
-              )}
-            </div>
-          </div>
+            {canManage && (
+              <div className="flex items-center gap-2 pt-1" onClick={(e) => e.preventDefault()}>
+                <Link
+                  href={`/dashboard/employees/${emp.id}/edit`}
+                  onClick={(e) => e.stopPropagation()}
+                  className="text-xs text-gi-text-muted hover:text-gi-text px-2.5 py-1 rounded border border-gi-border bg-gi-card-elevated transition-colors"
+                >
+                  Uredi
+                </Link>
+                <button
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggleActive(emp.id, emp.active) }}
+                  className={`text-xs px-2.5 py-1 rounded border transition-colors ${
+                    emp.active
+                      ? 'border-red-900/50 text-red-400/80 hover:bg-red-950/30'
+                      : 'border-green-900/50 text-green-400/80 hover:bg-green-950/30'
+                  }`}
+                >
+                  {emp.active ? 'Deaktiviraj' : 'Aktiviraj'}
+                </button>
+              </div>
+            )}
+          </Link>
         ))}
       </div>
     </div>

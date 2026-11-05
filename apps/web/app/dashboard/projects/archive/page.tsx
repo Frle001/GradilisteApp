@@ -5,18 +5,10 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useAuth } from '@/hooks/useAuth'
 import LoadingScreen from '@/components/ui/LoadingScreen'
-import LoadingOverlay from '@/components/ui/LoadingOverlay'
-import DashboardShell from '@/components/layout/DashboardShell'
+import AppShell from '@/components/layout/AppShell'
 import ProjectStatusBadge from '@/components/projects/ProjectStatusBadge'
 import { type ArchiveListItem, type ArchiveListResponse, canManageProjects } from '@/lib/types/projects'
 import apiClient from '@/lib/api-client'
-
-const inputCls = `
-  bg-slate-800 border border-slate-700 rounded-lg text-white text-sm
-  placeholder-slate-500 px-3 py-2
-  focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500
-  transition-colors
-`.replace(/\s+/g, ' ').trim()
 
 export default function ProjectArchivePage() {
   const { user, employee, isLoading, logout } = useAuth()
@@ -61,14 +53,9 @@ export default function ProjectArchivePage() {
       .finally(() => setLoading(false))
   }, [user, page, search, statusFilter, dateFrom, dateTo])
 
-  useEffect(() => {
-    fetchArchive()
-  }, [fetchArchive])
+  useEffect(() => { fetchArchive() }, [fetchArchive])
 
-  // Reset to page 1 when filters change
-  useEffect(() => {
-    setPage(1)
-  }, [search, statusFilter, dateFrom, dateTo])
+  useEffect(() => { setPage(1) }, [search, statusFilter, dateFrom, dateTo])
 
   useEffect(() => {
     if (!isLoading && user?.role === 'administracija') router.replace('/dashboard')
@@ -91,168 +78,216 @@ export default function ProjectArchivePage() {
   if (isLoading) return <LoadingScreen />
   if (!user || user.role === 'administracija') return null
 
+  const inputCls = 'w-full px-3.5 py-2 bg-gi-card-elevated border border-gi-border rounded-lg text-gi-text placeholder:text-gi-text-subtle text-sm focus:outline-none focus:border-gi-yellow transition-colors'
+
   return (
-    <DashboardShell
+    <AppShell
       user={user}
       employee={employee}
       title="Arhiva projekata"
       backHref="/dashboard/projects"
       onLogout={logout}
     >
-      <div className="space-y-5 max-w-6xl">
+      <div className="space-y-5">
         <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold text-white">Arhiva projekata</h1>
-          <span className="text-slate-500 text-sm">{total} projekt{total === 1 ? '' : 'a'}</span>
+          <div>
+            <h1 className="text-xl font-bold text-gi-text">Arhiva projekata</h1>
+            <p className="text-gi-text-subtle text-sm mt-0.5">Zatvoreni i arhivirani projekti</p>
+          </div>
+          <span className="text-gi-text-subtle text-sm">{total} projekt{total === 1 ? '' : 'a'}</span>
         </div>
 
         {/* Filters */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+        <div className="bg-gi-card border border-gi-border rounded-xl p-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
             <input
               type="text"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Pretraži po nazivu..."
-              className={inputCls + ' w-full'}
+              className={inputCls}
             />
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value as '' | 'closed' | 'archived')}
-              className={inputCls + ' w-full'}
+              className={inputCls}
             >
               <option value="">Sve (zatvoreni + arhivirani)</option>
               <option value="closed">Samo zatvoreni</option>
               <option value="archived">Samo arhivirani</option>
             </select>
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-slate-500">Zatvoreno od</label>
+              <label className="text-[10px] text-gi-text-subtle uppercase tracking-wider">Zatvoreno od</label>
               <input
                 type="date"
                 value={dateFrom}
                 onChange={(e) => setDateFrom(e.target.value)}
-                className={inputCls + ' w-full'}
+                className={inputCls}
               />
             </div>
             <div className="flex flex-col gap-1">
-              <label className="text-xs text-slate-500">Zatvoreno do</label>
+              <label className="text-[10px] text-gi-text-subtle uppercase tracking-wider">Zatvoreno do</label>
               <input
                 type="date"
                 value={dateTo}
                 onChange={(e) => setDateTo(e.target.value)}
-                className={inputCls + ' w-full'}
+                className={inputCls}
               />
             </div>
           </div>
         </div>
 
         {error && (
-          <div className="bg-red-950 border border-red-800 rounded-lg px-4 py-3">
+          <div className="bg-red-900/30 border border-red-800/60 rounded-lg px-4 py-3">
             <p className="text-red-300 text-sm">{error}</p>
           </div>
         )}
 
         {/* Table */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl overflow-hidden">
+        <div className="bg-gi-card border border-gi-border rounded-xl overflow-hidden">
           {loading ? (
-            <LoadingOverlay />
+            <div className="flex items-center justify-center h-32">
+              <p className="text-gi-text-subtle text-sm animate-pulse">Učitavanje arhive...</p>
+            </div>
           ) : items.length === 0 ? (
-            <div className="text-center py-12 text-slate-500 text-sm">
+            <div className="text-center py-12 text-gi-text-subtle text-sm">
               Nema arhiviranih ili zatvorenih projekata.
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-800 text-left text-slate-500 text-xs uppercase tracking-wider">
-                    <th className="px-4 py-3 font-medium">Projekt</th>
-                    <th className="px-4 py-3 font-medium">Status</th>
-                    <th className="px-4 py-3 font-medium">Poslovođa</th>
-                    <th className="px-4 py-3 font-medium">Zatvoreno</th>
-                    <th className="px-4 py-3 font-medium text-right">Izvještaji</th>
-                    <th className="px-4 py-3 font-medium text-right">Nabave</th>
-                    <th className="px-4 py-3 font-medium text-right">Materijali</th>
-                    <th className="px-4 py-3 font-medium text-right">Akcije</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-800">
-                  {items.map((item) => (
-                    <tr key={item.id} className="hover:bg-slate-800/50 transition-colors">
-                      <td className="px-4 py-3">
-                        <Link
-                          href={`/dashboard/projects/archive/${item.id}`}
-                          className="text-white font-medium hover:text-blue-400 transition-colors"
-                        >
-                          {item.name}
-                        </Link>
-                        {item.address && (
-                          <p className="text-slate-500 text-xs mt-0.5">{item.address}</p>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <ProjectStatusBadge status={item.status} />
-                      </td>
-                      <td className="px-4 py-3 text-slate-300">
-                        {item.primary_poslovoda_name ?? <span className="text-slate-600">—</span>}
-                      </td>
-                      <td className="px-4 py-3 text-slate-400 text-xs">
-                        {item.closed_at
-                          ? new Date(item.closed_at).toLocaleDateString('hr-HR')
-                          : '—'}
-                        {item.closed_by_name && (
-                          <p className="text-slate-600 mt-0.5">{item.closed_by_name}</p>
-                        )}
-                      </td>
-                      <td className="px-4 py-3 text-right text-slate-300">{item.daily_reports_count}</td>
-                      <td className="px-4 py-3 text-right text-slate-300">{item.material_purchases_count}</td>
-                      <td className="px-4 py-3 text-right text-slate-300">{item.project_materials_count}</td>
-                      <td className="px-4 py-3 text-right">
-                        <div className="flex items-center justify-end gap-2">
+            <>
+              {/* Desktop */}
+              <div className="hidden md:block overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gi-border">
+                      <th className="text-left px-4 py-3 text-gi-text-subtle font-medium text-xs uppercase tracking-wider">Projekt</th>
+                      <th className="text-left px-4 py-3 text-gi-text-subtle font-medium text-xs uppercase tracking-wider">Status</th>
+                      <th className="text-left px-4 py-3 text-gi-text-subtle font-medium text-xs uppercase tracking-wider">Poslovođa</th>
+                      <th className="text-left px-4 py-3 text-gi-text-subtle font-medium text-xs uppercase tracking-wider">Zatvoreno</th>
+                      <th className="text-right px-4 py-3 text-gi-text-subtle font-medium text-xs uppercase tracking-wider">Izvještaji</th>
+                      <th className="text-right px-4 py-3 text-gi-text-subtle font-medium text-xs uppercase tracking-wider">Nabave</th>
+                      <th className="text-right px-4 py-3 text-gi-text-subtle font-medium text-xs uppercase tracking-wider">Materijali</th>
+                      <th className="text-right px-4 py-3 text-gi-text-subtle font-medium text-xs uppercase tracking-wider">Akcije</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gi-border/60">
+                    {items.map((item) => (
+                      <tr key={item.id} className="hover:bg-gi-card-elevated transition-colors">
+                        <td className="px-4 py-3">
                           <Link
                             href={`/dashboard/projects/archive/${item.id}`}
-                            className="text-xs text-blue-400 hover:text-blue-300 transition-colors"
+                            className="text-gi-text font-medium hover:text-gi-yellow transition-colors"
                           >
-                            Pregled
+                            {item.name}
                           </Link>
-                          {canManage && (
-                            <button
-                              onClick={() => handleReactivate(item.id, item.name)}
-                              disabled={reactivating === item.id}
-                              className="text-xs text-green-400 hover:text-green-300 disabled:opacity-40 transition-colors"
-                            >
-                              {reactivating === item.id ? '...' : 'Reaktiviraj'}
-                            </button>
+                          {item.address && (
+                            <p className="text-gi-text-subtle text-xs mt-0.5">{item.address}</p>
                           )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <ProjectStatusBadge status={item.status} />
+                        </td>
+                        <td className="px-4 py-3 text-gi-text-muted text-sm">
+                          {item.primary_poslovoda_name ?? <span className="text-gi-text-subtle">—</span>}
+                        </td>
+                        <td className="px-4 py-3 text-gi-text-subtle text-xs">
+                          {item.closed_at ? new Date(item.closed_at).toLocaleDateString('hr-HR') : '—'}
+                          {item.closed_by_name && (
+                            <p className="text-gi-text-subtle/60 mt-0.5">{item.closed_by_name}</p>
+                          )}
+                        </td>
+                        <td className="px-4 py-3 text-right text-gi-text-muted">{item.daily_reports_count}</td>
+                        <td className="px-4 py-3 text-right text-gi-text-muted">{item.material_purchases_count}</td>
+                        <td className="px-4 py-3 text-right text-gi-text-muted">{item.project_materials_count}</td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-3">
+                            <Link
+                              href={`/dashboard/projects/archive/${item.id}`}
+                              className="text-xs text-gi-text-muted hover:text-gi-yellow transition-colors"
+                            >
+                              Pregled
+                            </Link>
+                            {canManage && (
+                              <button
+                                onClick={() => handleReactivate(item.id, item.name)}
+                                disabled={reactivating === item.id}
+                                className="text-xs text-green-400 hover:text-green-300 disabled:opacity-40 transition-colors"
+                              >
+                                {reactivating === item.id ? '...' : 'Reaktiviraj'}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Mobile cards */}
+              <div className="md:hidden divide-y divide-gi-border/60">
+                {items.map((item) => (
+                  <div key={item.id} className="p-4 space-y-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <Link
+                        href={`/dashboard/projects/archive/${item.id}`}
+                        className="text-gi-text font-medium hover:text-gi-yellow transition-colors flex-1 min-w-0 truncate"
+                      >
+                        {item.name}
+                      </Link>
+                      <ProjectStatusBadge status={item.status} />
+                    </div>
+                    {item.address && <p className="text-gi-text-subtle text-xs">{item.address}</p>}
+                    <div className="flex items-center gap-4 text-xs text-gi-text-subtle">
+                      <span>{item.primary_poslovoda_name ?? '—'}</span>
+                      {item.closed_at && <span>{new Date(item.closed_at).toLocaleDateString('hr-HR')}</span>}
+                    </div>
+                    <div className="flex items-center gap-4 text-xs text-gi-text-subtle">
+                      <span>{item.daily_reports_count} izvještaja</span>
+                      <span>{item.project_materials_count} materijala</span>
+                    </div>
+                    <div className="flex gap-3 pt-1">
+                      <Link href={`/dashboard/projects/archive/${item.id}`} className="text-xs text-gi-text-muted hover:text-gi-yellow transition-colors">
+                        Pregled
+                      </Link>
+                      {canManage && (
+                        <button
+                          onClick={() => handleReactivate(item.id, item.name)}
+                          disabled={reactivating === item.id}
+                          className="text-xs text-green-400 hover:text-green-300 disabled:opacity-40 transition-colors"
+                        >
+                          {reactivating === item.id ? '...' : 'Reaktiviraj'}
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
 
         {/* Pagination */}
         {totalPages > 1 && (
-          <div className="flex items-center justify-between text-sm text-slate-400">
+          <div className="flex items-center justify-between text-sm">
             <button
               onClick={() => setPage((p) => Math.max(1, p - 1))}
               disabled={page <= 1}
-              className="px-3 py-1.5 bg-slate-800 rounded-lg disabled:opacity-40 hover:bg-slate-700 transition-colors"
+              className="px-4 py-2 bg-gi-card-elevated border border-gi-border rounded-lg text-gi-text-muted disabled:opacity-40 hover:bg-gi-card-elevated/80 hover:text-gi-text transition-colors text-xs"
             >
               Prethodna
             </button>
-            <span>Stranica {page} / {totalPages}</span>
+            <span className="text-gi-text-subtle text-xs">Stranica {page} / {totalPages}</span>
             <button
               onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
               disabled={page >= totalPages}
-              className="px-3 py-1.5 bg-slate-800 rounded-lg disabled:opacity-40 hover:bg-slate-700 transition-colors"
+              className="px-4 py-2 bg-gi-card-elevated border border-gi-border rounded-lg text-gi-text-muted disabled:opacity-40 hover:bg-gi-card-elevated/80 hover:text-gi-text transition-colors text-xs"
             >
               Sljedeća
             </button>
           </div>
         )}
       </div>
-    </DashboardShell>
+    </AppShell>
   )
 }
