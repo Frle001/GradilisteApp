@@ -29,18 +29,18 @@ type UpdateCategoryReq struct {
 // ── Expenses ──────────────────────────────────────────────────────────────────
 
 type ColdOpsExpense struct {
-	ID            string   `json:"id"`
-	CategoryID    *string  `json:"category_id,omitempty"`
-	CategoryName  *string  `json:"category_name,omitempty"`
-	Amount        float64  `json:"amount"`
-	ExpenseDate   string   `json:"expense_date"`
-	Title         string   `json:"title"`
-	Notes         *string  `json:"notes,omitempty"`
-	Supplier      *string  `json:"supplier,omitempty"`
-	PaymentMethod *string  `json:"payment_method,omitempty"`
-	ExpenseType   string   `json:"expense_type"`
-	CreatedBy     string   `json:"created_by"`
-	CreatedAt     string   `json:"created_at"`
+	ID            string  `json:"id"`
+	CategoryID    *string `json:"category_id,omitempty"`
+	CategoryName  *string `json:"category_name,omitempty"`
+	Amount        float64 `json:"amount"`
+	ExpenseDate   string  `json:"expense_date"`
+	Title         string  `json:"title"`
+	Notes         *string `json:"notes,omitempty"`
+	Supplier      *string `json:"supplier,omitempty"`
+	PaymentMethod *string `json:"payment_method,omitempty"`
+	ExpenseType   string  `json:"expense_type"`
+	CreatedBy     string  `json:"created_by"`
+	CreatedAt     string  `json:"created_at"`
 }
 
 type CreateExpenseReq struct {
@@ -95,17 +95,17 @@ type RecurringDef struct {
 }
 
 type CreateRecurringReq struct {
-	CategoryID    *string  `json:"category_id"`
-	Title         string   `json:"title"`
-	Frequency     string   `json:"frequency"`
-	DayOfMonth    int      `json:"day_of_month"`
-	MonthOfYear   *int     `json:"month_of_year"`
-	StartDate     string   `json:"start_date"`
-	EndDate       *string  `json:"end_date"`
-	Amount        float64  `json:"amount"`
-	Supplier      *string  `json:"supplier"`
-	PaymentMethod *string  `json:"payment_method"`
-	Notes         *string  `json:"notes"`
+	CategoryID    *string `json:"category_id"`
+	Title         string  `json:"title"`
+	Frequency     string  `json:"frequency"`
+	DayOfMonth    int     `json:"day_of_month"`
+	MonthOfYear   *int    `json:"month_of_year"`
+	StartDate     string  `json:"start_date"`
+	EndDate       *string `json:"end_date"`
+	Amount        float64 `json:"amount"`
+	Supplier      *string `json:"supplier"`
+	PaymentMethod *string `json:"payment_method"`
+	Notes         *string `json:"notes"`
 }
 
 type UpdateRecurringReq struct {
@@ -124,17 +124,17 @@ type UpdateRecurringReq struct {
 // ── Occurrences ───────────────────────────────────────────────────────────────
 
 type ColdOpsOccurrence struct {
-	ID             string   `json:"id"`
-	DefinitionID   string   `json:"definition_id"`
-	DefinitionTitle string  `json:"definition_title,omitempty"`
-	OccurrenceKey  string   `json:"occurrence_key"`
-	DueDate        string   `json:"due_date"`
-	Status         string   `json:"status"`
-	Amount         *float64 `json:"amount,omitempty"`
-	ExpenseID      *string  `json:"expense_id,omitempty"`
-	Notes          *string  `json:"notes,omitempty"`
-	HandledBy      *string  `json:"handled_by,omitempty"`
-	HandledAt      *string  `json:"handled_at,omitempty"`
+	ID              string   `json:"id"`
+	DefinitionID    string   `json:"definition_id"`
+	DefinitionTitle string   `json:"definition_title,omitempty"`
+	OccurrenceKey   string   `json:"occurrence_key"`
+	DueDate         string   `json:"due_date"`
+	Status          string   `json:"status"`
+	Amount          *float64 `json:"amount,omitempty"`
+	ExpenseID       *string  `json:"expense_id,omitempty"`
+	Notes           *string  `json:"notes,omitempty"`
+	HandledBy       *string  `json:"handled_by,omitempty"`
+	HandledAt       *string  `json:"handled_at,omitempty"`
 }
 
 type ConfirmOccurrenceReq struct {
@@ -149,14 +149,14 @@ type SkipOccurrenceReq struct {
 // ── Budgets ───────────────────────────────────────────────────────────────────
 
 type ColdOpsBudget struct {
-	ID           string   `json:"id"`
-	CategoryID   *string  `json:"category_id,omitempty"`
-	CategoryName *string  `json:"category_name,omitempty"`
-	Year         int      `json:"year"`
-	Month        int      `json:"month"`
-	BudgetAmount float64  `json:"budget_amount"`
-	ActualAmount float64  `json:"actual_amount"`
-	Utilization  float64  `json:"utilization_pct"`
+	ID           string  `json:"id"`
+	CategoryID   *string `json:"category_id,omitempty"`
+	CategoryName *string `json:"category_name,omitempty"`
+	Year         int     `json:"year"`
+	Month        int     `json:"month"`
+	BudgetAmount float64 `json:"budget_amount"`
+	ActualAmount float64 `json:"actual_amount"`
+	Utilization  float64 `json:"utilization_pct"`
 }
 
 type UpsertBudgetReq struct {
@@ -169,9 +169,9 @@ type UpsertBudgetReq struct {
 // ── Analytics summary ─────────────────────────────────────────────────────────
 
 type ColdOpsPeriodStats struct {
-	Total      float64  `json:"total"`
-	Count      int      `json:"count"`
-	PctChange  *float64 `json:"pct_change,omitempty"`
+	Total     float64  `json:"total"`
+	Count     int      `json:"count"`
+	PctChange *float64 `json:"pct_change,omitempty"`
 }
 
 type ColdOpsTrendPoint struct {
@@ -198,11 +198,11 @@ type ColdOpsFixedVariable struct {
 }
 
 type ColdOpsForecastPoint struct {
-	Year             int     `json:"year"`
-	Month            int     `json:"month"`
-	ConfirmedAmount  float64 `json:"confirmed_amount"`
-	ForecastAmount   float64 `json:"forecast_amount"`
-	IsProjection     bool    `json:"is_projection"`
+	Year            int     `json:"year"`
+	Month           int     `json:"month"`
+	ConfirmedAmount float64 `json:"confirmed_amount"`
+	ForecastAmount  float64 `json:"forecast_amount"`
+	IsProjection    bool    `json:"is_projection"`
 }
 
 type ColdOpsBudgetUtil struct {

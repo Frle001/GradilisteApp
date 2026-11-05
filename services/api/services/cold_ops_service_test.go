@@ -561,10 +561,10 @@ func TestColdOps_UpdateRecurringDef_NewAmount(t *testing.T) {
 
 	newAmt := 500.0
 	_, err := svc.UpdateRecurringDef(ctx, "co-1", "u-1", "direktor", "def-1", dto.UpdateRecurringReq{
-		Title:     "New Title",
+		Title:      "New Title",
 		DayOfMonth: 1,
-		IsActive:  true,
-		NewAmount: &newAmt,
+		IsActive:   true,
+		NewAmount:  &newAmt,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
