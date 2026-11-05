@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Image from 'next/image'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
@@ -15,14 +15,13 @@ import {
   Receipt,
   BarChart2,
   Archive,
-  BookOpen,
-  Briefcase,
   ShoppingCart,
   Package,
   Wrench,
   Menu,
   X,
   ChevronLeft,
+  ChevronDown,
   LogOut,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
@@ -32,11 +31,18 @@ import SyncStatusBanner from '@/components/ui/SyncStatusBanner'
 import { useServerReachable } from '@/lib/connection-state'
 import type { MeUser, MeEmployee } from '@/hooks/useAuth'
 
-interface NavItem {
+interface NavChild {
   href: string
   label: string
   Icon: LucideIcon
+}
+
+interface NavItem {
+  href?: string
+  label: string
+  Icon: LucideIcon
   exact?: boolean
+  children?: NavChild[]
 }
 
 interface NavGroup {
@@ -56,8 +62,7 @@ const navGroups: Record<string, NavGroup[]> = {
         { href: '/dashboard/projects', label: 'Projekti', Icon: FolderOpen },
         { href: '/dashboard/schedule', label: 'Raspored smjena', Icon: CalendarDays },
         { href: '/dashboard/daily-reports', label: 'Dnevni izvještaji', Icon: FileText },
-        { href: '/dashboard/worker-hours', label: 'Sati zaposlenika', Icon: Clock },
-        { href: '/dashboard/management-hours', label: 'Moji sati', Icon: Briefcase },
+        { href: '/dashboard/radni-sati', label: 'Radni sati', Icon: Clock },
       ],
     },
     {
@@ -71,13 +76,17 @@ const navGroups: Record<string, NavGroup[]> = {
       label: 'Upravljanje',
       items: [
         { href: '/dashboard/employees', label: 'Zaposlenici', Icon: Users },
-        { href: '/dashboard/analytics', label: 'Analitika', Icon: BarChart2 },
+        {
+          label: 'Analitika', Icon: BarChart2, children: [
+            { href: '/dashboard/analytics/pregled', label: 'Pregled', Icon: BarChart2 },
+            { href: '/dashboard/analytics/place', label: 'Plaće', Icon: BarChart2 },
+            { href: '/dashboard/analytics/hladni-pogon', label: 'Hladni pogon', Icon: BarChart2 },
+          ],
+        },
         { href: '/dashboard/zaduzenja', label: 'Zaduženja', Icon: Wrench },
         { href: '/dashboard/dokumentacija', label: 'Dokumentacija', Icon: ClipboardList },
-        { href: '/dashboard/racuni', label: 'Računi', Icon: Receipt },
-        { href: '/dashboard/r1', label: 'R1 računi', Icon: BookOpen },
-        { href: '/dashboard/reports/gradevinski-dnevnik', label: 'Građevinski dnevnik', Icon: ClipboardList },
-        { href: '/dashboard/reports/gradevinska-knjiga', label: 'Građevinska knjiga', Icon: Archive },
+        { href: '/dashboard/racuni-i-troskovi', label: 'Računi i troškovi', Icon: Receipt },
+        { href: '/dashboard/gradevinska-evidencija', label: 'Građevinska evidencija', Icon: Archive },
       ],
     },
   ],
@@ -92,8 +101,7 @@ const navGroups: Record<string, NavGroup[]> = {
         { href: '/dashboard/projects', label: 'Projekti', Icon: FolderOpen },
         { href: '/dashboard/schedule', label: 'Raspored smjena', Icon: CalendarDays },
         { href: '/dashboard/daily-reports', label: 'Dnevni izvještaji', Icon: FileText },
-        { href: '/dashboard/worker-hours', label: 'Sati zaposlenika', Icon: Clock },
-        { href: '/dashboard/management-hours', label: 'Moji sati', Icon: Briefcase },
+        { href: '/dashboard/radni-sati', label: 'Radni sati', Icon: Clock },
       ],
     },
     {
@@ -107,10 +115,15 @@ const navGroups: Record<string, NavGroup[]> = {
       label: 'Upravljanje',
       items: [
         { href: '/dashboard/employees', label: 'Zaposlenici', Icon: Users },
-        { href: '/dashboard/analytics', label: 'Analitika', Icon: BarChart2 },
-        { href: '/dashboard/r1', label: 'Moji R1', Icon: BookOpen },
-        { href: '/dashboard/reports/gradevinski-dnevnik', label: 'Građevinski dnevnik', Icon: ClipboardList },
-        { href: '/dashboard/reports/gradevinska-knjiga', label: 'Građevinska knjiga', Icon: Archive },
+        {
+          label: 'Analitika', Icon: BarChart2, children: [
+            { href: '/dashboard/analytics/pregled', label: 'Pregled', Icon: BarChart2 },
+            { href: '/dashboard/analytics/place', label: 'Plaće', Icon: BarChart2 },
+            { href: '/dashboard/analytics/hladni-pogon', label: 'Hladni pogon', Icon: BarChart2 },
+          ],
+        },
+        { href: '/dashboard/racuni-i-troskovi', label: 'Računi i troškovi', Icon: Receipt },
+        { href: '/dashboard/gradevinska-evidencija', label: 'Građevinska evidencija', Icon: Archive },
       ],
     },
   ],
@@ -123,11 +136,11 @@ const navGroups: Record<string, NavGroup[]> = {
       label: 'Upravljanje',
       items: [
         { href: '/dashboard/employees', label: 'Zaposlenici', Icon: Users },
-        { href: '/dashboard/management-hours', label: 'Moji sati', Icon: Clock },
+        { href: '/dashboard/radni-sati', label: 'Radni sati', Icon: Clock },
         { href: '/dashboard/inventory', label: 'Stanje robe', Icon: Package },
         { href: '/dashboard/zaduzenja', label: 'Zaduženja', Icon: Wrench },
         { href: '/dashboard/dokumentacija', label: 'Dokumentacija', Icon: ClipboardList },
-        { href: '/dashboard/racuni', label: 'Računi', Icon: Receipt },
+        { href: '/dashboard/racuni-i-troskovi', label: 'Računi i troškovi', Icon: Receipt },
       ],
     },
   ],
@@ -142,7 +155,7 @@ const navGroups: Record<string, NavGroup[]> = {
         { href: '/dashboard/projects', label: 'Moja gradilišta', Icon: FolderOpen },
         { href: '/dashboard/schedule', label: 'Raspored smjena', Icon: CalendarDays },
         { href: '/dashboard/daily-reports', label: 'Dnevni izvještaj', Icon: FileText },
-        { href: '/dashboard/my-hours', label: 'Moji sati', Icon: Clock },
+        { href: '/dashboard/radni-sati', label: 'Radni sati', Icon: Clock },
       ],
     },
     {
@@ -155,9 +168,8 @@ const navGroups: Record<string, NavGroup[]> = {
     {
       label: 'Izvještaji',
       items: [
-        { href: '/dashboard/r1', label: 'Moji R1', Icon: Receipt },
-        { href: '/dashboard/reports/gradevinski-dnevnik', label: 'Građevinski dnevnik', Icon: ClipboardList },
-        { href: '/dashboard/reports/gradevinska-knjiga', label: 'Građevinska knjiga', Icon: Archive },
+        { href: '/dashboard/racuni-i-troskovi', label: 'Računi i troškovi', Icon: Receipt },
+        { href: '/dashboard/gradevinska-evidencija', label: 'Građevinska evidencija', Icon: Archive },
       ],
     },
   ],
@@ -170,9 +182,9 @@ const navGroups: Record<string, NavGroup[]> = {
       label: 'Operativa',
       items: [
         { href: '/dashboard/schedule', label: 'Raspored smjena', Icon: CalendarDays },
-        { href: '/dashboard/my-hours', label: 'Moji sati', Icon: Clock },
+        { href: '/dashboard/radni-sati', label: 'Radni sati', Icon: Clock },
         { href: '/dashboard/projects', label: 'Projekti', Icon: FolderOpen },
-        { href: '/dashboard/r1', label: 'Moji R1', Icon: Receipt },
+        { href: '/dashboard/racuni-i-troskovi', label: 'Računi i troškovi', Icon: Receipt },
       ],
     },
   ],
@@ -201,6 +213,7 @@ export default function AppShell({
   const pathname = usePathname()
   const serverReachable = useServerReachable()
   const [mobileOpen, setMobileOpen] = useState(false)
+  const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set())
 
   const groups = navGroups[user.role] ?? []
   const displayName = employee
@@ -209,7 +222,34 @@ export default function AppShell({
   const roleLabel = ROLE_LABELS[user.role] ?? user.role
   const initial = displayName.charAt(0).toUpperCase()
 
+  // Auto-expand any group whose child matches the current path
+  useEffect(() => {
+    const toExpand = new Set<string>()
+    groups.forEach(group => {
+      group.items.forEach(item => {
+        if (item.children) {
+          const hasActive = item.children.some(c =>
+            pathname === c.href || pathname.startsWith(c.href + '/')
+          )
+          if (hasActive) toExpand.add(item.label)
+        }
+      })
+    })
+    if (toExpand.size > 0) {
+      setExpandedItems(prev => new Set([...prev, ...toExpand]))
+    }
+  }, [pathname]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  function toggleExpanded(label: string) {
+    setExpandedItems(prev => {
+      const next = new Set(prev)
+      if (next.has(label)) { next.delete(label) } else { next.add(label) }
+      return next
+    })
+  }
+
   function isActive(item: NavItem): boolean {
+    if (!item.href) return false
     if (item.exact) return pathname === item.href
     return pathname === item.href || pathname.startsWith(item.href + '/')
   }
@@ -239,6 +279,59 @@ export default function AppShell({
             </p>
             <ul className="space-y-0.5">
               {group.items.map((item) => {
+                if (item.children) {
+                  const anyChildActive = item.children.some(c =>
+                    pathname === c.href || pathname.startsWith(c.href + '/')
+                  )
+                  const expanded = expandedItems.has(item.label) || anyChildActive
+                  return (
+                    <li key={item.label}>
+                      <button
+                        onClick={() => toggleExpanded(item.label)}
+                        className={`w-full flex items-center gap-2.5 px-2.5 py-[7px] rounded-lg text-[13px] transition-colors duration-150 ${
+                          anyChildActive
+                            ? 'text-gi-text font-medium'
+                            : 'text-gi-text-muted hover:text-gi-text hover:bg-gi-navy-hover'
+                        }`}
+                      >
+                        <item.Icon className="w-[15px] h-[15px] flex-shrink-0" strokeWidth={1.8} />
+                        <span className="flex-1 text-left">{item.label}</span>
+                        <ChevronDown
+                          className={`w-3 h-3 flex-shrink-0 transition-transform duration-200 ${expanded ? 'rotate-180' : ''}`}
+                          strokeWidth={2}
+                        />
+                      </button>
+                      {expanded && (
+                        <ul className="mt-0.5 ml-3 pl-2.5 border-l border-white/[0.1] space-y-0.5">
+                          {item.children.map(child => {
+                            const childActive = pathname === child.href || pathname.startsWith(child.href + '/')
+                            return (
+                              <li key={child.href}>
+                                <Link
+                                  href={child.href}
+                                  onClick={() => setMobileOpen(false)}
+                                  className={`flex items-center gap-2 px-2 py-[6px] rounded-lg text-[12px] transition-colors duration-150 ${
+                                    childActive
+                                      ? 'bg-gi-yellow text-gi-navy font-semibold'
+                                      : 'text-gi-text-muted hover:text-gi-text hover:bg-gi-navy-hover'
+                                  }`}
+                                >
+                                  <child.Icon
+                                    className="w-3.5 h-3.5 flex-shrink-0"
+                                    strokeWidth={childActive ? 2.5 : 1.8}
+                                  />
+                                  {child.label}
+                                </Link>
+                              </li>
+                            )
+                          })}
+                        </ul>
+                      )}
+                    </li>
+                  )
+                }
+
+                if (!item.href) return null
                 const active = isActive(item)
                 return (
                   <li key={item.href}>

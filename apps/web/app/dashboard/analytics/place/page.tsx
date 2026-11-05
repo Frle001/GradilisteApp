@@ -6,6 +6,7 @@ import { useAuth } from '@/hooks/useAuth'
 import apiClient from '@/lib/api-client'
 import LoadingScreen from '@/components/ui/LoadingScreen'
 import AppShell from '@/components/layout/AppShell'
+import AnalyticsTabNav from '@/components/analytics/AnalyticsTabNav'
 import {
   type MonthlyLaborSummary,
   type EmployeeLaborCost,
@@ -544,15 +545,16 @@ export default function PlacePage() {
     <AppShell
       user={user}
       employee={employee}
-      title="Analitika / Plaće"
+      title="Analitika"
       backHref="/dashboard"
       onLogout={logout}
     >
       <div className="space-y-5 max-w-5xl">
+        <AnalyticsTabNav />
         {/* Page header + period selector */}
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
-            <h1 className="text-xl font-bold text-gi-text tracking-tight">Analitika / Plaće</h1>
+            <h1 className="text-xl font-bold text-gi-text tracking-tight">Plaće</h1>
             <p className="text-sm text-gi-text-subtle mt-0.5">Trošak rada i kompenzacijski planovi zaposlenika</p>
           </div>
 

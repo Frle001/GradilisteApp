@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useRef, useEffect, Fragment } from 'react'
+import { useState, useRef, useEffect, useId, Fragment } from 'react'
 import { type FormDataMaterial } from '@/lib/types/daily-reports'
 
 const MAX_VISIBLE = 20
@@ -40,6 +40,7 @@ export default function MaterialPicker({
   const containerRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const listRef = useRef<HTMLUListElement>(null)
+  const listboxId = useId()
 
   const selected = materials.find(m => m.id === value) ?? null
 
@@ -148,6 +149,7 @@ export default function MaterialPicker({
           role="combobox"
           aria-haspopup="listbox"
           aria-expanded={false}
+          aria-controls={listboxId}
           tabIndex={disabled ? -1 : 0}
           onClick={openPicker}
           onKeyDown={e => {
@@ -210,6 +212,7 @@ export default function MaterialPicker({
           ) : (
             <ul
               ref={listRef}
+              id={listboxId}
               role="listbox"
               aria-label="Popis materijala"
               className="max-h-56 overflow-y-auto divide-y divide-gi-border/60"

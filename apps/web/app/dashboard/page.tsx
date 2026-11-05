@@ -14,14 +14,11 @@ import {
   Receipt,
   BarChart2,
   Archive,
-  BookOpen,
-  Briefcase,
   ShoppingCart,
   Package,
   Wrench,
   ArrowRight,
   PlusCircle,
-  Droplets,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
@@ -47,27 +44,28 @@ const cardSections: Record<string, CardSection[]> = {
         { title: 'Novi projekt', description: 'Pokretanje novog gradilišta', Icon: PlusCircle, href: '/dashboard/projects/new', highlight: true },
         { title: 'Raspored smjena', description: 'Tjedni raspored radnih smjena', Icon: CalendarDays, href: '/dashboard/schedule' },
         { title: 'Dnevni izvještaji', description: 'Pregled svih dnevnih izvještaja', Icon: FileText, href: '/dashboard/daily-reports' },
-        { title: 'Sati zaposlenika', description: 'Pregled i ispravak upisanih radnih sati', Icon: Clock, href: '/dashboard/worker-hours' },
-        { title: 'Moji sati', description: 'Evidencija vlastitih radnih sati', Icon: Briefcase, href: '/dashboard/management-hours' },
       ],
     },
     {
-      label: 'Materijali',
+      label: 'Radni sati',
+      cards: [
+        { title: 'Radni sati', description: 'Unos i pregled radnih sati', Icon: Clock, href: '/dashboard/radni-sati' },
+      ],
+    },
+    {
+      label: 'Materijali i oprema',
       cards: [
         { title: 'Upisi materijala', description: 'Evidencija kupljenog materijala', Icon: ShoppingCart, href: '/dashboard/material-purchases' },
         { title: 'Stanje robe', description: 'Osobna zadužnica i prijenosi', Icon: Package, href: '/dashboard/inventory' },
       ],
     },
     {
-      label: 'Upravljanje',
+      label: 'Financije i upravljanje',
       cards: [
         { title: 'Zaposlenici', description: 'Upravljanje osobljem', Icon: Users, href: '/dashboard/employees' },
-        { title: 'Analitika', description: 'Plaće i troškovi zaposlenika', Icon: BarChart2, href: '/dashboard/analytics' },
-        { title: 'Računi', description: 'Evidencija ulaznih računa tvrtke', Icon: Receipt, href: '/dashboard/racuni' },
-        { title: 'R1 računi', description: 'Osobni R1 računi zaposlenika', Icon: BookOpen, href: '/dashboard/r1' },
-        { title: 'Gorivo računi', description: 'Pregled i upravljanje gorivo računima', Icon: Droplets, href: '/dashboard/gorivo' },
-        { title: 'Građevinski dnevnik', description: 'Evidencija radnih sati po gradilištu', Icon: ClipboardList, href: '/dashboard/reports/gradevinski-dnevnik' },
-        { title: 'Građevinska knjiga', description: 'Aktivnosti i utrošak materijala', Icon: Archive, href: '/dashboard/reports/gradevinska-knjiga' },
+        { title: 'Analitika', description: 'Plaće, hladni pogon i troškovi poslovanja', Icon: BarChart2, href: '/dashboard/analytics' },
+        { title: 'Računi i troškovi', description: 'R1, gorivo i ulazni računi tvrtke', Icon: Receipt, href: '/dashboard/racuni-i-troskovi' },
+        { title: 'Građevinska evidencija', description: 'Dnevnik i knjiga radova po gradilištu', Icon: Archive, href: '/dashboard/gradevinska-evidencija' },
       ],
     },
   ],
@@ -79,40 +77,51 @@ const cardSections: Record<string, CardSection[]> = {
         { title: 'Novi projekt', description: 'Pokretanje novog gradilišta', Icon: PlusCircle, href: '/dashboard/projects/new', highlight: true },
         { title: 'Raspored smjena', description: 'Tjedni raspored radnih smjena', Icon: CalendarDays, href: '/dashboard/schedule' },
         { title: 'Dnevni izvještaji', description: 'Pregled svih dnevnih izvještaja', Icon: FileText, href: '/dashboard/daily-reports' },
-        { title: 'Sati zaposlenika', description: 'Pregled i ispravak upisanih radnih sati', Icon: Clock, href: '/dashboard/worker-hours' },
-        { title: 'Moji sati', description: 'Evidencija vlastitih radnih sati', Icon: Briefcase, href: '/dashboard/management-hours' },
       ],
     },
     {
-      label: 'Materijali',
+      label: 'Radni sati',
+      cards: [
+        { title: 'Radni sati', description: 'Unos i pregled radnih sati', Icon: Clock, href: '/dashboard/radni-sati' },
+      ],
+    },
+    {
+      label: 'Materijali i oprema',
       cards: [
         { title: 'Upisi materijala', description: 'Evidencija kupljenog materijala', Icon: ShoppingCart, href: '/dashboard/material-purchases' },
         { title: 'Stanje robe', description: 'Osobna zadužnica i prijenosi', Icon: Package, href: '/dashboard/inventory' },
       ],
     },
     {
-      label: 'Upravljanje',
+      label: 'Financije i upravljanje',
       cards: [
         { title: 'Zaposlenici', description: 'Pregled osoblja', Icon: Users, href: '/dashboard/employees' },
-        { title: 'Analitika', description: 'Plaće i troškovi zaposlenika', Icon: BarChart2, href: '/dashboard/analytics' },
-        { title: 'Moji R1 računi', description: 'Unos i pregled R1 računa', Icon: BookOpen, href: '/dashboard/r1' },
-        { title: 'Gorivo računi', description: 'Pregled vlastitih gorivo računa', Icon: Droplets, href: '/dashboard/gorivo' },
-        { title: 'Građevinski dnevnik', description: 'Evidencija radnih sati po gradilištu', Icon: ClipboardList, href: '/dashboard/reports/gradevinski-dnevnik' },
-        { title: 'Građevinska knjiga', description: 'Aktivnosti i utrošak materijala', Icon: Archive, href: '/dashboard/reports/gradevinska-knjiga' },
+        { title: 'Analitika', description: 'Plaće, hladni pogon i troškovi poslovanja', Icon: BarChart2, href: '/dashboard/analytics' },
+        { title: 'Računi i troškovi', description: 'R1 i gorivo računi', Icon: Receipt, href: '/dashboard/racuni-i-troskovi' },
+        { title: 'Građevinska evidencija', description: 'Dnevnik i knjiga radova po gradilištu', Icon: Archive, href: '/dashboard/gradevinska-evidencija' },
       ],
     },
   ],
   administracija: [
     {
-      label: 'Upravljanje',
+      label: 'Radni sati',
       cards: [
-        { title: 'Zaposlenici', description: 'Upravljanje zaposlenicima', Icon: Users, href: '/dashboard/employees' },
-        { title: 'Moji sati', description: 'Evidencija vlastitih radnih sati', Icon: Clock, href: '/dashboard/management-hours' },
+        { title: 'Radni sati', description: 'Evidencija vlastitih radnih sati', Icon: Clock, href: '/dashboard/radni-sati' },
+      ],
+    },
+    {
+      label: 'Materijali i oprema',
+      cards: [
         { title: 'Stanje robe', description: 'Osobna zadužnica i prijenosi', Icon: Package, href: '/dashboard/inventory' },
         { title: 'Zaduženja', description: 'Evidencija alata, opreme i vozila', Icon: Wrench, href: '/dashboard/zaduzenja' },
+      ],
+    },
+    {
+      label: 'Financije i upravljanje',
+      cards: [
+        { title: 'Zaposlenici', description: 'Upravljanje zaposlenicima', Icon: Users, href: '/dashboard/employees' },
         { title: 'Dokumentacija', description: 'HR dokumenti i compliance zaposlenika', Icon: ClipboardList, href: '/dashboard/dokumentacija' },
-        { title: 'Računi', description: 'Evidencija ulaznih računa tvrtke', Icon: Receipt, href: '/dashboard/racuni' },
-        { title: 'Gorivo računi', description: 'Pregled i upravljanje gorivo računima', Icon: Droplets, href: '/dashboard/gorivo' },
+        { title: 'Računi i troškovi', description: 'Gorivo i ulazni računi tvrtke', Icon: Receipt, href: '/dashboard/racuni-i-troskovi' },
       ],
     },
   ],
@@ -123,23 +132,26 @@ const cardSections: Record<string, CardSection[]> = {
         { title: 'Moja gradilišta', description: 'Aktivni projekti dodijeljeni vama', Icon: FolderOpen, href: '/dashboard/projects' },
         { title: 'Raspored smjena', description: 'Tjedni raspored radnih smjena', Icon: CalendarDays, href: '/dashboard/schedule' },
         { title: 'Dnevni izvještaj', description: 'Unos dnevnog izvještaja', Icon: FileText, href: '/dashboard/daily-reports', highlight: true },
-        { title: 'Moji sati', description: 'Unos vlastitih dnevnih radnih sati', Icon: Clock, href: '/dashboard/my-hours' },
       ],
     },
     {
-      label: 'Materijali',
+      label: 'Radni sati',
+      cards: [
+        { title: 'Radni sati', description: 'Unos vlastitih dnevnih radnih sati', Icon: Clock, href: '/dashboard/radni-sati' },
+      ],
+    },
+    {
+      label: 'Materijali i oprema',
       cards: [
         { title: 'Upis materijala', description: 'Evidentiranje kupljenog materijala', Icon: ShoppingCart, href: '/dashboard/material-purchases' },
         { title: 'Osobno stanje robe', description: 'Zadužnica, oprema i prijenosi', Icon: Package, href: '/dashboard/inventory' },
       ],
     },
     {
-      label: 'Izvještaji',
+      label: 'Financije i upravljanje',
       cards: [
-        { title: 'Moji R1 računi', description: 'Unos i pregled R1 računa', Icon: BookOpen, href: '/dashboard/r1' },
-        { title: 'Gorivo računi', description: 'Pregled vlastitih gorivo računa', Icon: Droplets, href: '/dashboard/gorivo' },
-        { title: 'Građevinski dnevnik', description: 'Evidencija radnih sati', Icon: ClipboardList, href: '/dashboard/reports/gradevinski-dnevnik' },
-        { title: 'Građevinska knjiga', description: 'Aktivnosti i utrošak materijala', Icon: Archive, href: '/dashboard/reports/gradevinska-knjiga' },
+        { title: 'Računi i troškovi', description: 'R1 i gorivo računi', Icon: Receipt, href: '/dashboard/racuni-i-troskovi' },
+        { title: 'Građevinska evidencija', description: 'Dnevnik i knjiga radova po gradilištu', Icon: Archive, href: '/dashboard/gradevinska-evidencija' },
       ],
     },
   ],
@@ -148,10 +160,19 @@ const cardSections: Record<string, CardSection[]> = {
       label: 'Operativa',
       cards: [
         { title: 'Raspored smjena', description: 'Moje smjene i raspored', Icon: CalendarDays, href: '/dashboard/schedule' },
-        { title: 'Moji sati', description: 'Unos vlastitih dnevnih radnih sati', Icon: Clock, href: '/dashboard/my-hours', highlight: true },
         { title: 'Projekti / Gradilišta', description: 'Pregled projekata tvrtke', Icon: FolderOpen, href: '/dashboard/projects' },
-        { title: 'Moji R1 računi', description: 'Unos i pregled R1 računa', Icon: BookOpen, href: '/dashboard/r1' },
-        { title: 'Gorivo računi', description: 'Pregled vlastitih gorivo računa', Icon: Droplets, href: '/dashboard/gorivo' },
+      ],
+    },
+    {
+      label: 'Radni sati',
+      cards: [
+        { title: 'Radni sati', description: 'Unos vlastitih dnevnih radnih sati', Icon: Clock, href: '/dashboard/radni-sati', highlight: true },
+      ],
+    },
+    {
+      label: 'Financije i upravljanje',
+      cards: [
+        { title: 'Računi i troškovi', description: 'R1 i gorivo računi', Icon: Receipt, href: '/dashboard/racuni-i-troskovi' },
       ],
     },
   ],

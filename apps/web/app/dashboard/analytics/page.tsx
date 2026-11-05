@@ -5,6 +5,6 @@ import { useRouter } from 'next/navigation'
 
 export default function AnalyticsIndexPage() {
   const router = useRouter()
-  useEffect(() => { router.replace('/dashboard/analytics/place') }, [router])
+  useEffect(() => { router.replace('/dashboard/analytics/pregled') }, [router])
   return null
 }
