@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import Image from 'next/image'
 import apiClient from '@/lib/api-client'
 import { type DailyReportAttachment } from '@/lib/types/daily-reports'
 
@@ -72,15 +73,17 @@ function PhotoThumb({
     <div ref={containerRef} className="relative group rounded-lg overflow-hidden border border-gi-border bg-gi-card-elevated">
       <button
         type="button"
-        className="w-full aspect-square block"
+        className="relative w-full aspect-square block"
         onClick={() => onExpand(att.id)}
         title={att.original_name}
       >
         {blobUrl ? (
-          <img
+          <Image
+            fill
             src={blobUrl}
             alt={att.original_name}
-            className="w-full h-full object-cover"
+            className="object-cover"
+            unoptimized
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
@@ -137,7 +140,15 @@ function Lightbox({
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/90" onClick={onClose}>
       <div className="relative max-w-4xl max-h-[90vh] mx-4" onClick={e => e.stopPropagation()}>
         {blobUrl ? (
-          <img src={blobUrl} alt={att.original_name} className="max-h-[80vh] max-w-full object-contain rounded" />
+          <Image
+            src={blobUrl}
+            alt={att.original_name}
+            width={1920}
+            height={1080}
+            unoptimized
+            className="max-h-[80vh] max-w-full object-contain rounded"
+            style={{ width: 'auto', height: 'auto' }}
+          />
         ) : (
           <div className="w-64 h-64 flex items-center justify-center text-gi-text-muted">Učitavanje…</div>
         )}

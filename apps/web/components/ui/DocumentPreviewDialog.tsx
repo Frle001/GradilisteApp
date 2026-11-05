@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Image from 'next/image'
 import apiClient from '@/lib/api-client'
 
 interface DocumentPreviewDialogProps {
@@ -113,11 +114,14 @@ export default function DocumentPreviewDialog({
               )}
               {blobUrl && isImage && (
                 <div className="flex items-center justify-center p-4 h-full">
-                  <img
+                  <Image
                     src={blobUrl}
                     alt={filename}
+                    width={1920}
+                    height={1080}
+                    unoptimized
                     className="max-w-full max-h-full object-contain"
-                    style={{ maxHeight: '65vh' }}
+                    style={{ maxHeight: '65vh', width: 'auto', height: 'auto' }}
                   />
                 </div>
               )}

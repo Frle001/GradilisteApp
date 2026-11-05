@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect, useRef } from 'react'
+import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import {
   type DailyReportFormData,
@@ -75,6 +76,7 @@ export default function DailyReportForm({
 }: Props) {
   const router = useRouter()
   const isEditMode = !!existing
+  const existingRef = useRef(existing)
 
   // Draft preservation for create mode only (reportDate excluded — always today)
   const [draftFields, setDraftFields, clearDraft] = useFormDraft(
@@ -201,7 +203,7 @@ export default function DailyReportForm({
     }
     setMaterialsLoading(true)
     setProjectMaterials([])
-    if (!existing) {
+    if (!existingRef.current) {
       setActivities([])
     }
     apiClient
@@ -209,7 +211,7 @@ export default function DailyReportForm({
       .then(res => setProjectMaterials(res.data.materials ?? []))
       .catch(() => setProjectMaterials([]))
       .finally(() => setMaterialsLoading(false))
-  }, [projectId]) // existing is intentionally omitted — it is stable for the component lifetime
+  }, [projectId])
 
   function addActivity(a: ActivityInputUI) {
     setActivities(prev => [...prev, a])
@@ -479,13 +481,14 @@ export default function DailyReportForm({
                   {photos.map((file, idx) => (
                     <div
                       key={idx}
-                      className="relative group rounded-lg overflow-hidden border border-gi-border bg-gi-card-elevated"
+                      className="relative aspect-square group rounded-lg overflow-hidden border border-gi-border bg-gi-card-elevated"
                     >
-                      <img
+                      <Image
+                        fill
                         src={getPhotoUrl(file)}
                         alt={file.name}
-                        loading="lazy"
-                        className="w-full aspect-square object-cover"
+                        className="object-cover"
+                        unoptimized
                       />
                       <button
                         type="button"
