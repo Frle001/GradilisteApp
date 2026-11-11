@@ -104,6 +104,15 @@ export default function MaterialPurchasesPage() {
           <p className="text-sm text-gi-text-subtle mt-0.5">Evidencija kupljenog materijala po gradilištu</p>
         </div>
 
+        {canCreate && (
+          <Link
+            href="/dashboard/material-purchases/new"
+            className="lg:hidden flex items-center justify-center gap-1.5 w-full px-4 py-2.5 bg-gi-yellow hover:bg-gi-yellow-hover text-gi-navy text-sm font-semibold rounded-lg transition-colors"
+          >
+            <Plus className="w-4 h-4" />Novi upis
+          </Link>
+        )}
+
         {/* Filters */}
         <div className="bg-gi-card border border-gi-border rounded-xl p-4">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
