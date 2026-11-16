@@ -253,6 +253,9 @@ func (m *mockColdOpsRepo) GetPeriodTotal(_ context.Context, _ string, _, _ time.
 func (m *mockColdOpsRepo) GetMonthlyTrend(_ context.Context, _ string, _ int) ([]repositories.TrendPointRow, error) {
 	return nil, nil
 }
+func (m *mockColdOpsRepo) GetYearlyMonthlyTotals(_ context.Context, _ string, _ int) ([]repositories.TrendPointRow, error) {
+	return nil, nil
+}
 func (m *mockColdOpsRepo) GetCategoryDistribution(_ context.Context, _ string, _, _ time.Time) ([]repositories.CategoryStatsRow, error) {
 	return nil, nil
 }

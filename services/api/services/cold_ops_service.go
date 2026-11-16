@@ -1,4 +1,4 @@
-package services
+﻿package services
 
 import (
 	"context"
@@ -9,7 +9,7 @@ import (
 	"github.com/gradiliste/api/repositories"
 )
 
-// â”€â”€ Repo interface â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Repo interface â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 type coldOpsRepoIface interface {
 	ListCategories(ctx context.Context, companyID string) ([]repositories.ColdOpsCategoryRow, error)
@@ -44,12 +44,13 @@ type coldOpsRepoIface interface {
 
 	GetPeriodTotal(ctx context.Context, companyID string, from, to time.Time) (float64, int, error)
 	GetMonthlyTrend(ctx context.Context, companyID string, months int) ([]repositories.TrendPointRow, error)
+	GetYearlyMonthlyTotals(ctx context.Context, companyID string, year int) ([]repositories.TrendPointRow, error)
 	GetCategoryDistribution(ctx context.Context, companyID string, from, to time.Time) ([]repositories.CategoryStatsRow, error)
 	GetFixedVsVariable(ctx context.Context, companyID string, from, to time.Time) (repositories.FixedVariableRow, error)
 	GetPlannedOccurrenceTotals(ctx context.Context, companyID string, from, to time.Time) ([]repositories.TrendPointRow, error)
 }
 
-// â”€â”€ Service â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Service â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 type ColdOpsService struct {
 	repo coldOpsRepoIface
@@ -59,7 +60,7 @@ func NewColdOpsService(repo *repositories.ColdOpsRepository) *ColdOpsService {
 	return &ColdOpsService{repo: repo}
 }
 
-// â”€â”€ Date helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Date helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 // clampDayOfMonth returns day clamped to the last valid day of the given month.
 func clampDayOfMonth(year, month, day int) int {
@@ -81,7 +82,7 @@ func occurrenceKey(frequency string, year, month int) string {
 	return fmt.Sprintf("%04d-%02d", year, month)
 }
 
-// â”€â”€ Occurrence generation â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Occurrence generation â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 // generateOccurrences lazily inserts planned occurrences for all active
 // definitions up to horizonMonths in the future. Idempotent: ON CONFLICT DO NOTHING.
@@ -143,7 +144,7 @@ func (s *ColdOpsService) generateOccurrences(ctx context.Context, companyID stri
 	return s.repo.BulkUpsertOccurrences(ctx, batch)
 }
 
-// â”€â”€ Categories â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Categories â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 func (s *ColdOpsService) ListCategories(ctx context.Context, companyID, callerRole string) ([]dto.ColdOpsCategory, error) {
 	if err := requireAnalyticsAccess(callerRole); err != nil {
@@ -236,7 +237,7 @@ func (s *ColdOpsService) DeleteCategory(ctx context.Context, companyID, callerRo
 	return s.repo.DeleteCategory(ctx, companyID, id)
 }
 
-// â”€â”€ Expenses â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Expenses â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 func (s *ColdOpsService) ListExpenses(ctx context.Context, companyID, callerRole string, f dto.ListExpensesFilter) ([]dto.ColdOpsExpense, error) {
 	if err := requireAnalyticsAccess(callerRole); err != nil {
@@ -349,7 +350,7 @@ func (s *ColdOpsService) DeleteExpense(ctx context.Context, companyID, callerRol
 	return nil
 }
 
-// â”€â”€ Recurring definitions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Recurring definitions â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 func (s *ColdOpsService) ListRecurringDefs(ctx context.Context, companyID, callerRole string, activeOnly bool) ([]dto.RecurringDef, error) {
 	if err := requireAnalyticsAccess(callerRole); err != nil {
@@ -471,7 +472,7 @@ func (s *ColdOpsService) UpdateRecurringDef(ctx context.Context, companyID, call
 	return &v, nil
 }
 
-// â”€â”€ Occurrences â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Occurrences â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 func (s *ColdOpsService) ListOccurrences(ctx context.Context, companyID, callerRole, defID string, from, to *time.Time, status *string) ([]dto.ColdOpsOccurrence, error) {
 	if err := requireAnalyticsAccess(callerRole); err != nil {
@@ -541,7 +542,7 @@ func (s *ColdOpsService) SkipOccurrence(ctx context.Context, companyID, callerID
 	return &v, nil
 }
 
-// â”€â”€ Budgets â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Budgets â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 func (s *ColdOpsService) ListBudgets(ctx context.Context, companyID, callerRole string, year, month int) ([]dto.ColdOpsBudget, error) {
 	if err := requireAnalyticsAccess(callerRole); err != nil {
@@ -629,7 +630,7 @@ func (s *ColdOpsService) DeleteBudget(ctx context.Context, companyID, callerRole
 	return nil
 }
 
-// â”€â”€ Analytics summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Analytics summary â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 func (s *ColdOpsService) GetSummary(ctx context.Context, companyID, callerRole string) (*dto.ColdOpsSummary, error) {
 	if err := requireAnalyticsAccess(callerRole); err != nil {
@@ -822,7 +823,36 @@ func (s *ColdOpsService) GetSummary(ctx context.Context, companyID, callerRole s
 	}, nil
 }
 
-// â”€â”€ Conversion helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Conversion helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
+
+// GetAnnualSummary returns expense totals for each month of the given year.
+// Months without expenses are included with zero totals.
+func (s *ColdOpsService) GetAnnualSummary(ctx context.Context, companyID, callerRole string, year int) (*dto.ColdOpsAnnualSummary, error) {
+	if err := requireAnalyticsAccess(callerRole); err != nil {
+		return nil, err
+	}
+	rows, err := s.repo.GetYearlyMonthlyTotals(ctx, companyID, year)
+	if err != nil {
+		return nil, fmt.Errorf("cold_ops.GetAnnualSummary: %w", err)
+	}
+	rowMap := make(map[int]repositories.TrendPointRow, len(rows))
+	for _, r := range rows {
+		rowMap[r.Month] = r
+	}
+	summary := &dto.ColdOpsAnnualSummary{
+		Year:   year,
+		Months: make([]dto.ColdOpsTrendPoint, 0, 12),
+	}
+	for mo := 1; mo <= 12; mo++ {
+		r := rowMap[mo]
+		summary.Total += r.Total
+		summary.Count += r.Count
+		summary.Months = append(summary.Months, dto.ColdOpsTrendPoint{
+			Year: year, Month: mo, Total: r.Total, Count: r.Count,
+		})
+	}
+	return summary, nil
+}
 
 func categoryRowToDTO(r repositories.ColdOpsCategoryRow) dto.ColdOpsCategory {
 	return dto.ColdOpsCategory{
@@ -895,7 +925,7 @@ func occurrenceRowToDTO(r repositories.ColdOpsOccurrenceRow) dto.ColdOpsOccurren
 	return o
 }
 
-// â”€â”€ Validation helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// â"€â"€ Validation helpers â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€â"€
 
 var validPaymentMethods = map[string]bool{"cash": true, "card": true, "transfer": true, "other": true}
 var validExpenseTypes = map[string]bool{"fixed": true, "variable": true}

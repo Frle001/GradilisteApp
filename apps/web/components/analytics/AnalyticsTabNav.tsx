@@ -4,9 +4,11 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
 const TABS = [
-  { href: '/dashboard/analytics/pregled', label: 'Pregled' },
+  { href: '/dashboard/analytics/pregled', label: 'Pregled poslovanja' },
   { href: '/dashboard/analytics/place', label: 'Plaće' },
   { href: '/dashboard/analytics/hladni-pogon', label: 'Hladni pogon' },
+  { href: '/dashboard/analytics/projekti', label: 'Troškovi projekata' },
+  { href: '/dashboard/analytics/prihodi', label: 'Prihodi projekata' },
 ]
 
 export default function AnalyticsTabNav() {

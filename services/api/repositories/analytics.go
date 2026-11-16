@@ -385,6 +385,199 @@ func (r *AnalyticsRepository) ListEligibleEmployees(ctx context.Context, company
 	return result, rows.Err()
 }
 
+// CompanyDailyHoursRecord is DailyHoursRecord plus the employee it belongs to.
+type CompanyDailyHoursRecord struct {
+	EmployeeID  string
+	WorkDate    time.Time
+	ProjectID   string
+	ProjectName string
+	Hours       float64
+}
+
+// GetCompanyPlansForYear returns all compensation plans for all employees in the company
+// that overlap [from, to]. The returned rows include EmployeeID.
+func (r *AnalyticsRepository) GetCompanyPlansForYear(ctx context.Context, companyID string, from, to time.Time) ([]CompensationPlanRow, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT ecp.id::text, ecp.company_id::text, ecp.employee_id::text,
+			e.first_name || ' ' || e.last_name,
+			ecp.pay_type, ecp.pay_amount, ecp.company_cost_amount,
+			ecp.effective_from, ecp.effective_to,
+			COALESCE(ecp.created_by::text, ''), ecp.created_at
+		FROM employee_compensation_plans ecp
+		JOIN employees e ON e.id = ecp.employee_id
+		WHERE ecp.company_id = $1::uuid
+		  AND ecp.effective_from <= $3::date
+		  AND COALESCE(ecp.effective_to, 'infinity'::date) >= $2::date
+		ORDER BY ecp.employee_id, ecp.effective_from
+	`, companyID, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []CompensationPlanRow
+	for rows.Next() {
+		var row CompensationPlanRow
+		if err := rows.Scan(
+			&row.ID, &row.CompanyID, &row.EmployeeID, &row.EmployeeName,
+			&row.PayType, &row.PayAmount, &row.CompanyCostAmount,
+			&row.EffectiveFrom, &row.EffectiveTo,
+			&row.CreatedBy, &row.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		result = append(result, row)
+	}
+	return result, rows.Err()
+}
+
+// ── Material cost methods ─────────────────────────────────────────────────────
+
+// MaterialCostByProject maps project_id → total material cost (installed qty × unit_price).
+// Only includes report_material_effects with effect_type='montaza' in the given year/month.
+func (r *AnalyticsRepository) GetProjectMaterialCostsForMonth(ctx context.Context, companyID string, year, month int) (map[string]float64, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT rme.project_id::text, SUM(rme.quantity_delta * pm.unit_price)
+		FROM report_material_effects rme
+		JOIN project_materials pm ON pm.id = rme.project_material_id
+		JOIN daily_reports dr ON dr.id = rme.report_id
+		WHERE rme.company_id = $1::uuid
+		  AND rme.effect_type = 'montaza'
+		  AND EXTRACT(YEAR  FROM dr.report_date) = $2
+		  AND EXTRACT(MONTH FROM dr.report_date) = $3
+		GROUP BY rme.project_id
+	`, companyID, year, month)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := map[string]float64{}
+	for rows.Next() {
+		var projectID string
+		var cost float64
+		if err := rows.Scan(&projectID, &cost); err != nil {
+			return nil, err
+		}
+		result[projectID] = cost
+	}
+	return result, rows.Err()
+}
+
+// ProjectMaterialCostRow holds a single material's cost breakdown for a project+month.
+type ProjectMaterialCostRow struct {
+	ProjectMaterialID string
+	MaterialName      string
+	MaterialCode      *string
+	InstalledQty      float64
+	Unit              string
+	UnitPrice         float64
+	TotalCost         float64
+	Source            string
+}
+
+// GetProjectMaterialBreakdown returns per-material installed quantities and costs for a project in a month.
+func (r *AnalyticsRepository) GetProjectMaterialBreakdown(ctx context.Context, companyID, projectID string, year, month int) ([]ProjectMaterialCostRow, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT
+			pm.id::text,
+			pm.material_name,
+			pm.material_code,
+			SUM(rme.quantity_delta) AS installed_qty,
+			pm.unit,
+			pm.unit_price,
+			SUM(rme.quantity_delta * pm.unit_price) AS total_cost,
+			pm.source
+		FROM report_material_effects rme
+		JOIN project_materials pm ON pm.id = rme.project_material_id
+		JOIN daily_reports dr ON dr.id = rme.report_id
+		WHERE rme.project_id = $1::uuid
+		  AND rme.company_id = $2::uuid
+		  AND rme.effect_type = 'montaza'
+		  AND EXTRACT(YEAR  FROM dr.report_date) = $3
+		  AND EXTRACT(MONTH FROM dr.report_date) = $4
+		GROUP BY pm.id, pm.material_name, pm.material_code, pm.unit, pm.unit_price, pm.source
+		ORDER BY total_cost DESC, pm.material_name
+	`, projectID, companyID, year, month)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []ProjectMaterialCostRow
+	for rows.Next() {
+		var row ProjectMaterialCostRow
+		if err := rows.Scan(
+			&row.ProjectMaterialID, &row.MaterialName, &row.MaterialCode,
+			&row.InstalledQty, &row.Unit, &row.UnitPrice, &row.TotalCost, &row.Source,
+		); err != nil {
+			return nil, err
+		}
+		result = append(result, row)
+	}
+	return result, rows.Err()
+}
+
+// GetProjectMaterialCostsForYear returns material cost per month for a project in a given year.
+// Returns map[month(1-12)]→cost.
+func (r *AnalyticsRepository) GetProjectMaterialCostsForYear(ctx context.Context, companyID, projectID string, year int) (map[int]float64, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT
+			EXTRACT(MONTH FROM dr.report_date)::int AS month,
+			SUM(rme.quantity_delta * pm.unit_price) AS material_cost
+		FROM report_material_effects rme
+		JOIN project_materials pm ON pm.id = rme.project_material_id
+		JOIN daily_reports dr ON dr.id = rme.report_id
+		WHERE rme.project_id = $1::uuid
+		  AND rme.company_id = $2::uuid
+		  AND rme.effect_type = 'montaza'
+		  AND EXTRACT(YEAR FROM dr.report_date) = $3
+		GROUP BY month
+	`, projectID, companyID, year)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := map[int]float64{}
+	for rows.Next() {
+		var month int
+		var cost float64
+		if err := rows.Scan(&month, &cost); err != nil {
+			return nil, err
+		}
+		result[month] = cost
+	}
+	return result, rows.Err()
+}
+
+// GetCompanyDailyHoursForYear returns all worker daily hours for all employees in [from, to].
+func (r *AnalyticsRepository) GetCompanyDailyHoursForYear(ctx context.Context, companyID string, from, to time.Time) ([]CompanyDailyHoursRecord, error) {
+	rows, err := r.db.Query(ctx, `
+		SELECT wdh.worker_id::text, wdh.work_date, wdh.project_id::text, COALESCE(p.name, ''), wdh.hours_worked
+		FROM worker_daily_hours wdh
+		LEFT JOIN projects p ON p.id = wdh.project_id
+		WHERE wdh.company_id = $1::uuid
+		  AND wdh.work_date >= $2::date AND wdh.work_date <= $3::date
+		  AND wdh.project_id IS NOT NULL
+		ORDER BY wdh.worker_id, wdh.work_date
+	`, companyID, from, to)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var result []CompanyDailyHoursRecord
+	for rows.Next() {
+		var rec CompanyDailyHoursRecord
+		if err := rows.Scan(&rec.EmployeeID, &rec.WorkDate, &rec.ProjectID, &rec.ProjectName, &rec.Hours); err != nil {
+			return nil, err
+		}
+		result = append(result, rec)
+	}
+	return result, rows.Err()
+}
+
 // GetEmployee returns a single employee scoped to company, or error if not found.
 func (r *AnalyticsRepository) GetEmployee(ctx context.Context, companyID, employeeID string) (*AnalyticsEmployeeRow, error) {
 	var emp AnalyticsEmployeeRow

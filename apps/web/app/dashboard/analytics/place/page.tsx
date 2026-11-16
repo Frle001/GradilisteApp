@@ -11,6 +11,8 @@ import {
   type MonthlyLaborSummary,
   type EmployeeLaborCost,
   type CompensationPlan,
+  type EmployeePayrollHistory,
+  type MonthlyProjectAllocationSummary,
   PAY_TYPE_LABELS,
 } from '@/lib/types/analytics'
 
@@ -58,6 +60,90 @@ function SummaryCard({
       <p className="text-xs font-medium text-gi-text-muted uppercase tracking-wider mb-1">{title}</p>
       <p className="text-xl font-bold text-gi-text tabular-nums leading-none">{value}</p>
       {sub && <p className="text-xs text-gi-text-subtle mt-1">{sub}</p>}
+    </div>
+  )
+}
+
+// ── Contributions editor ──────────────────────────────────────────────────────
+
+function ContributionsEditor({
+  employeeId, year, month, currentContributions, onSaved,
+}: {
+  employeeId: string; year: number; month: number
+  currentContributions?: number
+  onSaved: () => void
+}) {
+  const [editing, setEditing] = useState(false)
+  const [amount, setAmount] = useState(currentContributions != null ? String(currentContributions) : '')
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState('')
+
+  useEffect(() => {
+    setAmount(currentContributions != null ? String(currentContributions) : '')
+    setEditing(false)
+  }, [employeeId, year, month, currentContributions])
+
+  async function handleSave() {
+    const val = parseFloat(amount)
+    if (isNaN(val) || val < 0) { setError('Iznos mora biti nenegativan broj'); return }
+    setSubmitting(true); setError('')
+    try {
+      await apiClient.put(
+        `/analytics/place/employees/${employeeId}/contributions?year=${year}&month=${month}`,
+        { contributions_amount: val },
+      )
+      setEditing(false)
+      onSaved()
+    } catch (e) { setError(errMsg(e)) }
+    finally { setSubmitting(false) }
+  }
+
+  if (!editing) {
+    return (
+      <div className="flex items-center gap-3">
+        <span className="tabular-nums">
+          {currentContributions != null
+            ? <span className="text-sm text-gi-text font-medium">{formatEur(currentContributions)}</span>
+            : <span className="text-xs text-amber-400">Nije uneseno</span>}
+        </span>
+        <button
+          onClick={() => setEditing(true)}
+          className="text-xs text-gi-yellow hover:text-gi-yellow-hover transition-colors"
+        >
+          {currentContributions != null ? 'Uredi' : 'Unesi'}
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="flex flex-wrap items-start gap-2 mt-1">
+      <input
+        type="number" step="0.01" min="0"
+        value={amount}
+        onChange={e => setAmount(e.target.value)}
+        placeholder="0.00"
+        className={[
+          'bg-gi-card-elevated border border-gi-border rounded-lg px-3 py-1.5',
+          'text-sm text-gi-text focus:outline-none focus:border-gi-yellow transition-colors w-36',
+        ].join(' ')}
+        autoFocus
+      />
+      <div className="flex gap-2">
+        <button
+          onClick={handleSave} disabled={submitting}
+          className="px-3 py-1.5 bg-gi-yellow hover:bg-gi-yellow-hover text-gi-navy text-xs font-semibold rounded-lg transition-colors disabled:opacity-50"
+        >
+          {submitting ? 'Sprema…' : 'Spremi'}
+        </button>
+        <button
+          onClick={() => setEditing(false)}
+          className="px-3 py-1.5 bg-gi-card-elevated hover:bg-gi-border border border-gi-border text-gi-text-muted text-xs rounded-lg transition-colors"
+        >
+          Odustani
+        </button>
+      </div>
+      {error && <p className="text-xs text-red-400 w-full">{error}</p>}
     </div>
   )
 }
@@ -195,15 +281,23 @@ function CompensationForm({
 
 // ── Employee detail (expanded panel) ─────────────────────────────────────────
 
+const CURRENT = new Date()
+
 function EmployeeDetail({
-  emp, onClose, onPlanChanged,
+  emp, year, month, onClose, onPlanChanged,
 }: {
-  emp: EmployeeLaborCost; onClose: () => void; onPlanChanged: () => void
+  emp: EmployeeLaborCost; year: number; month: number
+  onClose: () => void; onPlanChanged: () => void
 }) {
   const [plans, setPlans] = useState<CompensationPlan[]>([])
   const [plansLoading, setPlansLoading] = useState(false)
   const [showCreateForm, setShowCreateForm] = useState(false)
   const [editingPlan, setEditingPlan] = useState<CompensationPlan | null>(null)
+  const [showHistory, setShowHistory] = useState(false)
+  const [historyYear, setHistoryYear] = useState(year)
+  const [history, setHistory] = useState<EmployeePayrollHistory | null>(null)
+  const [historyLoading, setHistoryLoading] = useState(false)
+  const [editingHistoryMonth, setEditingHistoryMonth] = useState<number | null>(null)
 
   const loadPlans = useCallback(async () => {
     setPlansLoading(true)
@@ -216,23 +310,25 @@ function EmployeeDetail({
 
   useEffect(() => { loadPlans() }, [loadPlans])
 
+  const loadHistory = useCallback(async () => {
+    if (!showHistory) return
+    setHistoryLoading(true)
+    setHistory(null)
+    try {
+      const r = await apiClient.get(`/analytics/place/employees/${emp.employee_id}/history?year=${historyYear}`)
+      setHistory(r.data.history)
+    } catch { /* silent */ }
+    finally { setHistoryLoading(false) }
+  }, [emp.employee_id, showHistory, historyYear])
+
+  useEffect(() => { loadHistory() }, [loadHistory])
+
   function handleSuccess() {
-    setShowCreateForm(false)
-    setEditingPlan(null)
-    loadPlans()
-    onPlanChanged()
+    setShowCreateForm(false); setEditingPlan(null)
+    loadPlans(); onPlanChanged()
   }
 
-  function openCreate() {
-    setShowCreateForm(true)
-    setEditingPlan(null)
-  }
-
-  function openEdit(plan: CompensationPlan) {
-    setEditingPlan(plan)
-    setShowCreateForm(false)
-  }
-
+  const historyYears = Array.from({ length: 5 }, (_, i) => CURRENT.getFullYear() - 2 + i)
   const analyticalCostLabel = emp.pay_type === 'fixed_monthly' ? 'Mjesečni trošak' : 'Ukupni trošak'
 
   return (
@@ -283,14 +379,37 @@ function EmployeeDetail({
           <p className="text-xs text-gi-text-subtle uppercase tracking-wide mb-0.5">Evid. sati</p>
           <p className="text-sm text-gi-text font-medium tabular-nums">{emp.total_hours.toFixed(1)} h</p>
         </div>
-        {emp.effective_cost_per_hour != null && (
+      </div>
+
+      {/* Contributions section */}
+      <div className="rounded-xl border border-gi-border bg-gi-card-elevated px-4 py-3 space-y-2.5">
+        <p className="text-xs font-semibold text-gi-text-muted uppercase tracking-wider">
+          Doprinosi — {HR_MONTHS[month]} {year}
+        </p>
+        <div className="grid grid-cols-3 gap-4">
           <div>
-            <p className="text-xs text-gi-text-subtle uppercase tracking-wide mb-0.5">Efektivan €/sat</p>
-            <p className="text-sm text-gi-text font-medium tabular-nums">
-              {emp.effective_cost_per_hour.toLocaleString('hr-HR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €/h
+            <p className="text-xs text-gi-text-subtle mb-0.5">Neto</p>
+            <p className="text-sm font-medium text-gi-text tabular-nums">
+              {emp.has_compensation ? formatEur(emp.neto) : '—'}
             </p>
           </div>
-        )}
+          <div>
+            <p className="text-xs text-gi-text-subtle mb-0.5">Doprinosi</p>
+            <ContributionsEditor
+              employeeId={emp.employee_id}
+              year={year}
+              month={month}
+              currentContributions={emp.contributions}
+              onSaved={onPlanChanged}
+            />
+          </div>
+          <div>
+            <p className="text-xs text-gi-text-subtle mb-0.5">Bruto</p>
+            <p className="text-sm font-semibold tabular-nums text-gi-yellow">
+              {emp.bruto != null ? formatEur(emp.bruto) : '—'}
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Project allocations */}
@@ -329,7 +448,7 @@ function EmployeeDetail({
             Povijest plaća
           </p>
           <button
-            onClick={() => showCreateForm ? setShowCreateForm(false) : openCreate()}
+            onClick={() => showCreateForm ? setShowCreateForm(false) : setShowCreateForm(true)}
             className="text-xs text-gi-yellow hover:text-gi-yellow-hover transition-colors"
           >
             {showCreateForm ? 'Zatvori' : '+ Postavi novu plaću'}
@@ -374,7 +493,7 @@ function EmployeeDetail({
                     </div>
                   </div>
                   <button
-                    onClick={() => editingPlan?.id === plan.id ? setEditingPlan(null) : openEdit(plan)}
+                    onClick={() => editingPlan?.id === plan.id ? setEditingPlan(null) : setEditingPlan(plan)}
                     className="text-xs text-gi-yellow hover:text-gi-yellow-hover shrink-0 mt-0.5 transition-colors"
                   >
                     {editingPlan?.id === plan.id ? 'Zatvori' : 'Uredi'}
@@ -403,6 +522,120 @@ function EmployeeDetail({
           </div>
         )}
       </div>
+
+      {/* Payroll history (year breakdown) */}
+      <div>
+        <div className="flex items-center justify-between mb-2">
+          <p className="text-xs font-semibold text-gi-text-muted uppercase tracking-wider">
+            Godišnji pregled doprinosa
+          </p>
+          <button
+            onClick={() => setShowHistory(h => !h)}
+            className="text-xs text-gi-yellow hover:text-gi-yellow-hover transition-colors"
+          >
+            {showHistory ? 'Zatvori' : 'Prikaži'}
+          </button>
+        </div>
+
+        {showHistory && (
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <select
+                value={historyYear}
+                onChange={e => { setHistoryYear(Number(e.target.value)); setEditingHistoryMonth(null) }}
+                className="bg-gi-card-elevated border border-gi-border rounded-lg px-2.5 py-1.5 text-xs text-gi-text focus:outline-none focus:border-gi-yellow"
+              >
+                {historyYears.map(y => <option key={y} value={y} className="bg-gi-card">{y}</option>)}
+              </select>
+              {history && (
+                <span className="text-xs text-gi-text-subtle">
+                  Bruto ukupno: {history.total_bruto > 0 ? formatEur(history.total_bruto) : '—'}
+                </span>
+              )}
+            </div>
+
+            {historyLoading ? (
+              <p className="text-xs text-gi-text-subtle animate-pulse">Učitavanje…</p>
+            ) : history && (
+              <div className="rounded-xl border border-gi-border overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-gi-border">
+                      <th className="px-3 py-2 text-left text-gi-text-muted font-medium">Mj.</th>
+                      <th className="px-3 py-2 text-right text-gi-text-muted font-medium">Neto</th>
+                      <th className="px-3 py-2 text-right text-gi-text-muted font-medium">Doprinosi</th>
+                      <th className="px-3 py-2 text-right text-gi-text-muted font-medium">Bruto</th>
+                      <th className="px-3 py-2 text-right text-gi-text-muted font-medium">Sati</th>
+                      <th className="px-2 py-2"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gi-border/50">
+                    {history.months.map(m => (
+                      <tr
+                        key={m.month}
+                        className={`transition-colors ${
+                          historyYear === year && m.month === month
+                            ? 'bg-gi-yellow/5'
+                            : 'hover:bg-gi-card-elevated'
+                        }`}
+                      >
+                        <td className="px-3 py-2 text-gi-text-muted whitespace-nowrap">
+                          {HR_MONTHS[m.month]}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-gi-text">
+                          {m.has_compensation ? formatEur(m.neto) : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums">
+                          {editingHistoryMonth === m.month ? (
+                            <span /> /* editor rendered below in expanded row */
+                          ) : m.contributions != null ? (
+                            <span className="text-gi-text">{formatEur(m.contributions)}</span>
+                          ) : m.has_compensation ? (
+                            <span className="text-amber-400">Nije uneseno</span>
+                          ) : (
+                            <span className="text-gi-text-subtle">—</span>
+                          )}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-gi-yellow font-medium">
+                          {m.bruto != null ? formatEur(m.bruto) : '—'}
+                        </td>
+                        <td className="px-3 py-2 text-right tabular-nums text-gi-text-muted">
+                          {m.total_hours.toFixed(1)} h
+                        </td>
+                        <td className="px-2 py-2">
+                          {m.has_compensation && (
+                            <button
+                              onClick={() => setEditingHistoryMonth(mm => mm === m.month ? null : m.month)}
+                              className="text-gi-yellow hover:text-gi-yellow-hover transition-colors whitespace-nowrap"
+                            >
+                              {editingHistoryMonth === m.month ? 'Zatvori' : m.contributions != null ? 'Uredi' : 'Unesi'}
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {/* Inline editor for selected history month */}
+                {editingHistoryMonth != null && (
+                  <div className="border-t border-gi-border px-4 py-3 bg-gi-card-elevated">
+                    <p className="text-xs text-gi-text-muted mb-2">
+                      Doprinosi za {HR_MONTHS[editingHistoryMonth]} {historyYear}
+                    </p>
+                    <ContributionsEditor
+                      employeeId={emp.employee_id}
+                      year={historyYear}
+                      month={editingHistoryMonth}
+                      currentContributions={history.months.find(m => m.month === editingHistoryMonth)?.contributions}
+                      onSaved={() => { setEditingHistoryMonth(null); loadHistory(); onPlanChanged() }}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
     </div>
   )
 }
@@ -410,9 +643,9 @@ function EmployeeDetail({
 // ── Employee row (accordion) ──────────────────────────────────────────────────
 
 function EmployeeRow({
-  emp, selected, onSelect, onPlanChanged,
+  emp, year, month, selected, onSelect, onPlanChanged,
 }: {
-  emp: EmployeeLaborCost; selected: boolean
+  emp: EmployeeLaborCost; year: number; month: number; selected: boolean
   onSelect: () => void; onPlanChanged: () => void
 }) {
   const payBadge = emp.has_compensation
@@ -459,17 +692,27 @@ function EmployeeRow({
               <p className="text-sm text-gi-text tabular-nums">{emp.total_hours.toFixed(1)} h</p>
             </div>
             <div className="text-right">
-              <p className="text-xs text-gi-text-subtle">Trošak</p>
+              <p className="text-xs text-gi-text-subtle">Neto</p>
               <p className={`text-sm font-medium tabular-nums ${emp.has_compensation ? 'text-gi-text' : 'text-gi-text-subtle'}`}>
-                {emp.has_compensation ? formatEur(emp.company_analytical_cost) : '—'}
+                {emp.has_compensation ? formatEur(emp.neto) : '—'}
               </p>
             </div>
-            <div className="hidden sm:block text-right">
-              <p className="text-xs text-gi-text-subtle">€/sat</p>
-              <p className="text-sm text-gi-text tabular-nums">
-                {emp.effective_cost_per_hour != null
-                  ? emp.effective_cost_per_hour.toLocaleString('hr-HR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })
-                  : '—'}
+            <div className="hidden md:block text-right">
+              <p className="text-xs text-gi-text-subtle">Doprinosi</p>
+              <p className={`text-sm tabular-nums ${
+                emp.contributions_missing && emp.has_compensation
+                  ? 'text-amber-400 text-xs'
+                  : 'text-gi-text font-medium'
+              }`}>
+                {emp.contributions != null
+                  ? formatEur(emp.contributions)
+                  : emp.has_compensation ? 'Nije uneseno' : '—'}
+              </p>
+            </div>
+            <div className="hidden md:block text-right">
+              <p className="text-xs text-gi-text-subtle">Bruto</p>
+              <p className="text-sm font-semibold text-gi-yellow tabular-nums">
+                {emp.bruto != null ? formatEur(emp.bruto) : '—'}
               </p>
             </div>
             <svg
@@ -484,7 +727,13 @@ function EmployeeRow({
 
       {selected && (
         <div className="border-t border-gi-border px-4 pb-3">
-          <EmployeeDetail emp={emp} onClose={onSelect} onPlanChanged={onPlanChanged} />
+          <EmployeeDetail
+            emp={emp}
+            year={year}
+            month={month}
+            onClose={onSelect}
+            onPlanChanged={onPlanChanged}
+          />
         </div>
       )}
     </div>
@@ -492,8 +741,6 @@ function EmployeeRow({
 }
 
 // ── Page ──────────────────────────────────────────────────────────────────────
-
-const CURRENT = new Date()
 
 export default function PlacePage() {
   const { user, employee, isLoading, logout } = useAuth()
@@ -505,6 +752,9 @@ export default function PlacePage() {
   const [error, setError] = useState('')
   const [search, setSearch] = useState('')
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [showProjectAlloc, setShowProjectAlloc] = useState(false)
+  const [projectAlloc, setProjectAlloc] = useState<MonthlyProjectAllocationSummary | null>(null)
+  const [projectAllocLoading, setProjectAllocLoading] = useState(false)
 
   useEffect(() => {
     if (!isLoading && user && FORBIDDEN_ROLES.includes(user.role)) {
@@ -521,7 +771,20 @@ export default function PlacePage() {
     finally { setLoading(false) }
   }, [year, month])
 
+  const loadProjectAlloc = useCallback(async () => {
+    if (!showProjectAlloc) return
+    setProjectAllocLoading(true); setProjectAlloc(null)
+    try {
+      const r = await apiClient.get<{ allocation: MonthlyProjectAllocationSummary }>(
+        `/analytics/place/project-allocation?year=${year}&month=${month}`,
+      )
+      setProjectAlloc(r.data.allocation)
+    } catch { /* silent */ }
+    finally { setProjectAllocLoading(false) }
+  }, [showProjectAlloc, year, month])
+
   useEffect(() => { loadSummary() }, [loadSummary])
+  useEffect(() => { loadProjectAlloc() }, [loadProjectAlloc])
 
   function prevMonth() {
     if (month === 1) { setYear(y => y - 1); setMonth(12) }
@@ -555,7 +818,18 @@ export default function PlacePage() {
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div>
             <h1 className="text-xl font-bold text-gi-text tracking-tight">Plaće</h1>
-            <p className="text-sm text-gi-text-subtle mt-0.5">Trošak rada i kompenzacijski planovi zaposlenika</p>
+            <p className="text-sm text-gi-text-subtle mt-0.5">
+              Trošak rada, doprinosi i kompenzacijski planovi
+            </p>
+            <a
+              href="/dashboard/analytics/place/annual"
+              className="inline-flex items-center gap-1 mt-1.5 text-xs text-gi-yellow hover:text-gi-yellow-hover transition-colors"
+            >
+              Godišnji pregled
+              <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M13.5 4.5L21 12m0 0l-7.5 7.5M21 12H3" />
+              </svg>
+            </a>
           </div>
 
           {/* Period selector */}
@@ -607,30 +881,30 @@ export default function PlacePage() {
         {summary && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             <SummaryCard
-              title="Ukupni trošak plaća"
-              value={formatEur(summary.total_known_cost)}
-              sub="samo poznate plaće"
+              title="Ukupno neto"
+              value={formatEur(summary.total_neto)}
+              sub="zbroj neto troškova"
               accentClass="border-l-gi-yellow"
             />
             <SummaryCard
-              title="Evidentirani sati"
-              value={`${summary.total_hours.toLocaleString('hr-HR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h`}
-              accentClass="border-l-violet-500"
+              title="Ukupni doprinosi"
+              value={formatEur(summary.total_contributions)}
+              sub={summary.bruto_complete ? 'potpuno uneseno' : 'uneseni doprinosi'}
+              accentClass="border-l-blue-500"
             />
             <SummaryCard
-              title="Prosj. €/sat"
-              value={summary.avg_cost_per_hour != null
-                ? `${summary.avg_cost_per_hour.toLocaleString('hr-HR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €`
-                : '—'}
-              accentClass="border-l-emerald-500"
+              title="Ukupno bruto"
+              value={summary.total_bruto > 0 ? formatEur(summary.total_bruto) : '—'}
+              sub={summary.bruto_complete ? 'neto + doprinosi' : 'nepotpuni podaci'}
+              accentClass={summary.bruto_complete ? 'border-l-emerald-500' : 'border-l-gi-border'}
             />
             <SummaryCard
-              title="Bez definirane plaće"
-              value={String(summary.employees_without_compensation)}
-              sub={summary.employees_without_compensation > 0
-                ? 'zaposlenika s evid. satima'
-                : 'svi imaju kompenzacijski plan'}
-              accentClass={summary.employees_without_compensation > 0 ? 'border-l-amber-500' : 'border-l-gi-border'}
+              title="Nedostaju doprinosi"
+              value={String(summary.employees_missing_contributions)}
+              sub={summary.employees_missing_contributions > 0
+                ? 'zaposlenika bez unosa'
+                : 'svi doprinosi uneseni'}
+              accentClass={summary.employees_missing_contributions > 0 ? 'border-l-amber-500' : 'border-l-gi-border'}
             />
           </div>
         )}
@@ -671,11 +945,93 @@ export default function PlacePage() {
                 <EmployeeRow
                   key={emp.employee_id}
                   emp={emp}
+                  year={year}
+                  month={month}
                   selected={selectedId === emp.employee_id}
                   onSelect={() => setSelectedId(id => id === emp.employee_id ? null : emp.employee_id)}
                   onPlanChanged={loadSummary}
                 />
               ))}
+            </div>
+          )}
+        </div>
+
+        {/* Project labor allocation */}
+        <div className="bg-gi-card border border-gi-border rounded-xl overflow-hidden">
+          <button
+            type="button"
+            onClick={() => setShowProjectAlloc(v => !v)}
+            className="w-full flex items-center justify-between px-4 py-3 hover:bg-gi-card-elevated transition-colors"
+          >
+            <div>
+              <p className="text-sm font-semibold text-gi-text text-left">Troškovi rada po projektima</p>
+              <p className="text-xs text-gi-text-subtle mt-0.5 text-left">
+                Raspodjela neto troškova rada prema evidentiranim satima
+              </p>
+            </div>
+            <svg
+              className={`w-4 h-4 text-gi-text-subtle transition-transform duration-150 shrink-0 ml-3 ${showProjectAlloc ? 'rotate-180' : ''}`}
+              fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {showProjectAlloc && (
+            <div className="border-t border-gi-border">
+              {projectAllocLoading ? (
+                <div className="px-4 py-8 text-center">
+                  <p className="text-sm text-gi-text-subtle animate-pulse">Učitavanje podataka o projektima…</p>
+                </div>
+              ) : !projectAlloc || projectAlloc.allocations.length === 0 ? (
+                <div className="px-4 py-8 text-center">
+                  <p className="text-sm text-gi-text-subtle">Nema podataka o projektima za odabrani period.</p>
+                </div>
+              ) : (
+                <div>
+                  {projectAlloc.unassigned_hours > 0 && (
+                    <div className="mx-4 mt-3 rounded-lg bg-amber-900/20 border border-amber-700/40 px-3 py-2 text-xs text-amber-300">
+                      {projectAlloc.unassigned_hours.toFixed(1)} h evidentiranih sati nije pridruženo nijednom projektu
+                    </div>
+                  )}
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr className="border-b border-gi-border/70 bg-gi-card-elevated/50">
+                          <th className="px-4 py-2.5 text-left text-xs text-gi-text-muted font-medium">Projekt</th>
+                          <th className="px-4 py-2.5 text-right text-xs text-gi-text-muted font-medium">Sati</th>
+                          <th className="px-4 py-2.5 text-right text-xs text-gi-text-muted font-medium hidden sm:table-cell">%</th>
+                          <th className="px-4 py-2.5 text-right text-xs text-gi-text-muted font-medium">Trošak (neto)</th>
+                          <th className="px-4 py-2.5 text-right text-xs text-gi-text-muted font-medium hidden md:table-cell">Zaposleni</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gi-border/50">
+                        {projectAlloc.allocations.map(p => (
+                          <tr key={p.project_id} className="hover:bg-gi-card-elevated transition-colors">
+                            <td className="px-4 py-2.5 text-gi-text font-medium truncate max-w-[200px]">{p.project_name}</td>
+                            <td className="px-4 py-2.5 text-right tabular-nums text-gi-text-muted">{p.total_hours.toFixed(1)} h</td>
+                            <td className="px-4 py-2.5 text-right tabular-nums text-gi-text-subtle hidden sm:table-cell">{p.pct_of_total.toFixed(1)}%</td>
+                            <td className="px-4 py-2.5 text-right tabular-nums text-gi-yellow font-medium">{formatEur(p.labor_cost)}</td>
+                            <td className="px-4 py-2.5 text-right tabular-nums text-gi-text-muted hidden md:table-cell">{p.employee_count}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                      <tfoot>
+                        <tr className="border-t border-gi-border bg-gi-card-elevated/70">
+                          <td className="px-4 py-2.5 text-xs font-semibold text-gi-text-muted">Ukupno</td>
+                          <td className="px-4 py-2.5 text-right tabular-nums text-sm font-semibold text-gi-text">{projectAlloc.total_hours.toFixed(1)} h</td>
+                          <td className="hidden sm:table-cell" />
+                          <td className="px-4 py-2.5 text-right tabular-nums text-sm font-bold text-gi-yellow">{formatEur(projectAlloc.total_labor_cost)}</td>
+                          <td className="hidden md:table-cell" />
+                        </tr>
+                      </tfoot>
+                    </table>
+                  </div>
+                  <p className="px-4 py-2 text-xs text-gi-text-subtle border-t border-gi-border/50">
+                    Iznosi se temelje na neto troškovima rada. Zaposleni s nepotpunim podacima nisu uključeni u trošak.
+                  </p>
+                </div>
+              )}
             </div>
           )}
         </div>

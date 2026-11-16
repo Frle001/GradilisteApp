@@ -181,6 +181,14 @@ type ColdOpsTrendPoint struct {
 	Count int     `json:"count"`
 }
 
+// ColdOpsAnnualSummary holds monthly expense totals for a full calendar year.
+type ColdOpsAnnualSummary struct {
+	Year   int                 `json:"year"`
+	Total  float64             `json:"total"`
+	Count  int                 `json:"count"`
+	Months []ColdOpsTrendPoint `json:"months"`
+}
+
 type ColdOpsCategoryStats struct {
 	CategoryID   *string `json:"category_id,omitempty"`
 	CategoryName string  `json:"category_name"`

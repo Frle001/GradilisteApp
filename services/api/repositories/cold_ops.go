@@ -868,6 +868,37 @@ func (r *ColdOpsRepository) GetFixedVsVariable(ctx context.Context, companyID st
 	return fv, err
 }
 
+// GetYearlyMonthlyTotals returns the expense total for each month of the given year.
+// Months with no expenses are omitted (caller fills gaps).
+func (r *ColdOpsRepository) GetYearlyMonthlyTotals(ctx context.Context, companyID string, year int) ([]TrendPointRow, error) {
+	yearStart := time.Date(year, 1, 1, 0, 0, 0, 0, time.UTC)
+	yearEnd := time.Date(year, 12, 31, 0, 0, 0, 0, time.UTC)
+	rows, err := r.db.Query(ctx, `
+		SELECT EXTRACT(YEAR FROM expense_date)::int,
+			   EXTRACT(MONTH FROM expense_date)::int,
+			   COALESCE(SUM(amount),0),
+			   COUNT(*)
+		FROM cold_ops_expenses
+		WHERE company_id=$1::uuid
+		  AND expense_date >= $2 AND expense_date <= $3
+		GROUP BY 1, 2
+		ORDER BY 1, 2
+	`, companyID, yearStart, yearEnd)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []TrendPointRow
+	for rows.Next() {
+		var t TrendPointRow
+		if err := rows.Scan(&t.Year, &t.Month, &t.Total, &t.Count); err != nil {
+			return nil, err
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
 func (r *ColdOpsRepository) GetPlannedOccurrenceTotals(ctx context.Context, companyID string, from, to time.Time) ([]TrendPointRow, error) {
 	rows, err := r.db.Query(ctx, `
 		SELECT EXTRACT(YEAR FROM due_date)::int, EXTRACT(MONTH FROM due_date)::int,

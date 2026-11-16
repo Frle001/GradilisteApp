@@ -27,6 +27,17 @@ type mockAnalyticsRepo struct {
 	closedPlanDate   time.Time
 	getPlanByIDError error
 	updatedPlan      *repositories.CompensationPlanRow
+
+	// Contribution stubs
+	contribution     *repositories.ContributionRow
+	contribsForMonth []repositories.ContributionRow
+	contribsForYear  []repositories.ContributionRow
+	upsertedContrib  *repositories.ContributionRow
+
+	// Material cost stubs
+	matCostsByProject map[string]float64
+	matBreakdown      []repositories.ProjectMaterialCostRow
+	matCostsByMonth   map[int]float64
 }
 
 func (m *mockAnalyticsRepo) CreateCompensationPlan(_ context.Context, p repositories.CreateCompensationParams) (*repositories.CompensationPlanRow, error) {
@@ -119,6 +130,72 @@ func (m *mockAnalyticsRepo) UpdateCompensationPlanFields(_ context.Context, p re
 		EffectiveFrom:     p.EffectiveFrom,
 		EffectiveTo:       p.EffectiveTo,
 		CreatedAt:         time.Now(),
+	}, nil
+}
+
+func (m *mockAnalyticsRepo) GetContribution(_ context.Context, _, _ string, _ time.Time) (*repositories.ContributionRow, error) {
+	return m.contribution, nil
+}
+
+func (m *mockAnalyticsRepo) GetContributionsForMonth(_ context.Context, _ string, _ time.Time) ([]repositories.ContributionRow, error) {
+	return m.contribsForMonth, nil
+}
+
+func (m *mockAnalyticsRepo) GetContributionsForEmployeeYear(_ context.Context, _, _ string, _ int) ([]repositories.ContributionRow, error) {
+	return m.contribsForYear, nil
+}
+
+func (m *mockAnalyticsRepo) GetContributionsForCompanyYear(_ context.Context, _ string, _ int) ([]repositories.ContributionRow, error) {
+	return m.contribsForYear, nil
+}
+
+func (m *mockAnalyticsRepo) GetCompanyPlansForYear(_ context.Context, _ string, _, _ time.Time) ([]repositories.CompensationPlanRow, error) {
+	return m.plans, nil
+}
+
+func (m *mockAnalyticsRepo) GetCompanyDailyHoursForYear(_ context.Context, _ string, _, _ time.Time) ([]repositories.CompanyDailyHoursRecord, error) {
+	var out []repositories.CompanyDailyHoursRecord
+	for _, h := range m.dailyHours {
+		out = append(out, repositories.CompanyDailyHoursRecord{
+			EmployeeID:  "e1",
+			WorkDate:    h.WorkDate,
+			ProjectID:   h.ProjectID,
+			ProjectName: h.ProjectName,
+			Hours:       h.Hours,
+		})
+	}
+	return out, nil
+}
+
+func (m *mockAnalyticsRepo) GetProjectMaterialCostsForMonth(_ context.Context, _ string, _, _ int) (map[string]float64, error) {
+	if m.matCostsByProject != nil {
+		return m.matCostsByProject, nil
+	}
+	return map[string]float64{}, nil
+}
+
+func (m *mockAnalyticsRepo) GetProjectMaterialBreakdown(_ context.Context, _, _ string, _, _ int) ([]repositories.ProjectMaterialCostRow, error) {
+	return m.matBreakdown, nil
+}
+
+func (m *mockAnalyticsRepo) GetProjectMaterialCostsForYear(_ context.Context, _, _ string, _ int) (map[int]float64, error) {
+	if m.matCostsByMonth != nil {
+		return m.matCostsByMonth, nil
+	}
+	return map[int]float64{}, nil
+}
+
+func (m *mockAnalyticsRepo) UpsertContribution(_ context.Context, p repositories.UpsertContributionParams) (*repositories.ContributionRow, error) {
+	if m.upsertedContrib != nil {
+		return m.upsertedContrib, nil
+	}
+	return &repositories.ContributionRow{
+		ID:                  "contrib-id",
+		CompanyID:           p.CompanyID,
+		EmployeeID:          p.EmployeeID,
+		PayrollMonth:        p.PayrollMonth,
+		ContributionsAmount: p.ContributionsAmount,
+		UpdatedAt:           time.Now(),
 	}, nil
 }
 
@@ -725,5 +802,629 @@ func TestGetMonthlyLaborSummary_EmployeesWithoutCompensationCounted(t *testing.T
 	}
 	if summary.EmployeesWithoutCompensation != 2 {
 		t.Errorf("expected 2 employees without compensation, got %d", summary.EmployeesWithoutCompensation)
+	}
+}
+
+// ── Contribution tests ────────────────────────────────────────────────────────
+
+func TestContributions_MissingShowsNil(t *testing.T) {
+	repo := &mockAnalyticsRepo{
+		employees:  []repositories.AnalyticsEmployeeRow{anEmp("e1", "Ana", "radnik")},
+		plans:      []repositories.CompensationPlanRow{anFixed(1800, "2026-01-01", "")},
+		dailyHours: []repositories.DailyHoursRecord{anDH("2026-08-01", "p1", "Proj", 8)},
+		// contribution is nil — not entered
+	}
+	svc := anSvc(repo)
+	cost, err := svc.GetEmployeeLaborCost(context.Background(), "co1", "direktor", "e1", 2026, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cost.ContributionsMissing {
+		t.Error("expected ContributionsMissing=true when no contribution record")
+	}
+	if cost.Contributions != nil {
+		t.Error("expected Contributions=nil")
+	}
+	if cost.Bruto != nil {
+		t.Error("expected Bruto=nil when contributions missing")
+	}
+	if cost.Neto != 1800 {
+		t.Errorf("expected Neto=1800, got %f", cost.Neto)
+	}
+}
+
+func TestContributions_ZeroIsNotMissing(t *testing.T) {
+	repo := &mockAnalyticsRepo{
+		employees:    []repositories.AnalyticsEmployeeRow{anEmp("e1", "Ana", "radnik")},
+		plans:        []repositories.CompensationPlanRow{anFixed(1800, "2026-01-01", "")},
+		dailyHours:   []repositories.DailyHoursRecord{anDH("2026-08-01", "p1", "Proj", 8)},
+		contribution: &repositories.ContributionRow{ContributionsAmount: 0},
+	}
+	svc := anSvc(repo)
+	cost, err := svc.GetEmployeeLaborCost(context.Background(), "co1", "direktor", "e1", 2026, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cost.ContributionsMissing {
+		t.Error("expected ContributionsMissing=false for explicit zero")
+	}
+	if cost.Contributions == nil || *cost.Contributions != 0 {
+		t.Errorf("expected Contributions=0, got %v", cost.Contributions)
+	}
+	if cost.Bruto == nil || *cost.Bruto != 1800 {
+		t.Errorf("expected Bruto=1800 (neto+0), got %v", cost.Bruto)
+	}
+}
+
+func TestContributions_BrutoFormula(t *testing.T) {
+	repo := &mockAnalyticsRepo{
+		employees:    []repositories.AnalyticsEmployeeRow{anEmp("e1", "Ana", "radnik")},
+		plans:        []repositories.CompensationPlanRow{anFixed(1800, "2026-01-01", "")},
+		dailyHours:   []repositories.DailyHoursRecord{anDH("2026-08-01", "p1", "Proj", 8)},
+		contribution: &repositories.ContributionRow{ContributionsAmount: 500},
+	}
+	svc := anSvc(repo)
+	cost, err := svc.GetEmployeeLaborCost(context.Background(), "co1", "direktor", "e1", 2026, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cost.Neto != 1800 {
+		t.Errorf("expected Neto=1800, got %f", cost.Neto)
+	}
+	if cost.Contributions == nil || *cost.Contributions != 500 {
+		t.Errorf("expected Contributions=500, got %v", cost.Contributions)
+	}
+	if cost.Bruto == nil || *cost.Bruto != 2300 {
+		t.Errorf("expected Bruto=2300 (1800+500), got %v", cost.Bruto)
+	}
+}
+
+func TestContributions_MidMonthTransitionNoBruto(t *testing.T) {
+	repo := &mockAnalyticsRepo{
+		employees: []repositories.AnalyticsEmployeeRow{anEmp("e1", "Ana", "radnik")},
+		plans: []repositories.CompensationPlanRow{
+			anFixed(1800, "2026-08-01", "2026-08-14"),
+			anFixed(2000, "2026-08-15", ""),
+		},
+		dailyHours:   []repositories.DailyHoursRecord{anDH("2026-08-01", "p1", "Proj", 8)},
+		contribution: &repositories.ContributionRow{ContributionsAmount: 500},
+	}
+	svc := anSvc(repo)
+	cost, err := svc.GetEmployeeLaborCost(context.Background(), "co1", "direktor", "e1", 2026, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cost.Bruto != nil {
+		t.Error("expected Bruto=nil for mid-month fixed transition")
+	}
+	// Contributions still set even without bruto
+	if cost.Contributions == nil {
+		t.Error("expected Contributions set even when bruto unavailable")
+	}
+}
+
+func TestContributions_UpsertForbiddenRole(t *testing.T) {
+	repo := &mockAnalyticsRepo{
+		employees: []repositories.AnalyticsEmployeeRow{anEmp("e1", "Ana", "radnik")},
+	}
+	svc := anSvc(repo)
+	_, err := svc.UpsertContribution(context.Background(), "co1", "radnik", "u1", "e1", 2026, 8, dto.UpsertContributionReq{ContributionsAmount: 500})
+	if !errors.Is(err, ErrForbidden) {
+		t.Errorf("expected ErrForbidden, got: %v", err)
+	}
+}
+
+func TestContributions_UpsertNegativeAmount(t *testing.T) {
+	repo := &mockAnalyticsRepo{
+		employees: []repositories.AnalyticsEmployeeRow{anEmp("e1", "Ana", "radnik")},
+	}
+	svc := anSvc(repo)
+	_, err := svc.UpsertContribution(context.Background(), "co1", "direktor", "u1", "e1", 2026, 8, dto.UpsertContributionReq{ContributionsAmount: -1})
+	if err == nil {
+		t.Error("expected validation error for negative amount")
+	}
+}
+
+func TestContributions_UpsertSuccess(t *testing.T) {
+	repo := &mockAnalyticsRepo{
+		employees: []repositories.AnalyticsEmployeeRow{anEmp("e1", "Ana", "radnik")},
+	}
+	svc := anSvc(repo)
+	result, err := svc.UpsertContribution(context.Background(), "co1", "direktor", "u1", "e1", 2026, 8, dto.UpsertContributionReq{ContributionsAmount: 500})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ContributionsAmount != 500 {
+		t.Errorf("expected ContributionsAmount=500, got %f", result.ContributionsAmount)
+	}
+}
+
+func TestContributions_SummaryTotals(t *testing.T) {
+	repo := &mockAnalyticsRepo{
+		employees:  []repositories.AnalyticsEmployeeRow{anEmp("e1", "Ana", "radnik"), anEmp("e2", "Ivan", "radnik")},
+		plans:      []repositories.CompensationPlanRow{anFixed(1800, "2026-01-01", "")},
+		dailyHours: []repositories.DailyHoursRecord{anDH("2026-08-01", "p1", "Proj", 8)},
+		contribsForMonth: []repositories.ContributionRow{
+			{EmployeeID: "e1", ContributionsAmount: 500},
+		},
+		// e2 has no contribution record
+	}
+	svc := anSvc(repo)
+	summary, err := svc.GetMonthlyLaborSummary(context.Background(), "co1", "direktor", 2026, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.TotalNeto != 3600 {
+		t.Errorf("expected TotalNeto=3600 (2×1800), got %f", summary.TotalNeto)
+	}
+	if summary.TotalContributions != 500 {
+		t.Errorf("expected TotalContributions=500, got %f", summary.TotalContributions)
+	}
+	if summary.EmployeesMissingContributions != 1 {
+		t.Errorf("expected 1 missing contribution, got %d", summary.EmployeesMissingContributions)
+	}
+	if summary.BrutoComplete {
+		t.Error("expected BrutoComplete=false when any employee is missing contributions")
+	}
+}
+
+func TestContributions_SummaryBrutoComplete(t *testing.T) {
+	repo := &mockAnalyticsRepo{
+		employees:  []repositories.AnalyticsEmployeeRow{anEmp("e1", "Ana", "radnik")},
+		plans:      []repositories.CompensationPlanRow{anFixed(1800, "2026-01-01", "")},
+		dailyHours: []repositories.DailyHoursRecord{anDH("2026-08-01", "p1", "Proj", 8)},
+		contribsForMonth: []repositories.ContributionRow{
+			{EmployeeID: "e1", ContributionsAmount: 400},
+		},
+	}
+	svc := anSvc(repo)
+	summary, err := svc.GetMonthlyLaborSummary(context.Background(), "co1", "direktor", 2026, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !summary.BrutoComplete {
+		t.Error("expected BrutoComplete=true when all employees have contributions")
+	}
+	if summary.TotalBruto != 2200 {
+		t.Errorf("expected TotalBruto=2200 (1800+400), got %f", summary.TotalBruto)
+	}
+}
+
+// ── Annual summary tests ──────────────────────────────────────────────────────
+
+func TestAnnualPayroll_ForbiddenRole(t *testing.T) {
+	svc := anSvc(&mockAnalyticsRepo{})
+	_, err := svc.GetAnnualPayrollSummary(context.Background(), "co1", "radnik", 2026, "")
+	if !errors.Is(err, ErrForbidden) {
+		t.Errorf("expected ErrForbidden, got: %v", err)
+	}
+}
+
+func TestAnnualPayroll_NoData(t *testing.T) {
+	svc := anSvc(&mockAnalyticsRepo{employees: nil})
+	summary, err := svc.GetAnnualPayrollSummary(context.Background(), "co1", "direktor", 2026, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(summary.Months) != 12 {
+		t.Errorf("expected 12 months, got %d", len(summary.Months))
+	}
+	if summary.TotalNeto != 0 || summary.TotalContributions != 0 {
+		t.Error("expected all-zero totals with no employees")
+	}
+}
+
+func TestAnnualPayroll_AllEmployees_AggregatesCorrectly(t *testing.T) {
+	// Employee e1 has fixed 1800 plan all year with contributions 500 in every month.
+	// Daily hours in January and August only (8h each).
+	// Annual bruto = 1800 + 500 = 2300 per month × 12 = 27600 (fixed monthly neto counts even with no hours).
+	jan1 := anD("2026-01-15")
+	aug1 := anD("2026-08-10")
+	contribs := make([]repositories.ContributionRow, 12)
+	for mo := 1; mo <= 12; mo++ {
+		contribs[mo-1] = repositories.ContributionRow{
+			EmployeeID:          "e1",
+			PayrollMonth:        time.Date(2026, time.Month(mo), 1, 0, 0, 0, 0, time.UTC),
+			ContributionsAmount: 500,
+		}
+	}
+	plan := anFixed(1800, "2026-01-01", "")
+	plan.EmployeeID = "e1"
+	repo := &mockAnalyticsRepo{
+		employees:       []repositories.AnalyticsEmployeeRow{anEmp("e1", "Ivan", "radnik")},
+		plans:           []repositories.CompensationPlanRow{plan},
+		dailyHours:      []repositories.DailyHoursRecord{{WorkDate: jan1, ProjectID: "p1", ProjectName: "P", Hours: 8}, {WorkDate: aug1, ProjectID: "p1", ProjectName: "P", Hours: 8}},
+		contribsForYear: contribs,
+	}
+	svc := anSvc(repo)
+	summary, err := svc.GetAnnualPayrollSummary(context.Background(), "co1", "direktor", 2026, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.TotalEmployees != 1 {
+		t.Errorf("expected 1 employee, got %d", summary.TotalEmployees)
+	}
+	// Months with hours have neto=1800, contributions=500, bruto=2300.
+	// Months without hours: fixed monthly pay still = 1800 neto, but Warning="Nema evidentiranih sati", so bruto is set.
+	// Actually with fixed monthly and no hours: computeEmployeeLaborCost returns cost with zero hours
+	// and warning "Nema evidentiranih sati", HasCompensation=true.
+	// enrichWithContribution: brutoReady = HasCompensation && !HasMidMonthTransition &&
+	//   !(Warning != nil && CompanyAnalyticalCost == 0)
+	// With no hours: CompanyAnalyticalCost = 1800, warning set => brutoReady = true (warning exists but cost != 0).
+	// Wait, re-reading the logic: !(cost.Warning != nil && cost.CompanyAnalyticalCost == 0)
+	// So warning with non-zero cost: !(true && false) = !(false) = true => brutoReady = true.
+	// So bruto IS computed for months with no hours but with compensation.
+	// Annual bruto = 1800+500 = 2300 * 12 months = 27600.
+	if summary.TotalBruto != 27600 {
+		t.Errorf("expected TotalBruto=27600, got %f", summary.TotalBruto)
+	}
+	if summary.MonthsWithIncompleteData != 0 {
+		t.Errorf("expected 0 incomplete months, got %d", summary.MonthsWithIncompleteData)
+	}
+	if !summary.BrutoComplete {
+		t.Error("expected BrutoComplete=true")
+	}
+}
+
+func TestAnnualPayroll_MonthsWithIncompleteData(t *testing.T) {
+	// Employee has a plan all year but no contributions entered for any month.
+	plan2 := anFixed(2000, "2026-01-01", "")
+	plan2.EmployeeID = "e1"
+	repo := &mockAnalyticsRepo{
+		employees:       []repositories.AnalyticsEmployeeRow{anEmp("e1", "Ana", "radnik")},
+		plans:           []repositories.CompensationPlanRow{plan2},
+		dailyHours:      []repositories.DailyHoursRecord{anDH("2026-03-01", "p1", "P", 8)},
+		contribsForYear: nil, // no contributions for any month
+	}
+	svc := anSvc(repo)
+	summary, err := svc.GetAnnualPayrollSummary(context.Background(), "co1", "direktor", 2026, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// All 12 months have compensation → all 12 have incomplete contributions.
+	if summary.MonthsWithIncompleteData != 12 {
+		t.Errorf("expected 12 incomplete months, got %d", summary.MonthsWithIncompleteData)
+	}
+	if summary.BrutoComplete {
+		t.Error("expected BrutoComplete=false when contributions are missing")
+	}
+	if summary.TotalBruto != 0 {
+		t.Errorf("expected TotalBruto=0 when contributions missing, got %f", summary.TotalBruto)
+	}
+}
+
+// ── Project allocation tests ──────────────────────────────────────────────────
+
+func TestProjectAllocation_ForbiddenRole(t *testing.T) {
+	repo := &mockAnalyticsRepo{
+		employees: []repositories.AnalyticsEmployeeRow{anEmp("e1", "Ivan", "radnik")},
+	}
+	_, err := anSvc(repo).GetMonthlyProjectAllocation(context.Background(), "co1", "radnik", 2026, 8)
+	if !errors.Is(err, ErrForbidden) {
+		t.Errorf("expected ErrForbidden, got %v", err)
+	}
+}
+
+func TestProjectAllocation_AggregatesAcrossEmployees(t *testing.T) {
+	// Two employees, both with 8h on project p1 and fixed plan at 2000.
+	// Expected: p1.TotalHours=16, p1.EmployeeCount=2, TotalLaborCost=4000.
+	contribsForMonth := []repositories.ContributionRow{
+		{EmployeeID: "e1", PayrollMonth: anD("2026-08-01"), ContributionsAmount: 500},
+		{EmployeeID: "e2", PayrollMonth: anD("2026-08-01"), ContributionsAmount: 500},
+	}
+	repo := &mockAnalyticsRepo{
+		employees: []repositories.AnalyticsEmployeeRow{
+			anEmp("e1", "Ivan", "radnik"),
+			anEmp("e2", "Ana", "radnik"),
+		},
+		plans: []repositories.CompensationPlanRow{anFixed(2000, "2026-01-01", "")},
+		dailyHours: []repositories.DailyHoursRecord{
+			anDH("2026-08-05", "p1", "Projekt Alpha", 8),
+		},
+		projectHours: []repositories.ProjectHours{
+			{ProjectID: "p1", ProjectName: "Projekt Alpha", Hours: 8},
+		},
+		contribsForMonth: contribsForMonth,
+	}
+	svc := anSvc(repo)
+	result, err := svc.GetMonthlyProjectAllocation(context.Background(), "co1", "direktor", 2026, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Allocations) != 1 {
+		t.Fatalf("expected 1 project allocation, got %d", len(result.Allocations))
+	}
+	p := result.Allocations[0]
+	if p.ProjectID != "p1" {
+		t.Errorf("expected project p1, got %s", p.ProjectID)
+	}
+	if p.TotalHours != 16 {
+		t.Errorf("expected 16 total hours, got %f", p.TotalHours)
+	}
+	if p.EmployeeCount != 2 {
+		t.Errorf("expected 2 employees on project, got %d", p.EmployeeCount)
+	}
+	// LaborCost: each employee earns 2000/8h * 8h = 2000; total = 4000
+	if p.LaborCost != 4000 {
+		t.Errorf("expected labor cost 4000, got %f", p.LaborCost)
+	}
+	if result.TotalHours != 16 {
+		t.Errorf("expected total hours = 16, got %f", result.TotalHours)
+	}
+	if result.UnassignedHours != 0 {
+		t.Errorf("expected no unassigned hours, got %f", result.UnassignedHours)
+	}
+}
+
+func TestProjectAllocation_IncludesContributions(t *testing.T) {
+	// Employee with fixed plan 2000, 8h on p1 (all hours), contributions 500.
+	// Expected: p1.NetoCost=2000, p1.ContributionsCost=500 (100% of hours on p1), p1.BrutoCost=2500.
+	plan := anFixed(2000, "2026-01-01", "")
+	plan.EmployeeID = "e1"
+	repo := &mockAnalyticsRepo{
+		employees: []repositories.AnalyticsEmployeeRow{anEmp("e1", "Ivan", "radnik")},
+		plans:     []repositories.CompensationPlanRow{plan},
+		dailyHours: []repositories.DailyHoursRecord{
+			anDH("2026-08-05", "p1", "Alpha", 8),
+		},
+		projectHours: []repositories.ProjectHours{
+			{ProjectID: "p1", ProjectName: "Alpha", Hours: 8},
+		},
+		contribsForMonth: []repositories.ContributionRow{
+			{EmployeeID: "e1", PayrollMonth: anD("2026-08-01"), ContributionsAmount: 500},
+		},
+	}
+	result, err := anSvc(repo).GetMonthlyProjectAllocation(context.Background(), "co1", "direktor", 2026, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Allocations) != 1 {
+		t.Fatalf("expected 1 allocation, got %d", len(result.Allocations))
+	}
+	p := result.Allocations[0]
+	if p.NetoCost != 2000 {
+		t.Errorf("expected NetoCost=2000, got %f", p.NetoCost)
+	}
+	if p.ContributionsCost != 500 {
+		t.Errorf("expected ContributionsCost=500, got %f", p.ContributionsCost)
+	}
+	if p.BrutoCost != 2500 {
+		t.Errorf("expected BrutoCost=2500, got %f", p.BrutoCost)
+	}
+	if p.ContributionsIncomplete {
+		t.Error("expected ContributionsIncomplete=false")
+	}
+	if result.TotalNeto != 2000 {
+		t.Errorf("expected TotalNeto=2000, got %f", result.TotalNeto)
+	}
+	if result.TotalContributions != 500 {
+		t.Errorf("expected TotalContributions=500, got %f", result.TotalContributions)
+	}
+	if result.TotalBruto != 2500 {
+		t.Errorf("expected TotalBruto=2500, got %f", result.TotalBruto)
+	}
+}
+
+func TestProjectAllocation_MissingContributions_MarkedIncomplete(t *testing.T) {
+	// Employee with fixed plan 2000, 8h on p1, NO contribution record.
+	// Expected: p1.ContributionsIncomplete=true, p1.ContributionsCost=0.
+	plan := anFixed(2000, "2026-01-01", "")
+	plan.EmployeeID = "e1"
+	repo := &mockAnalyticsRepo{
+		employees:        []repositories.AnalyticsEmployeeRow{anEmp("e1", "Ivan", "radnik")},
+		plans:            []repositories.CompensationPlanRow{plan},
+		dailyHours:       []repositories.DailyHoursRecord{anDH("2026-08-05", "p1", "Alpha", 8)},
+		projectHours:     []repositories.ProjectHours{{ProjectID: "p1", ProjectName: "Alpha", Hours: 8}},
+		contribsForMonth: nil, // no contributions entered
+	}
+	result, err := anSvc(repo).GetMonthlyProjectAllocation(context.Background(), "co1", "direktor", 2026, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Allocations) != 1 {
+		t.Fatalf("expected 1 allocation, got %d", len(result.Allocations))
+	}
+	p := result.Allocations[0]
+	if !p.ContributionsIncomplete {
+		t.Error("expected ContributionsIncomplete=true when no contribution record")
+	}
+	if p.ContributionsCost != 0 {
+		t.Errorf("expected ContributionsCost=0 when missing, got %f", p.ContributionsCost)
+	}
+	if p.NetoCost != 2000 {
+		t.Errorf("expected NetoCost=2000, got %f", p.NetoCost)
+	}
+}
+
+func TestProjectDetail_ForbiddenRole(t *testing.T) {
+	_, err := anSvc(&mockAnalyticsRepo{}).GetProjectDetail(context.Background(), "co1", "radnik", "p1", 2026, 8)
+	if !errors.Is(err, ErrForbidden) {
+		t.Errorf("expected ErrForbidden, got %v", err)
+	}
+}
+
+func TestProjectDetail_EmployeeBreakdown(t *testing.T) {
+	// Single employee, 8h on p1, fixed plan 2000, contributions 500.
+	// All hours on p1 → 100% allocation → neto=2000, contrib=500, bruto=2500.
+	plan := anFixed(2000, "2026-01-01", "")
+	plan.EmployeeID = "e1"
+	repo := &mockAnalyticsRepo{
+		employees: []repositories.AnalyticsEmployeeRow{anEmp("e1", "Ivan", "radnik")},
+		plans:     []repositories.CompensationPlanRow{plan},
+		dailyHours: []repositories.DailyHoursRecord{
+			anDH("2026-08-05", "p1", "Alpha", 8),
+		},
+		projectHours: []repositories.ProjectHours{
+			{ProjectID: "p1", ProjectName: "Alpha", Hours: 8},
+		},
+		contribsForMonth: []repositories.ContributionRow{
+			{EmployeeID: "e1", PayrollMonth: anD("2026-08-01"), ContributionsAmount: 500},
+		},
+		contribsForYear: []repositories.ContributionRow{
+			{EmployeeID: "e1", PayrollMonth: anD("2026-08-01"), ContributionsAmount: 500},
+		},
+	}
+	result, err := anSvc(repo).GetProjectDetail(context.Background(), "co1", "direktor", "p1", 2026, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.ProjectID != "p1" {
+		t.Errorf("expected project_id p1, got %s", result.ProjectID)
+	}
+	if result.TotalHours != 8 {
+		t.Errorf("expected TotalHours=8, got %f", result.TotalHours)
+	}
+	if result.TotalNeto != 2000 {
+		t.Errorf("expected TotalNeto=2000, got %f", result.TotalNeto)
+	}
+	if result.TotalContributions != 500 {
+		t.Errorf("expected TotalContributions=500, got %f", result.TotalContributions)
+	}
+	if result.TotalBruto != 2500 {
+		t.Errorf("expected TotalBruto=2500, got %f", result.TotalBruto)
+	}
+	if len(result.Employees) != 1 {
+		t.Fatalf("expected 1 employee, got %d", len(result.Employees))
+	}
+	emp := result.Employees[0]
+	if emp.EmployeeID != "e1" {
+		t.Errorf("expected employee e1, got %s", emp.EmployeeID)
+	}
+	if emp.Hours != 8 {
+		t.Errorf("expected 8h, got %f", emp.Hours)
+	}
+	if emp.NetoCost != 2000 {
+		t.Errorf("expected NetoCost=2000, got %f", emp.NetoCost)
+	}
+	if emp.ContributionsCost == nil || *emp.ContributionsCost != 500 {
+		t.Errorf("expected ContributionsCost=500, got %v", emp.ContributionsCost)
+	}
+	if emp.BrutoCost == nil || *emp.BrutoCost != 2500 {
+		t.Errorf("expected BrutoCost=2500, got %v", emp.BrutoCost)
+	}
+	if len(result.MonthlyTrend) != 12 {
+		t.Errorf("expected 12 monthly trend entries, got %d", len(result.MonthlyTrend))
+	}
+	// August (month 8, index 7) should have data
+	aug := result.MonthlyTrend[7]
+	if !aug.HasData {
+		t.Error("expected August to have data")
+	}
+	if aug.Neto != 2000 {
+		t.Errorf("expected August Neto=2000, got %f", aug.Neto)
+	}
+}
+
+// ── Material cost tests ───────────────────────────────────────────────────────
+
+func TestProjectAllocation_IncludesMaterialCost(t *testing.T) {
+	// Employee with 8h on p1, neto 2000, contrib 500 → bruto 2500.
+	// Material cost for p1 = 1200 (from mock).
+	// Expected: p1.MaterialCost=1200, p1.TotalDirectCost=3700, summary.TotalMaterialCost=1200.
+	plan := anFixed(2000, "2026-01-01", "")
+	plan.EmployeeID = "e1"
+	repo := &mockAnalyticsRepo{
+		employees: []repositories.AnalyticsEmployeeRow{anEmp("e1", "Ivan", "radnik")},
+		plans:     []repositories.CompensationPlanRow{plan},
+		dailyHours: []repositories.DailyHoursRecord{
+			anDH("2026-08-05", "p1", "Alpha", 8),
+		},
+		projectHours: []repositories.ProjectHours{
+			{ProjectID: "p1", ProjectName: "Alpha", Hours: 8},
+		},
+		contribsForMonth: []repositories.ContributionRow{
+			{EmployeeID: "e1", PayrollMonth: anD("2026-08-01"), ContributionsAmount: 500},
+		},
+		matCostsByProject: map[string]float64{"p1": 1200},
+	}
+	result, err := anSvc(repo).GetMonthlyProjectAllocation(context.Background(), "co1", "direktor", 2026, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Allocations) != 1 {
+		t.Fatalf("expected 1 allocation, got %d", len(result.Allocations))
+	}
+	p := result.Allocations[0]
+	if p.MaterialCost != 1200 {
+		t.Errorf("expected MaterialCost=1200, got %f", p.MaterialCost)
+	}
+	if p.TotalDirectCost != 3700 {
+		t.Errorf("expected TotalDirectCost=3700 (2500+1200), got %f", p.TotalDirectCost)
+	}
+	if result.TotalMaterialCost != 1200 {
+		t.Errorf("expected TotalMaterialCost=1200, got %f", result.TotalMaterialCost)
+	}
+	if result.TotalDirectCost != 3700 {
+		t.Errorf("expected summary TotalDirectCost=3700, got %f", result.TotalDirectCost)
+	}
+}
+
+func TestProjectDetail_IncludesMaterialBreakdown(t *testing.T) {
+	// Employee 8h on p1, neto 2000, contrib 500, bruto 2500.
+	// Material breakdown: 1 item with total_cost=800.
+	// Material in August (month 8): cost=800 from matCostsByMonth.
+	// Expected: TotalMaterialCost=800, TotalDirectCost=3300, Materials has 1 item.
+	// Annual trend: August entry has MaterialCost=800, TotalCost=bruto+800.
+	plan := anFixed(2000, "2026-01-01", "")
+	plan.EmployeeID = "e1"
+	matCode := "MAT-01"
+	repo := &mockAnalyticsRepo{
+		employees: []repositories.AnalyticsEmployeeRow{anEmp("e1", "Ivan", "radnik")},
+		plans:     []repositories.CompensationPlanRow{plan},
+		dailyHours: []repositories.DailyHoursRecord{
+			anDH("2026-08-05", "p1", "Alpha", 8),
+		},
+		projectHours: []repositories.ProjectHours{
+			{ProjectID: "p1", ProjectName: "Alpha", Hours: 8},
+		},
+		contribsForMonth: []repositories.ContributionRow{
+			{EmployeeID: "e1", PayrollMonth: anD("2026-08-01"), ContributionsAmount: 500},
+		},
+		contribsForYear: []repositories.ContributionRow{
+			{EmployeeID: "e1", PayrollMonth: anD("2026-08-01"), ContributionsAmount: 500},
+		},
+		matBreakdown: []repositories.ProjectMaterialCostRow{
+			{
+				ProjectMaterialID: "mat-1",
+				MaterialName:      "Cement",
+				MaterialCode:      &matCode,
+				InstalledQty:      4,
+				Unit:              "vreća",
+				UnitPrice:         200,
+				TotalCost:         800,
+				Source:            "manual",
+			},
+		},
+		matCostsByMonth: map[int]float64{8: 800},
+	}
+	result, err := anSvc(repo).GetProjectDetail(context.Background(), "co1", "direktor", "p1", 2026, 8)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.TotalMaterialCost != 800 {
+		t.Errorf("expected TotalMaterialCost=800, got %f", result.TotalMaterialCost)
+	}
+	if result.TotalDirectCost != 3300 {
+		t.Errorf("expected TotalDirectCost=3300 (2500+800), got %f", result.TotalDirectCost)
+	}
+	if len(result.Materials) != 1 {
+		t.Fatalf("expected 1 material item, got %d", len(result.Materials))
+	}
+	mat := result.Materials[0]
+	if mat.MaterialName != "Cement" {
+		t.Errorf("expected MaterialName=Cement, got %s", mat.MaterialName)
+	}
+	if mat.TotalCost != 800 {
+		t.Errorf("expected material TotalCost=800, got %f", mat.TotalCost)
+	}
+	if len(result.MonthlyTrend) != 12 {
+		t.Fatalf("expected 12 trend months, got %d", len(result.MonthlyTrend))
+	}
+	aug := result.MonthlyTrend[7] // month 8, index 7
+	if aug.MaterialCost != 800 {
+		t.Errorf("expected August MaterialCost=800, got %f", aug.MaterialCost)
+	}
+	if aug.TotalCost != aug.Bruto+800 {
+		t.Errorf("expected August TotalCost=bruto+800 (%f), got %f", aug.Bruto+800, aug.TotalCost)
 	}
 }

@@ -112,6 +112,82 @@ func (h *AnalyticsHandler) UpdateCompensationPlan(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"plan": plan})
 }
 
+func (h *AnalyticsHandler) UpsertContribution(c *gin.Context) {
+	u := appctx.GetAuthUser(c)
+	employeeID := c.Param("employeeId")
+	year, month := parseYearMonth(c)
+
+	var req dto.UpsertContributionReq
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Neispravan zahtjev"})
+		return
+	}
+
+	contrib, err := h.svc.UpsertContribution(c.Request.Context(), u.CompanyID, u.Role, u.UserID, employeeID, year, month, req)
+	if err != nil {
+		respondAnalyticsError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"contribution": contrib})
+}
+
+func (h *AnalyticsHandler) GetEmployeePayrollHistory(c *gin.Context) {
+	u := appctx.GetAuthUser(c)
+	employeeID := c.Param("employeeId")
+	year := time.Now().Year()
+	if y, err := strconv.Atoi(c.Query("year")); err == nil && y >= 2000 && y <= 2100 {
+		year = y
+	}
+
+	history, err := h.svc.GetEmployeePayrollHistory(c.Request.Context(), u.CompanyID, u.Role, employeeID, year)
+	if err != nil {
+		respondAnalyticsError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"history": history})
+}
+
+func (h *AnalyticsHandler) GetAnnualPayrollSummary(c *gin.Context) {
+	u := appctx.GetAuthUser(c)
+	year := time.Now().Year()
+	if y, err := strconv.Atoi(c.Query("year")); err == nil && y >= 2000 && y <= 2100 {
+		year = y
+	}
+	employeeID := c.Query("employee_id")
+
+	summary, err := h.svc.GetAnnualPayrollSummary(c.Request.Context(), u.CompanyID, u.Role, year, employeeID)
+	if err != nil {
+		respondAnalyticsError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"summary": summary})
+}
+
+func (h *AnalyticsHandler) GetMonthlyProjectAllocation(c *gin.Context) {
+	u := appctx.GetAuthUser(c)
+	year, month := parseYearMonth(c)
+
+	result, err := h.svc.GetMonthlyProjectAllocation(c.Request.Context(), u.CompanyID, u.Role, year, month)
+	if err != nil {
+		respondAnalyticsError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"allocation": result})
+}
+
+func (h *AnalyticsHandler) GetProjectDetail(c *gin.Context) {
+	u := appctx.GetAuthUser(c)
+	projectID := c.Param("projectId")
+	year, month := parseYearMonth(c)
+
+	result, err := h.svc.GetProjectDetail(c.Request.Context(), u.CompanyID, u.Role, projectID, year, month)
+	if err != nil {
+		respondAnalyticsError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"project": result})
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 func parseYearMonth(c *gin.Context) (int, int) {
