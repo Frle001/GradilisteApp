@@ -606,12 +606,12 @@ func (s *AnalyticsService) GetMonthlyProjectAllocation(ctx context.Context, comp
 	}
 
 	type projAgg struct {
-		name            string
-		hours           float64
-		netoCost        float64
-		contribCost     float64
+		name              string
+		hours             float64
+		netoCost          float64
+		contribCost       float64
 		contribIncomplete bool
-		emps            map[string]struct{}
+		emps              map[string]struct{}
 	}
 	byProject := make(map[string]*projAgg)
 	var totalProjectHours float64
@@ -680,18 +680,18 @@ func (s *AnalyticsService) GetMonthlyProjectAllocation(ctx context.Context, comp
 	})
 
 	return &dto.MonthlyProjectAllocationSummary{
-		Year:              year,
-		Month:             month,
-		TotalHours:        monthly.TotalHours,
-		TotalLaborCost:    totalNeto, // backward compat
-		TotalNeto:         totalNeto,
+		Year:               year,
+		Month:              month,
+		TotalHours:         monthly.TotalHours,
+		TotalLaborCost:     totalNeto, // backward compat
+		TotalNeto:          totalNeto,
 		TotalContributions: totalContrib,
-		TotalBruto:        totalBruto,
-		TotalMaterialCost: totalMaterial,
-		TotalDirectCost:   totalBruto + totalMaterial,
-		UnassignedHours:   unassigned,
-		BrutoComplete:     monthly.BrutoComplete,
-		Allocations:       allocations,
+		TotalBruto:         totalBruto,
+		TotalMaterialCost:  totalMaterial,
+		TotalDirectCost:    totalBruto + totalMaterial,
+		UnassignedHours:    unassigned,
+		BrutoComplete:      monthly.BrutoComplete,
+		Allocations:        allocations,
 	}, nil
 }
 

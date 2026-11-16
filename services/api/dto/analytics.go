@@ -47,9 +47,9 @@ type EmployeeLaborCost struct {
 	Warning               *string                  `json:"warning,omitempty"`
 	// Contributions fields — Bruto = Neto + Contributions (application-defined formula).
 	Neto                 float64  `json:"neto"`
-	Contributions        *float64 `json:"contributions"`          // nil = not entered; 0 = explicitly zero
-	Bruto                *float64 `json:"bruto"`                  // nil when neto unavailable or contributions not entered
-	ContributionsMissing bool     `json:"contributions_missing"`  // true when no contribution record exists
+	Contributions        *float64 `json:"contributions"`         // nil = not entered; 0 = explicitly zero
+	Bruto                *float64 `json:"bruto"`                 // nil when neto unavailable or contributions not entered
+	ContributionsMissing bool     `json:"contributions_missing"` // true when no contribution record exists
 }
 
 type MonthlyLaborSummary struct {
@@ -109,29 +109,29 @@ type EmployeePayrollHistory struct {
 // MonthlyPayrollAggregate holds aggregated payroll data for one month across
 // all (or a filtered) employees.
 type MonthlyPayrollAggregate struct {
-	Year             int     `json:"year"`
-	Month            int     `json:"month"`
-	TotalNeto        float64 `json:"total_neto"`
+	Year               int     `json:"year"`
+	Month              int     `json:"month"`
+	TotalNeto          float64 `json:"total_neto"`
 	TotalContributions float64 `json:"total_contributions"`
-	TotalBruto       float64 `json:"total_bruto"`
-	TotalHours       float64 `json:"total_hours"`
-	EmployeeCount    int     `json:"employee_count"`
-	IncompleteCount  int     `json:"incomplete_count"` // employees with contributions_missing
-	HasData          bool    `json:"has_data"`
+	TotalBruto         float64 `json:"total_bruto"`
+	TotalHours         float64 `json:"total_hours"`
+	EmployeeCount      int     `json:"employee_count"`
+	IncompleteCount    int     `json:"incomplete_count"` // employees with contributions_missing
+	HasData            bool    `json:"has_data"`
 }
 
 // AnnualPayrollSummary holds 12 monthly aggregates plus year-level totals.
 type AnnualPayrollSummary struct {
-	Year                     int                      `json:"year"`
-	TotalNeto                float64                  `json:"total_neto"`
-	TotalContributions       float64                  `json:"total_contributions"`
-	TotalBruto               float64                  `json:"total_bruto"`
-	TotalHours               float64                  `json:"total_hours"`
-	TotalEmployees           int                      `json:"total_employees"`
-	BrutoComplete            bool                     `json:"bruto_complete"`
-	MonthsWithIncompleteData int                      `json:"months_with_incomplete_data"`
-	EmployeeFilter           *string                  `json:"employee_filter,omitempty"`
-	FilteredEmployeeName     *string                  `json:"filtered_employee_name,omitempty"`
+	Year                     int                       `json:"year"`
+	TotalNeto                float64                   `json:"total_neto"`
+	TotalContributions       float64                   `json:"total_contributions"`
+	TotalBruto               float64                   `json:"total_bruto"`
+	TotalHours               float64                   `json:"total_hours"`
+	TotalEmployees           int                       `json:"total_employees"`
+	BrutoComplete            bool                      `json:"bruto_complete"`
+	MonthsWithIncompleteData int                       `json:"months_with_incomplete_data"`
+	EmployeeFilter           *string                   `json:"employee_filter,omitempty"`
+	FilteredEmployeeName     *string                   `json:"filtered_employee_name,omitempty"`
 	Months                   []MonthlyPayrollAggregate `json:"months"`
 }
 

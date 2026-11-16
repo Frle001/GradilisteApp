@@ -88,17 +88,17 @@ type AddPaymentReq struct {
 // ── Revenue analytics ─────────────────────────────────────────────────────────
 
 type ProjectRevenueSummary struct {
-	Year               int                  `json:"year"`
-	Month              int                  `json:"month"` // 0 = full year
-	TotalContracted    float64              `json:"total_contracted"`
-	TotalInvoicedNet   float64              `json:"total_invoiced_net"`
-	TotalInvoicedGross float64              `json:"total_invoiced_gross"`
-	TotalCollected     float64              `json:"total_collected"`
-	TotalOutstanding   float64              `json:"total_outstanding"` // invoiced_gross - collected
-	TotalOverdue       float64              `json:"total_overdue"`
-	OverdueCount       int                  `json:"overdue_count"`
+	Year               int                   `json:"year"`
+	Month              int                   `json:"month"` // 0 = full year
+	TotalContracted    float64               `json:"total_contracted"`
+	TotalInvoicedNet   float64               `json:"total_invoiced_net"`
+	TotalInvoicedGross float64               `json:"total_invoiced_gross"`
+	TotalCollected     float64               `json:"total_collected"`
+	TotalOutstanding   float64               `json:"total_outstanding"` // invoiced_gross - collected
+	TotalOverdue       float64               `json:"total_overdue"`
+	OverdueCount       int                   `json:"overdue_count"`
 	MonthlyTrend       []MonthlyRevenueTrend `json:"monthly_trend"`
-	Projects           []ProjectRevenueRow  `json:"projects"`
+	Projects           []ProjectRevenueRow   `json:"projects"`
 }
 
 type ProjectRevenueRow struct {
@@ -122,15 +122,15 @@ type MonthlyRevenueTrend struct {
 }
 
 type ProjectRevenueDetail struct {
-	ProjectID     string               `json:"project_id"`
-	ProjectName   string               `json:"project_name"`
-	Year          int                  `json:"year"`
-	ContractValue float64              `json:"contract_value"`
-	InvoicedNet   float64              `json:"invoiced_net"`
-	InvoicedGross float64              `json:"invoiced_gross"`
-	Collected     float64              `json:"collected"`
-	Outstanding   float64              `json:"outstanding"`
-	Contracts     []ProjectContract    `json:"contracts"`
-	Invoices      []ProjectInvoice     `json:"invoices"`
+	ProjectID     string                `json:"project_id"`
+	ProjectName   string                `json:"project_name"`
+	Year          int                   `json:"year"`
+	ContractValue float64               `json:"contract_value"`
+	InvoicedNet   float64               `json:"invoiced_net"`
+	InvoicedGross float64               `json:"invoiced_gross"`
+	Collected     float64               `json:"collected"`
+	Outstanding   float64               `json:"outstanding"`
+	Contracts     []ProjectContract     `json:"contracts"`
+	Invoices      []ProjectInvoice      `json:"invoices"`
 	MonthlyTrend  []MonthlyRevenueTrend `json:"monthly_trend"`
 }
