@@ -24,8 +24,17 @@ type ProjectDocumentDownload struct {
 	FileSize    int64
 }
 
+// docRepo is the repository surface used by ProjectDocumentsService.
+type docRepo interface {
+	ProjectBelongsToCompany(ctx context.Context, companyID, projectID string) (bool, error)
+	ListInFolder(ctx context.Context, companyID, projectID string, folderID *string) ([]dto.ProjectDocumentItem, error)
+	Create(ctx context.Context, companyID, projectID, uploadedByUserID, fileKey, originalName, contentType string, fileSize int64) (string, error)
+	GetByID(ctx context.Context, companyID, projectID, docID string) (*repositories.ProjectDocumentRecord, error)
+	SoftDelete(ctx context.Context, companyID, projectID, docID string) error
+}
+
 type ProjectDocumentsService struct {
-	repo    *repositories.ProjectDocumentsRepository
+	repo    docRepo
 	storage StorageService
 }
 

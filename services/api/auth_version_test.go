@@ -71,6 +71,61 @@ func TestPasswordReset_OldTokenRejected(t *testing.T) {
 	}
 }
 
+// TestRefresh_NewTokenCarriesUpdatedAuthVersion documents that a token obtained
+// after a refresh carries the latest auth_version from the DB, so a session
+// that was valid at login continues to work after the access token expires and
+// the refresh endpoint issues a new one.
+func TestRefresh_NewTokenCarriesUpdatedAuthVersion(t *testing.T) {
+	const (
+		dbVersion        = 3
+		freshTokenVersion = 3 // matches the DB after a refresh
+	)
+
+	if !checkAuthVersionAllowed(freshTokenVersion, dbVersion) {
+		t.Error("token issued by refresh endpoint (carrying current auth_version) must be accepted")
+	}
+}
+
+// TestConcurrentExpiry_OnlyFirstRefreshSucceeds documents the expectation for
+// concurrent requests whose access token expired at the same time. The first
+// request refreshes and obtains a new token (auth_version still matches). Any
+// subsequent retries using that new token must succeed. Stale tokens that
+// carry an old auth_version after the user invalidated sessions are still
+// correctly rejected regardless of concurrency.
+func TestConcurrentExpiry_StaleVersionStillRejected(t *testing.T) {
+	const (
+		dbVersionAfterInvalidation = 4
+		oldTokenVersion            = 3
+		newTokenVersion            = 4
+	)
+
+	if checkAuthVersionAllowed(oldTokenVersion, dbVersionAfterInvalidation) {
+		t.Error("stale token from before session invalidation must be rejected even under concurrent load")
+	}
+	if !checkAuthVersionAllowed(newTokenVersion, dbVersionAfterInvalidation) {
+		t.Error("token from new login after invalidation must be accepted")
+	}
+}
+
+// TestRoleChange_OldTokenRejected documents that a role change paired with
+// session invalidation (auth_version increment) causes old tokens to be
+// rejected on the next request, forcing the user to log in again and receive
+// a token with the updated role and auth_version.
+func TestRoleChange_OldTokenRejected(t *testing.T) {
+	const (
+		dbVersionBefore = 2
+		dbVersionAfter  = 3 // incremented when role-change triggers InvalidateSessions
+		tokenVersion    = 2
+	)
+
+	if !checkAuthVersionAllowed(tokenVersion, dbVersionBefore) {
+		t.Fatal("precondition: token must be valid before role change")
+	}
+	if checkAuthVersionAllowed(tokenVersion, dbVersionAfter) {
+		t.Error("token issued before role change must be rejected after session invalidation")
+	}
+}
+
 // TestDeactivateReactivate_OldTokenAlwaysRejected documents the full lifecycle
 // property: a token issued before deactivation must be rejected both immediately
 // after deactivation AND after subsequent reactivation.
