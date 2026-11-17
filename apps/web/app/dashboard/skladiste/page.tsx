@@ -72,6 +72,14 @@ interface MovementListResponse {
 
 interface Project { id: string; name: string }
 
+interface ProjectMaterial {
+  id: string
+  material_name: string
+  material_code: string | null
+  unit: string
+  available_quantity: number
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function fmt(n: number, decimals = 2) {
@@ -342,6 +350,8 @@ function ReceiptTab(_: { companyID: string }) {
   const [saving, setSaving] = useState(false)
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Phase 2: idempotency key — generated once per form lifecycle, regenerated after success
+  const [iKey, setIKey] = useState(() => crypto.randomUUID())
 
   function updateLine(i: number, field: keyof ReceiptLine, value: string) {
     setLines(prev => prev.map((l, idx) => idx === i ? { ...l, [field]: value } : l))
@@ -364,7 +374,8 @@ function ReceiptTab(_: { companyID: string }) {
           quantity:      parseFloat(l.quantity),
           unit_price:    parseFloat(l.unit_price) || 0,
         })),
-      })
+      }, { headers: { 'X-Idempotency-Key': iKey } })
+      setIKey(crypto.randomUUID())
       setSuccess(true)
       setReceiptNumber(''); setSupplier(''); setNotes('')
       setLines([emptyLine()])
@@ -380,13 +391,7 @@ function ReceiptTab(_: { companyID: string }) {
       <div className="bg-gi-card border border-gi-border rounded-xl p-5 space-y-4">
         <h2 className="font-semibold text-gi-text text-sm">Nova primka</h2>
 
-        {success && (
-          <div className="bg-green-900/30 border border-green-700/50 rounded-lg px-4 py-3 text-green-300 text-sm flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 flex-shrink-0" />
-            Primka uspješno zabilježena.
-            <button type="button" onClick={() => setSuccess(false)} className="ml-auto text-green-400 hover:text-green-300">×</button>
-          </div>
-        )}
+        {success && <SuccessCard message="Primka uspješno zabilježena." onClose={() => setSuccess(false)} />}
         {error && <ErrorCard message={error} />}
 
         <div className="grid grid-cols-2 gap-3">
@@ -440,15 +445,32 @@ function ReceiptTab(_: { companyID: string }) {
   )
 }
 
-// ── Izlaz tab (issues) ────────────────────────────────────────────────────────
+// ── Izlaz tab (issues + returns) ──────────────────────────────────────────────
 
 function IssueTab(_: { companyID: string; role: string }) {
+  const [mode, setMode] = useState<'issue' | 'return'>('issue')
   const [stock, setStock] = useState<StockItem[]>([])
   const [projects, setProjects] = useState<Project[]>([])
+  // Phase 2: separate idempotency keys per mode so a mode switch never reuses a key
+  const [issueKey, setIssueKey] = useState(() => crypto.randomUUID())
+  const [returnKey, setReturnKey] = useState(() => crypto.randomUUID())
+
+  // Issue form state
   const [balanceID, setBalanceID] = useState('')
   const [projectID, setProjectID] = useState('')
-  const [quantity, setQuantity] = useState('')
-  const [notes, setNotes] = useState('')
+  const [issueQty, setIssueQty] = useState('')
+  const [issueNotes, setIssueNotes] = useState('')
+
+  // Return form state
+  const [retProjectID, setRetProjectID] = useState('')
+  const [retProjectMats, setRetProjectMats] = useState<ProjectMaterial[]>([])
+  const [retProjMatID, setRetProjMatID] = useState('')
+  const [retQty, setRetQty] = useState('')
+  const [retNotes, setRetNotes] = useState('')
+  const [retLoadingMats, setRetLoadingMats] = useState(false)
+  const [retConfirm, setRetConfirm] = useState(false)
+
+  // Shared
   const [saving, setSaving] = useState(false)
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -458,7 +480,32 @@ function IssueTab(_: { companyID: string; role: string }) {
     apiClient.get('/projects?status=active').then(r => setProjects(r.data?.data ?? r.data ?? []))
   }, [])
 
-  async function submit(e: React.FormEvent) {
+  // Fetch project materials when return project changes
+  useEffect(() => {
+    if (!retProjectID) { setRetProjectMats([]); setRetProjMatID(''); return }
+    setRetLoadingMats(true)
+    apiClient.get(`/projects/${retProjectID}/materials?available_only=true`)
+      .then(r => {
+        const mats: ProjectMaterial[] = r.data?.materials ?? []
+        // Only show materials that have a matching warehouse balance (same name + unit)
+        const filtered = mats.filter(m =>
+          stock.some(s => s.material_name.toLowerCase() === m.material_name.toLowerCase() && s.unit === m.unit)
+        )
+        setRetProjectMats(filtered)
+        setRetProjMatID('')
+      })
+      .catch(() => setRetProjectMats([]))
+      .finally(() => setRetLoadingMats(false))
+  }, [retProjectID, stock])
+
+  const issueSelected = stock.find(s => s.id === balanceID)
+  const retSelectedMat = retProjectMats.find(m => m.id === retProjMatID)
+  const retMatchingBalance = retSelectedMat
+    ? stock.find(s => s.material_name.toLowerCase() === retSelectedMat.material_name.toLowerCase() && s.unit === retSelectedMat.unit)
+    : undefined
+  const retProject = projects.find(p => p.id === retProjectID)
+
+  async function submitIssue(e: React.FormEvent) {
     e.preventDefault()
     setError(null)
     setSaving(true)
@@ -466,11 +513,12 @@ function IssueTab(_: { companyID: string; role: string }) {
       await apiClient.post('/warehouse/issues', {
         balance_id: balanceID,
         project_id: projectID,
-        quantity:   parseFloat(quantity),
-        notes:      notes || null,
-      })
+        quantity:   parseFloat(issueQty),
+        notes:      issueNotes || null,
+      }, { headers: { 'X-Idempotency-Key': issueKey } })
+      setIssueKey(crypto.randomUUID())
       setSuccess(true)
-      setBalanceID(''); setProjectID(''); setQuantity(''); setNotes('')
+      setBalanceID(''); setProjectID(''); setIssueQty(''); setIssueNotes('')
     } catch (err) {
       setError(apiErr(err))
     } finally {
@@ -478,55 +526,185 @@ function IssueTab(_: { companyID: string; role: string }) {
     }
   }
 
-  const selected = stock.find(s => s.id === balanceID)
+  async function submitReturn() {
+    if (!retMatchingBalance || !retSelectedMat) return
+    setRetConfirm(false)
+    setError(null)
+    setSaving(true)
+    try {
+      await apiClient.post('/warehouse/returns', {
+        balance_id:          retMatchingBalance.id,
+        project_id:          retProjectID,
+        project_material_id: retProjMatID,
+        quantity:            parseFloat(retQty),
+        notes:               retNotes || null,
+      }, { headers: { 'X-Idempotency-Key': returnKey } })
+      setReturnKey(crypto.randomUUID())
+      setSuccess(true)
+      setRetProjectID(''); setRetProjectMats([]); setRetProjMatID(''); setRetQty(''); setRetNotes('')
+    } catch (err) {
+      setError(apiErr(err))
+    } finally {
+      setSaving(false)
+    }
+  }
 
   return (
-    <form onSubmit={submit} className="space-y-4 max-w-lg">
-      <div className="bg-gi-card border border-gi-border rounded-xl p-5 space-y-4">
-        <h2 className="font-semibold text-gi-text text-sm">Izdavanje materijala na projekt</h2>
-
-        {success && (
-          <div className="bg-green-900/30 border border-green-700/50 rounded-lg px-4 py-3 text-green-300 text-sm">
-            Materijal uspješno izdan.
-            <button type="button" onClick={() => setSuccess(false)} className="ml-2 text-green-400">×</button>
-          </div>
-        )}
-        {error && <ErrorCard message={error} />}
-
-        <div className="space-y-3">
-          <div>
-            <label className="block text-[11px] text-gi-text-subtle uppercase tracking-wider font-medium mb-1.5">Materijal *</label>
-            <select value={balanceID} onChange={e => setBalanceID(e.target.value)} required
-              className="w-full px-3 py-2 bg-gi-workspace border border-gi-border rounded-lg text-sm text-gi-text focus:outline-none focus:border-gi-yellow/50">
-              <option value="">Odaberi materijal...</option>
-              {stock.map(s => (
-                <option key={s.id} value={s.id}>{s.material_name} — {fmt(s.quantity, 3)} {s.unit}</option>
-              ))}
-            </select>
-            {selected && (
-              <p className="text-[11px] text-gi-text-subtle mt-1">Dostupno: {fmt(selected.quantity, 3)} {selected.unit} · Pr. cijena: {fmt(selected.avg_cost)} €/{selected.unit}</p>
-            )}
-          </div>
-
-          <div>
-            <label className="block text-[11px] text-gi-text-subtle uppercase tracking-wider font-medium mb-1.5">Projekt *</label>
-            <select value={projectID} onChange={e => setProjectID(e.target.value)} required
-              className="w-full px-3 py-2 bg-gi-workspace border border-gi-border rounded-lg text-sm text-gi-text focus:outline-none focus:border-gi-yellow/50">
-              <option value="">Odaberi projekt...</option>
-              {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
-            </select>
-          </div>
-
-          <Field label="Količina *" type="number" value={quantity} onChange={setQuantity} placeholder="0.000" />
-          <Field label="Napomena" value={notes} onChange={setNotes} placeholder="Opcijski komentar" />
-        </div>
+    <div className="space-y-4 max-w-lg">
+      {/* Mode toggle */}
+      <div className="flex gap-1 bg-gi-card border border-gi-border rounded-xl p-1">
+        {(['issue', 'return'] as const).map(m => (
+          <button key={m} type="button"
+            onClick={() => { setMode(m); setSuccess(false); setError(null) }}
+            className={`flex-1 py-2 rounded-lg text-sm font-medium transition-colors ${
+              mode === m ? 'bg-gi-yellow text-gi-navy' : 'text-gi-text-muted hover:text-gi-text'
+            }`}>
+            {m === 'issue' ? 'Izdavanje materijala' : 'Povrat materijala'}
+          </button>
+        ))}
       </div>
 
-      <button type="submit" disabled={saving}
-        className="w-full py-2.5 bg-gi-yellow text-gi-navy font-semibold rounded-xl text-sm hover:bg-gi-yellow-hover disabled:opacity-50 transition-colors">
-        {saving ? 'Izdavanje...' : 'Izadaj materijal'}
-      </button>
-    </form>
+      {/* Issue form */}
+      {mode === 'issue' && (
+        <form onSubmit={submitIssue} className="space-y-4">
+          <div className="bg-gi-card border border-gi-border rounded-xl p-5 space-y-4">
+            <h2 className="font-semibold text-gi-text text-sm">Izdavanje materijala na projekt</h2>
+            {success && <SuccessCard message="Materijal uspješno izdan." onClose={() => setSuccess(false)} />}
+            {error && <ErrorCard message={error} />}
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[11px] text-gi-text-subtle uppercase tracking-wider font-medium mb-1.5">Materijal *</label>
+                <select value={balanceID} onChange={e => setBalanceID(e.target.value)} required
+                  className="w-full px-3 py-2 bg-gi-workspace border border-gi-border rounded-lg text-sm text-gi-text focus:outline-none focus:border-gi-yellow/50">
+                  <option value="">Odaberi materijal...</option>
+                  {stock.map(s => (
+                    <option key={s.id} value={s.id}>{s.material_name} — {fmt(s.quantity, 3)} {s.unit}</option>
+                  ))}
+                </select>
+                {issueSelected && (
+                  <p className="text-[11px] text-gi-text-subtle mt-1">Dostupno: {fmt(issueSelected.quantity, 3)} {issueSelected.unit} · Pr. cijena: {fmt(issueSelected.avg_cost)} €/{issueSelected.unit}</p>
+                )}
+              </div>
+              <div>
+                <label className="block text-[11px] text-gi-text-subtle uppercase tracking-wider font-medium mb-1.5">Projekt *</label>
+                <select value={projectID} onChange={e => setProjectID(e.target.value)} required
+                  className="w-full px-3 py-2 bg-gi-workspace border border-gi-border rounded-lg text-sm text-gi-text focus:outline-none focus:border-gi-yellow/50">
+                  <option value="">Odaberi projekt...</option>
+                  {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+              <Field label="Količina *" type="number" value={issueQty} onChange={setIssueQty} placeholder="0.000" />
+              <Field label="Napomena" value={issueNotes} onChange={setIssueNotes} placeholder="Opcijski komentar" />
+            </div>
+          </div>
+          <button type="submit" disabled={saving}
+            className="w-full py-2.5 bg-gi-yellow text-gi-navy font-semibold rounded-xl text-sm hover:bg-gi-yellow-hover disabled:opacity-50 transition-colors">
+            {saving ? 'Izdavanje...' : 'Izadaj materijal'}
+          </button>
+        </form>
+      )}
+
+      {/* Return form */}
+      {mode === 'return' && (
+        <>
+          <div className="bg-gi-card border border-gi-border rounded-xl p-5 space-y-4">
+            <h2 className="font-semibold text-gi-text text-sm">Povrat materijala s projekta</h2>
+            {success && <SuccessCard message="Povrat uspješno zabilježen." onClose={() => setSuccess(false)} />}
+            {error && <ErrorCard message={error} />}
+            <div className="space-y-3">
+              <div>
+                <label className="block text-[11px] text-gi-text-subtle uppercase tracking-wider font-medium mb-1.5">Projekt *</label>
+                <select value={retProjectID} onChange={e => setRetProjectID(e.target.value)} required
+                  className="w-full px-3 py-2 bg-gi-workspace border border-gi-border rounded-lg text-sm text-gi-text focus:outline-none focus:border-gi-yellow/50">
+                  <option value="">Odaberi projekt...</option>
+                  {projects.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-[11px] text-gi-text-subtle uppercase tracking-wider font-medium mb-1.5">Materijal za povrat *</label>
+                <select value={retProjMatID} onChange={e => setRetProjMatID(e.target.value)} required
+                  disabled={!retProjectID || retLoadingMats}
+                  className="w-full px-3 py-2 bg-gi-workspace border border-gi-border rounded-lg text-sm text-gi-text focus:outline-none focus:border-gi-yellow/50 disabled:opacity-50">
+                  <option value="">
+                    {retLoadingMats ? 'Učitavanje...' : retProjectID ? 'Odaberi materijal...' : 'Prvo odaberi projekt'}
+                  </option>
+                  {retProjectMats.map(m => (
+                    <option key={m.id} value={m.id}>
+                      {m.material_name} — dostupno: {fmt(m.available_quantity, 3)} {m.unit}
+                    </option>
+                  ))}
+                </select>
+                {retProjectID && !retLoadingMats && retProjectMats.length === 0 && (
+                  <p className="text-[11px] text-amber-400 mt-1">Nema materijala za povrat na ovom projektu.</p>
+                )}
+                {retSelectedMat && (
+                  <p className="text-[11px] text-gi-text-subtle mt-1">
+                    Dostupno na projektu: <strong className="text-gi-text">{fmt(retSelectedMat.available_quantity, 3)} {retSelectedMat.unit}</strong>
+                    {retMatchingBalance && <span className="text-gi-text-subtle"> · Trenutno u skladištu: {fmt(retMatchingBalance.quantity, 3)}</span>}
+                  </p>
+                )}
+              </div>
+
+              <div>
+                <label className="block text-[11px] text-gi-text-subtle uppercase tracking-wider font-medium mb-1.5">Količina *</label>
+                <input
+                  type="number" step="any" min="0.001"
+                  max={retSelectedMat?.available_quantity}
+                  value={retQty} onChange={e => setRetQty(e.target.value)}
+                  required disabled={!retProjMatID}
+                  placeholder="0.000"
+                  className="w-full px-3 py-2 bg-gi-workspace border border-gi-border rounded-lg text-sm text-gi-text placeholder:text-gi-text-subtle focus:outline-none focus:border-gi-yellow/50 disabled:opacity-50"
+                />
+              </div>
+
+              <Field label="Napomena" value={retNotes} onChange={setRetNotes} placeholder="Opcijski komentar" />
+            </div>
+          </div>
+
+          <button type="button"
+            disabled={saving || !retProjMatID || !retQty || !retMatchingBalance}
+            onClick={() => setRetConfirm(true)}
+            className="w-full py-2.5 bg-gi-yellow text-gi-navy font-semibold rounded-xl text-sm hover:bg-gi-yellow-hover disabled:opacity-50 transition-colors">
+            {saving ? 'Povrat u tijeku...' : 'Potvrdi povrat'}
+          </button>
+
+          {/* Confirmation dialog */}
+          {retConfirm && retSelectedMat && retProject && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setRetConfirm(false)}>
+              <div className="bg-gi-card border border-gi-border rounded-2xl p-6 w-full max-w-sm space-y-4 shadow-xl" onClick={e => e.stopPropagation()}>
+                <h3 className="font-semibold text-gi-text">Potvrda povrata</h3>
+                <div className="space-y-1.5 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-gi-text-muted">Materijal</span>
+                    <span className="text-gi-text font-medium">{retSelectedMat.material_name}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gi-text-muted">Projekt</span>
+                    <span className="text-gi-text font-medium">{retProject.name}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gi-text-muted">Količina</span>
+                    <span className="text-gi-text font-medium">{fmt(parseFloat(retQty) || 0, 3)} {retSelectedMat.unit}</span>
+                  </div>
+                </div>
+                <p className="text-xs text-gi-text-subtle">Materijal će biti vraćen u skladište i oduzet s dostupne zalihe projekta.</p>
+                <div className="flex gap-3 pt-1">
+                  <button type="button" onClick={() => setRetConfirm(false)}
+                    className="flex-1 py-2 border border-gi-border rounded-xl text-sm text-gi-text-muted hover:text-gi-text transition-colors">
+                    Odustani
+                  </button>
+                  <button type="button" onClick={submitReturn}
+                    className="flex-1 py-2 bg-gi-yellow text-gi-navy font-semibold rounded-xl text-sm hover:bg-gi-yellow-hover transition-colors">
+                    Potvrdi
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </div>
   )
 }
 
@@ -641,6 +819,8 @@ function AdjustmentTab(_: { companyID: string }) {
   const [saving, setSaving] = useState(false)
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // Phase 2: idempotency key — generated once per form lifecycle, regenerated after success
+  const [iKey, setIKey] = useState(() => crypto.randomUUID())
 
   useEffect(() => {
     apiClient.get('/warehouse/stock?active_only=true').then(r => setStock(r.data.data ?? []))
@@ -657,7 +837,8 @@ function AdjustmentTab(_: { companyID: string }) {
         balance_id:   balanceID,
         new_quantity: parseFloat(newQuantity),
         notes:        notes || null,
-      })
+      }, { headers: { 'X-Idempotency-Key': iKey } })
+      setIKey(crypto.randomUUID())
       setSuccess(true)
       setBalanceID(''); setNewQuantity(''); setNotes('')
     } catch (err) {
@@ -673,12 +854,7 @@ function AdjustmentTab(_: { companyID: string }) {
         <h2 className="font-semibold text-gi-text text-sm">Korekcija zalihe</h2>
         <p className="text-xs text-gi-text-subtle">Upotrijebite ovu funkciju za usklađivanje fizičkog stanja s evidencijom. Razlika će biti zabilježena kao pokret vrste <em>Inventura</em>.</p>
 
-        {success && (
-          <div className="bg-green-900/30 border border-green-700/50 rounded-lg px-4 py-3 text-green-300 text-sm">
-            Korekcija uspješno zabilježena.
-            <button type="button" onClick={() => setSuccess(false)} className="ml-2 text-green-400">×</button>
-          </div>
-        )}
+        {success && <SuccessCard message="Korekcija uspješno zabilježena." onClose={() => setSuccess(false)} />}
         {error && <ErrorCard message={error} />}
 
         <div className="space-y-3">
@@ -730,6 +906,16 @@ function Field({ label, value, onChange, placeholder, type = 'text' }: {
       <label className="block text-[11px] text-gi-text-subtle uppercase tracking-wider font-medium mb-1.5">{label}</label>
       <input type={type} value={value} onChange={e => onChange(e.target.value)} placeholder={placeholder}
         className="w-full px-3 py-2 bg-gi-workspace border border-gi-border rounded-lg text-sm text-gi-text placeholder:text-gi-text-subtle focus:outline-none focus:border-gi-yellow/50" />
+    </div>
+  )
+}
+
+function SuccessCard({ message, onClose }: { message: string; onClose: () => void }) {
+  return (
+    <div className="bg-green-900/30 border border-green-700/50 rounded-lg px-4 py-3 text-green-300 text-sm flex items-center gap-2">
+      <TrendingUp className="w-4 h-4 flex-shrink-0" />
+      {message}
+      <button type="button" onClick={onClose} className="ml-auto text-green-400 hover:text-green-300">×</button>
     </div>
   )
 }

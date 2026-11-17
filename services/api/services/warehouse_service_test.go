@@ -32,10 +32,16 @@ type mockWarehouseRepo struct {
 	insertLineErr   error
 	insertMovID     string
 	insertMovErr    error
-	countMovements  int
-	countMovErr     error
-	movements       []dto.WarehouseMovementItem
-	movementsErr    error
+	countMovements      int
+	countMovErr         error
+	movements           []dto.WarehouseMovementItem
+	movementsErr        error
+	projectAssigned     bool
+	projectAssignedErr  error
+	idempotencyIsNew    bool
+	idempotencyRecord   *repositories.IdempotencyRecord
+	idempotencyErr      error
+	updateIdempotencyErr error
 }
 
 func (m *mockWarehouseRepo) GetOverview(_ context.Context, _ string) (*dto.WarehouseOverview, error) {
@@ -70,6 +76,15 @@ func (m *mockWarehouseRepo) CountMovements(_ context.Context, _ string, _, _ *st
 }
 func (m *mockWarehouseRepo) ListMovements(_ context.Context, _ string, _, _ *string, _, _ int) ([]dto.WarehouseMovementItem, error) {
 	return m.movements, m.movementsErr
+}
+func (m *mockWarehouseRepo) IsProjectAssigned(_ context.Context, _, _, _ string) (bool, error) {
+	return m.projectAssigned, m.projectAssignedErr
+}
+func (m *mockWarehouseRepo) TryInsertIdempotencyKey(_ context.Context, _ pgx.Tx, _, _, _, _ string) (*repositories.IdempotencyRecord, bool, error) {
+	return m.idempotencyRecord, m.idempotencyIsNew, m.idempotencyErr
+}
+func (m *mockWarehouseRepo) UpdateIdempotencyResult(_ context.Context, _ pgx.Tx, _, _, _ string) error {
+	return m.updateIdempotencyErr
 }
 
 type mockProjectStock struct {
@@ -132,6 +147,7 @@ func TestWarehouse_CreateReceipt_UpdatesAvgCost(t *testing.T) {
 		insertReceiptID:  "receipt-1",
 		insertLineID:     "line-1",
 		insertMovID:      "mov-1",
+		idempotencyIsNew: true,
 	}
 	var capturedQty, capturedAvg float64
 	repo.updateBalErr = nil
@@ -153,7 +169,7 @@ func TestWarehouse_CreateReceipt_UpdatesAvgCost(t *testing.T) {
 			{MaterialName: "Cement", Unit: "kg", Quantity: 5, UnitPrice: 8},
 		},
 	}
-	_, err := captureSvc.CreateReceipt(context.Background(), "company-1", "direktor", "user-1", req)
+	_, _, err := captureSvc.CreateReceipt(context.Background(), "company-1", "direktor", "user-1", "", req)
 	if err != nil {
 		t.Fatalf("CreateReceipt failed: %v", err)
 	}
@@ -183,7 +199,7 @@ func (r *captureUpdateRepo) UpdateBalance(_ context.Context, _ pgx.Tx, _ string,
 func TestWarehouse_CreateReceipt_RadnikDenied(t *testing.T) {
 	svc := newWarehouseSvc(&mockWarehouseRepo{}, &mockProjectStock{})
 	req := dto.CreateReceiptRequest{Lines: []dto.CreateReceiptLineRequest{{MaterialName: "X", Unit: "kom", Quantity: 1}}}
-	_, err := svc.CreateReceipt(context.Background(), "company-1", "radnik", "user-1", req)
+	_, _, err := svc.CreateReceipt(context.Background(), "company-1", "radnik", "user-1", "", req)
 	if !errors.Is(err, ErrWarehouseAccessDenied) {
 		t.Errorf("radnik should not be able to create receipt, got: %v", err)
 	}
@@ -192,7 +208,7 @@ func TestWarehouse_CreateReceipt_RadnikDenied(t *testing.T) {
 func TestWarehouse_CreateReceipt_PoslovodaDenied(t *testing.T) {
 	svc := newWarehouseSvc(&mockWarehouseRepo{}, &mockProjectStock{})
 	req := dto.CreateReceiptRequest{Lines: []dto.CreateReceiptLineRequest{{MaterialName: "X", Unit: "kom", Quantity: 1}}}
-	_, err := svc.CreateReceipt(context.Background(), "company-1", "poslovoda", "user-1", req)
+	_, _, err := svc.CreateReceipt(context.Background(), "company-1", "poslovoda", "user-1", "", req)
 	if !errors.Is(err, ErrWarehouseAccessDenied) {
 		t.Errorf("poslovoda should not be able to create receipt, got: %v", err)
 	}
@@ -200,12 +216,13 @@ func TestWarehouse_CreateReceipt_PoslovodaDenied(t *testing.T) {
 
 func TestWarehouse_IssueToProject_InsufficientQty(t *testing.T) {
 	repo := &mockWarehouseRepo{
-		lockSnap: &repositories.BalanceSnapshot{ID: "bal-1", Quantity: 2, AvgCost: 5},
+		lockSnap:         &repositories.BalanceSnapshot{ID: "bal-1", Quantity: 2, AvgCost: 5},
+		idempotencyIsNew: true,
 	}
 	svc := newWarehouseSvc(repo, &mockProjectStock{})
 
 	req := dto.CreateIssueRequest{BalanceID: "bal-1", ProjectID: "proj-1", Quantity: 10}
-	_, err := svc.IssueToProject(context.Background(), "company-1", "direktor", "user-1", req)
+	_, _, err := svc.IssueToProject(context.Background(), "company-1", "direktor", "user-1", "", "", req)
 	if !errors.Is(err, ErrWarehouseInsufficientQty) {
 		t.Errorf("expected ErrWarehouseInsufficientQty, got: %v", err)
 	}
@@ -214,7 +231,7 @@ func TestWarehouse_IssueToProject_InsufficientQty(t *testing.T) {
 func TestWarehouse_IssueToProject_RadnikDenied(t *testing.T) {
 	svc := newWarehouseSvc(&mockWarehouseRepo{}, &mockProjectStock{})
 	req := dto.CreateIssueRequest{BalanceID: "bal-1", ProjectID: "proj-1", Quantity: 1}
-	_, err := svc.IssueToProject(context.Background(), "company-1", "radnik", "user-1", req)
+	_, _, err := svc.IssueToProject(context.Background(), "company-1", "radnik", "user-1", "", "", req)
 	if !errors.Is(err, ErrWarehouseAccessDenied) {
 		t.Errorf("radnik should not be able to issue, got: %v", err)
 	}
@@ -223,7 +240,7 @@ func TestWarehouse_IssueToProject_RadnikDenied(t *testing.T) {
 func TestWarehouse_AdjustInventory_AdminOnlyDeniedForPoslovoda(t *testing.T) {
 	svc := newWarehouseSvc(&mockWarehouseRepo{}, &mockProjectStock{})
 	req := dto.CreateAdjustmentRequest{BalanceID: "bal-1", NewQuantity: 5}
-	_, err := svc.AdjustInventory(context.Background(), "company-1", "poslovoda", "user-1", req)
+	_, _, err := svc.AdjustInventory(context.Background(), "company-1", "poslovoda", "user-1", "", req)
 	if !errors.Is(err, ErrWarehouseAccessDenied) {
 		t.Errorf("poslovoda should not adjust inventory, got: %v", err)
 	}
@@ -231,14 +248,119 @@ func TestWarehouse_AdjustInventory_AdminOnlyDeniedForPoslovoda(t *testing.T) {
 
 func TestWarehouse_ReturnFromProject_InsufficientProjectQty(t *testing.T) {
 	mat := &mockProjectStock{deductErr: repositories.ErrInsufficientQuantity}
-	svc := newWarehouseSvc(&mockWarehouseRepo{}, mat)
+	repo := &mockWarehouseRepo{idempotencyIsNew: true}
+	svc := newWarehouseSvc(repo, mat)
 
 	req := dto.CreateReturnRequest{
 		BalanceID: "bal-1", ProjectID: "proj-1",
 		ProjectMaterialID: "pm-1", Quantity: 99,
 	}
-	_, err := svc.ReturnFromProject(context.Background(), "company-1", "direktor", "user-1", req)
+	_, _, err := svc.ReturnFromProject(context.Background(), "company-1", "direktor", "user-1", "", "", req)
 	if !errors.Is(err, ErrWarehouseInsufficientQty) {
 		t.Errorf("expected ErrWarehouseInsufficientQty, got: %v", err)
+	}
+}
+
+func TestWarehouse_IssueToProject_AdministracijaAllowed(t *testing.T) {
+	repo := &mockWarehouseRepo{
+		lockSnap:         &repositories.BalanceSnapshot{ID: "bal-1", Quantity: 10, AvgCost: 5},
+		insertMovID:      "mov-1",
+		idempotencyIsNew: true,
+	}
+	mat := &mockProjectStock{findOrCreateID: "pm-1"}
+	svc := newWarehouseSvc(repo, mat)
+
+	req := dto.CreateIssueRequest{BalanceID: "bal-1", ProjectID: "proj-1", Quantity: 2}
+	_, _, err := svc.IssueToProject(context.Background(), "company-1", "administracija", "user-1", "", "", req)
+	if err != nil {
+		t.Errorf("administracija should be able to issue, got: %v", err)
+	}
+}
+
+func TestWarehouse_IssueToProject_PoslovodaNotAssignedDenied(t *testing.T) {
+	repo := &mockWarehouseRepo{projectAssigned: false}
+	svc := newWarehouseSvc(repo, &mockProjectStock{})
+
+	req := dto.CreateIssueRequest{BalanceID: "bal-1", ProjectID: "proj-1", Quantity: 1}
+	_, _, err := svc.IssueToProject(context.Background(), "company-1", "poslovoda", "user-1", "emp-1", "", req)
+	if !errors.Is(err, ErrWarehouseAccessDenied) {
+		t.Errorf("unassigned poslovoda should be denied, got: %v", err)
+	}
+}
+
+func TestWarehouse_IssueToProject_PoslovodaNoEmployeeIDDenied(t *testing.T) {
+	svc := newWarehouseSvc(&mockWarehouseRepo{}, &mockProjectStock{})
+	req := dto.CreateIssueRequest{BalanceID: "bal-1", ProjectID: "proj-1", Quantity: 1}
+	_, _, err := svc.IssueToProject(context.Background(), "company-1", "poslovoda", "user-1", "", "", req)
+	if !errors.Is(err, ErrWarehouseAccessDenied) {
+		t.Errorf("poslovoda with no employeeID should be denied, got: %v", err)
+	}
+}
+
+func TestWarehouse_Idempotency_ReplayReturnsSameResult(t *testing.T) {
+	resultID := "mov-existing"
+	repo := &mockWarehouseRepo{
+		idempotencyIsNew: false,
+		idempotencyRecord: &repositories.IdempotencyRecord{
+			PayloadHash: payloadHash(dto.CreateIssueRequest{BalanceID: "bal-1", ProjectID: "proj-1", Quantity: 2}),
+			ResultID:    &resultID,
+		},
+	}
+	svc := newWarehouseSvc(repo, &mockProjectStock{})
+
+	req := dto.CreateIssueRequest{BalanceID: "bal-1", ProjectID: "proj-1", Quantity: 2}
+	id, isReplay, err := svc.IssueToProject(context.Background(), "company-1", "direktor", "user-1", "", "key-abc", req)
+	if err != nil {
+		t.Fatalf("replay should succeed, got: %v", err)
+	}
+	if !isReplay {
+		t.Error("expected isReplay=true for duplicate request")
+	}
+	if id != resultID {
+		t.Errorf("expected result id %q, got %q", resultID, id)
+	}
+}
+
+func TestWarehouse_Idempotency_ConflictOnDifferentPayload(t *testing.T) {
+	originalHash := payloadHash(dto.CreateIssueRequest{BalanceID: "bal-1", ProjectID: "proj-1", Quantity: 2})
+	resultID := "mov-existing"
+	repo := &mockWarehouseRepo{
+		idempotencyIsNew: false,
+		idempotencyRecord: &repositories.IdempotencyRecord{
+			PayloadHash: originalHash,
+			ResultID:    &resultID,
+		},
+	}
+	svc := newWarehouseSvc(repo, &mockProjectStock{})
+
+	// Different payload (Quantity: 5 vs 2) with the same idempotency key
+	req := dto.CreateIssueRequest{BalanceID: "bal-1", ProjectID: "proj-1", Quantity: 5}
+	_, _, err := svc.IssueToProject(context.Background(), "company-1", "direktor", "user-1", "", "key-abc", req)
+	if !errors.Is(err, ErrIdempotencyConflict) {
+		t.Errorf("expected ErrIdempotencyConflict for different payload with same key, got: %v", err)
+	}
+}
+
+func TestWarehouse_Idempotency_AdjustmentReplay(t *testing.T) {
+	req := dto.CreateAdjustmentRequest{BalanceID: "bal-1", NewQuantity: 10}
+	resultID := "mov-adj-existing"
+	repo := &mockWarehouseRepo{
+		idempotencyIsNew: false,
+		idempotencyRecord: &repositories.IdempotencyRecord{
+			PayloadHash: payloadHash(req),
+			ResultID:    &resultID,
+		},
+	}
+	svc := newWarehouseSvc(repo, &mockProjectStock{})
+
+	id, isReplay, err := svc.AdjustInventory(context.Background(), "company-1", "direktor", "user-1", "key-adj", req)
+	if err != nil {
+		t.Fatalf("adjustment replay should succeed, got: %v", err)
+	}
+	if !isReplay {
+		t.Error("expected isReplay=true")
+	}
+	if id != resultID {
+		t.Errorf("expected %q, got %q", resultID, id)
 	}
 }

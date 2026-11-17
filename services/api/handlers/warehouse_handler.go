@@ -81,12 +81,17 @@ func (h *WarehouseHandler) CreateReceipt(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	resp, err := h.svc.CreateReceipt(c.Request.Context(), u.CompanyID, u.Role, u.UserID, req)
+	idempotencyKey := c.GetHeader("X-Idempotency-Key")
+	resp, isReplay, err := h.svc.CreateReceipt(c.Request.Context(), u.CompanyID, u.Role, u.UserID, idempotencyKey, req)
 	if err != nil {
 		h.respondError(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, resp)
+	status := http.StatusCreated
+	if isReplay {
+		status = http.StatusOK
+	}
+	c.JSON(status, resp)
 }
 
 // POST /api/warehouse/issues
@@ -101,12 +106,17 @@ func (h *WarehouseHandler) IssueToProject(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	movID, err := h.svc.IssueToProject(c.Request.Context(), u.CompanyID, u.Role, u.UserID, req)
+	idempotencyKey := c.GetHeader("X-Idempotency-Key")
+	movID, isReplay, err := h.svc.IssueToProject(c.Request.Context(), u.CompanyID, u.Role, u.UserID, u.EmployeeID, idempotencyKey, req)
 	if err != nil {
 		h.respondError(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, dto.MovementIDResponse{ID: movID})
+	status := http.StatusCreated
+	if isReplay {
+		status = http.StatusOK
+	}
+	c.JSON(status, dto.MovementIDResponse{ID: movID})
 }
 
 // POST /api/warehouse/returns
@@ -121,12 +131,17 @@ func (h *WarehouseHandler) ReturnFromProject(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	movID, err := h.svc.ReturnFromProject(c.Request.Context(), u.CompanyID, u.Role, u.UserID, req)
+	idempotencyKey := c.GetHeader("X-Idempotency-Key")
+	movID, isReplay, err := h.svc.ReturnFromProject(c.Request.Context(), u.CompanyID, u.Role, u.UserID, u.EmployeeID, idempotencyKey, req)
 	if err != nil {
 		h.respondError(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, dto.MovementIDResponse{ID: movID})
+	status := http.StatusCreated
+	if isReplay {
+		status = http.StatusOK
+	}
+	c.JSON(status, dto.MovementIDResponse{ID: movID})
 }
 
 // POST /api/warehouse/adjustments
@@ -141,12 +156,17 @@ func (h *WarehouseHandler) AdjustInventory(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	movID, err := h.svc.AdjustInventory(c.Request.Context(), u.CompanyID, u.Role, u.UserID, req)
+	idempotencyKey := c.GetHeader("X-Idempotency-Key")
+	movID, isReplay, err := h.svc.AdjustInventory(c.Request.Context(), u.CompanyID, u.Role, u.UserID, idempotencyKey, req)
 	if err != nil {
 		h.respondError(c, err)
 		return
 	}
-	c.JSON(http.StatusCreated, dto.MovementIDResponse{ID: movID})
+	status := http.StatusCreated
+	if isReplay {
+		status = http.StatusOK
+	}
+	c.JSON(status, dto.MovementIDResponse{ID: movID})
 }
 
 // GET /api/warehouse/movements
@@ -184,6 +204,8 @@ func (h *WarehouseHandler) respondError(c *gin.Context, err error) {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
 	case errors.Is(err, services.ErrWarehouseInsufficientQty):
 		c.JSON(http.StatusUnprocessableEntity, gin.H{"error": err.Error()})
+	case errors.Is(err, services.ErrIdempotencyConflict):
+		c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
 	default:
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal server error"})
 	}

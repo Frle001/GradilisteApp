@@ -160,12 +160,30 @@ func (r *WarehouseRepository) GetStockByID(ctx context.Context, companyID, balan
 	return &d, nil
 }
 
+// IsProjectAssigned returns true if the employee is actively assigned to the project.
+func (r *WarehouseRepository) IsProjectAssigned(ctx context.Context, companyID, projectID, employeeID string) (bool, error) {
+	var exists bool
+	err := r.db.QueryRow(ctx, `
+		SELECT EXISTS(
+			SELECT 1 FROM project_assignments
+			WHERE project_id  = $1::uuid
+			  AND company_id  = $2::uuid
+			  AND employee_id = $3::uuid
+			  AND active      = true
+		)`, projectID, companyID, employeeID,
+	).Scan(&exists)
+	return exists, err
+}
+
 // ── Balance operations (Tx) ───────────────────────────────────────────────────
 
 type BalanceSnapshot struct {
-	ID       string
-	Quantity float64
-	AvgCost  float64
+	ID           string
+	Quantity     float64
+	AvgCost      float64
+	MaterialName string
+	MaterialCode *string
+	Unit         string
 }
 
 // FindOrCreateBalance ensures a warehouse_balances row exists and returns a locked snapshot.
@@ -202,16 +220,16 @@ func (r *WarehouseRepository) FindOrCreateBalance(ctx context.Context, tx pgx.Tx
 	return &snap, nil
 }
 
-// LockBalance locks an existing balance row FOR UPDATE and returns its snapshot.
+// LockBalance locks an existing balance row FOR UPDATE and returns its snapshot including material metadata.
 func (r *WarehouseRepository) LockBalance(ctx context.Context, tx pgx.Tx, companyID, balanceID string) (*BalanceSnapshot, error) {
 	var snap BalanceSnapshot
 	err := tx.QueryRow(ctx, `
-		SELECT id, quantity, avg_cost
+		SELECT id, quantity, avg_cost, material_name, material_code, unit
 		FROM warehouse_balances
 		WHERE id = $1::uuid AND company_id = $2::uuid AND active = true
 		FOR UPDATE`,
 		balanceID, companyID,
-	).Scan(&snap.ID, &snap.Quantity, &snap.AvgCost)
+	).Scan(&snap.ID, &snap.Quantity, &snap.AvgCost, &snap.MaterialName, &snap.MaterialCode, &snap.Unit)
 	if err != nil {
 		if isNoRows(err) {
 			return nil, ErrNotFound
@@ -379,4 +397,57 @@ func (r *WarehouseRepository) ListMovements(ctx context.Context, companyID strin
 		items = append(items, m)
 	}
 	return items, rows.Err()
+}
+
+// ── Idempotency ───────────────────────────────────────────────────────────────
+
+type IdempotencyRecord struct {
+	PayloadHash string
+	ResultID    *string
+}
+
+// TryInsertIdempotencyKey atomically inserts a new idempotency key inside the
+// caller's transaction. Returns (record, true, nil) for a new key; returns
+// (existingRecord, false, nil) when the key was already committed by a prior
+// request. Concurrent requests with the same key block until the first commits,
+// then see the committed record — PostgreSQL's UNIQUE constraint serialises them.
+func (r *WarehouseRepository) TryInsertIdempotencyKey(
+	ctx context.Context, tx pgx.Tx,
+	companyID, idempotencyKey, opType, payloadHash string,
+) (*IdempotencyRecord, bool, error) {
+	var rec IdempotencyRecord
+	var isNew bool
+	err := tx.QueryRow(ctx, `
+		WITH ins AS (
+			INSERT INTO warehouse_idempotency_keys
+				(company_id, idempotency_key, operation_type, payload_hash)
+			VALUES ($1::uuid, $2, $3, $4)
+			ON CONFLICT (company_id, idempotency_key) DO NOTHING
+			RETURNING payload_hash, result_id, true AS is_new
+		)
+		SELECT is_new, payload_hash, result_id FROM ins
+		UNION ALL
+		SELECT false::bool AS is_new, payload_hash, result_id
+		FROM warehouse_idempotency_keys
+		WHERE company_id = $1::uuid AND idempotency_key = $2
+		  AND NOT EXISTS (SELECT 1 FROM ins)
+	`, companyID, idempotencyKey, opType, payloadHash,
+	).Scan(&isNew, &rec.PayloadHash, &rec.ResultID)
+	if err != nil {
+		return nil, false, fmt.Errorf("idempotency insert: %w", err)
+	}
+	return &rec, isNew, nil
+}
+
+// UpdateIdempotencyResult sets the result_id once the operation has succeeded.
+func (r *WarehouseRepository) UpdateIdempotencyResult(
+	ctx context.Context, tx pgx.Tx,
+	companyID, idempotencyKey, resultID string,
+) error {
+	_, err := tx.Exec(ctx, `
+		UPDATE warehouse_idempotency_keys
+		SET result_id = $1
+		WHERE company_id = $2::uuid AND idempotency_key = $3
+	`, resultID, companyID, idempotencyKey)
+	return err
 }
