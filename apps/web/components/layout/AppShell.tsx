@@ -17,6 +17,7 @@ import {
   Archive,
   ShoppingCart,
   Package,
+  Warehouse,
   Wrench,
   Menu,
   X,
@@ -70,6 +71,7 @@ const navGroups: Record<string, NavGroup[]> = {
       items: [
         { href: '/dashboard/material-purchases', label: 'Upisi materijala', Icon: ShoppingCart },
         { href: '/dashboard/inventory', label: 'Stanje robe', Icon: Package },
+        { href: '/dashboard/skladiste', label: 'Skladište', Icon: Warehouse },
       ],
     },
     {
@@ -109,6 +111,7 @@ const navGroups: Record<string, NavGroup[]> = {
       items: [
         { href: '/dashboard/material-purchases', label: 'Upisi materijala', Icon: ShoppingCart },
         { href: '/dashboard/inventory', label: 'Stanje robe', Icon: Package },
+        { href: '/dashboard/skladiste', label: 'Skladište', Icon: Warehouse },
       ],
     },
     {
@@ -138,6 +141,7 @@ const navGroups: Record<string, NavGroup[]> = {
         { href: '/dashboard/employees', label: 'Zaposlenici', Icon: Users },
         { href: '/dashboard/radni-sati', label: 'Radni sati', Icon: Clock },
         { href: '/dashboard/inventory', label: 'Stanje robe', Icon: Package },
+        { href: '/dashboard/skladiste', label: 'Skladište', Icon: Warehouse },
         { href: '/dashboard/zaduzenja', label: 'Zaduženja', Icon: Wrench },
         { href: '/dashboard/dokumentacija', label: 'Dokumentacija', Icon: ClipboardList },
         { href: '/dashboard/racuni-i-troskovi', label: 'Računi i troškovi', Icon: Receipt },
@@ -163,6 +167,7 @@ const navGroups: Record<string, NavGroup[]> = {
       items: [
         { href: '/dashboard/material-purchases', label: 'Upisi materijala', Icon: ShoppingCart },
         { href: '/dashboard/inventory', label: 'Stanje robe', Icon: Package },
+        { href: '/dashboard/skladiste', label: 'Skladište', Icon: Warehouse },
       ],
     },
     {

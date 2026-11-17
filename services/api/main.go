@@ -139,6 +139,10 @@ func main() {
 	folderUploadSvc := services.NewFolderUploadService(db, docRepo, folderRepo, storageSvc)
 	folderHandler := handlers.NewFolderUploadHandler(folderUploadSvc, folderRepo, docRepo)
 
+	warehouseRepo := repositories.NewWarehouseRepository(db)
+	warehouseSvc := services.NewWarehouseService(db, warehouseRepo, invRepo)
+	warehouseHandler := handlers.NewWarehouseHandler(warehouseSvc)
+
 	// ── Router ────────────────────────────────────────────────────────────────
 	if Config.Env != "development" {
 		gin.SetMode(gin.ReleaseMode)
@@ -230,6 +234,7 @@ func main() {
 	routes.RegisterFinanceRoutes(api, financeHandler, AuthRequired(userRepo), RequireRoles)
 	routes.RegisterAnalyticsRoutes(api, analyticsHandler, coldOpsHandler, revenueHandler, AuthRequired(userRepo), RequireRoles)
 	routes.RegisterProjectDocumentRoutes(projectsGroup, docHandler, folderHandler, RequireRoles)
+	routes.RegisterWarehouseRoutes(api, warehouseHandler, AuthRequired(userRepo), RequireRoles)
 
 	// Batch upload is registered on a separate group without the standard 10 MB body limit.
 	// It applies its own 512 MB limit and requires the same auth/role middleware.
