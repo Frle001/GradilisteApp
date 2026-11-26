@@ -41,7 +41,7 @@ type warehouseRepoIface interface {
 	LockBalance(ctx context.Context, tx pgx.Tx, companyID, balanceID string) (*repositories.BalanceSnapshot, error)
 	UpdateBalance(ctx context.Context, tx pgx.Tx, balanceID string, newQty, newAvgCost float64) error
 	InsertReceipt(ctx context.Context, tx pgx.Tx, companyID, createdBy string, receiptNumber, supplier, notes *string, receiptDate time.Time) (string, error)
-	InsertReceiptLine(ctx context.Context, tx pgx.Tx, receiptID, balanceID string, qty, unitPrice float64) (string, error)
+	InsertReceiptLine(ctx context.Context, tx pgx.Tx, receiptID, balanceID string, qty float64, unitPrice *float64) (string, error)
 	InsertMovement(ctx context.Context, tx pgx.Tx, p repositories.InsertMovementParams) (string, error)
 	CountMovements(ctx context.Context, companyID string, movementType, balanceID *string) (int, error)
 	ListMovements(ctx context.Context, companyID string, movementType, balanceID *string, limit, offset int) ([]dto.WarehouseMovementItem, error)
@@ -99,13 +99,25 @@ func canIssueWarehouse(role string) bool {
 	return false
 }
 
+// canSeeFinancials: only direktor and inzenjer see pricing and total values
+func canSeeFinancials(role string) bool {
+	return role == "direktor" || role == "inzenjer"
+}
+
 // ── Overview ──────────────────────────────────────────────────────────────────
 
 func (s *WarehouseService) GetOverview(ctx context.Context, companyID, role string) (*dto.WarehouseOverview, error) {
 	if !canReadWarehouse(role) {
 		return nil, ErrWarehouseAccessDenied
 	}
-	return s.repo.GetOverview(ctx, companyID)
+	o, err := s.repo.GetOverview(ctx, companyID)
+	if err != nil {
+		return nil, err
+	}
+	if !canSeeFinancials(role) {
+		o.TotalValue = 0
+	}
+	return o, nil
 }
 
 // ── Stock ─────────────────────────────────────────────────────────────────────
@@ -121,6 +133,15 @@ func (s *WarehouseService) ListStock(ctx context.Context, companyID, role, searc
 	if items == nil {
 		items = []dto.WarehouseStockItem{}
 	}
+	if !canSeeFinancials(role) {
+		stripped := make([]dto.WarehouseStockItem, len(items))
+		copy(stripped, items)
+		for i := range stripped {
+			stripped[i].AvgCost = 0
+			stripped[i].TotalValue = 0
+		}
+		return stripped, nil
+	}
 	return items, nil
 }
 
@@ -132,7 +153,19 @@ func (s *WarehouseService) GetStockByID(ctx context.Context, companyID, role, ba
 	if errors.Is(err, repositories.ErrNotFound) {
 		return nil, ErrWarehouseNotFound
 	}
-	return detail, err
+	if err != nil {
+		return nil, err
+	}
+	if !canSeeFinancials(role) {
+		detail.AvgCost = 0
+		detail.TotalValue = 0
+		for i := range detail.Movements {
+			detail.Movements[i].UnitPrice = 0
+			detail.Movements[i].AvgCostBefore = 0
+			detail.Movements[i].AvgCostAfter = 0
+		}
+	}
+	return detail, nil
 }
 
 // ── Receipt (incoming goods) ──────────────────────────────────────────────────
@@ -174,6 +207,13 @@ func (s *WarehouseService) CreateReceipt(ctx context.Context, companyID, role, u
 		}
 	}
 
+	// Non-financial roles cannot set prices; strip them before processing.
+	if !canSeeFinancials(role) {
+		for i := range req.Lines {
+			req.Lines[i].UnitPrice = nil
+		}
+	}
+
 	receiptID, err := s.repo.InsertReceipt(ctx, tx, companyID, userID, req.ReceiptNumber, req.Supplier, req.Notes, receiptDate)
 	if err != nil {
 		return nil, false, fmt.Errorf("insert receipt: %w", err)
@@ -186,11 +226,12 @@ func (s *WarehouseService) CreateReceipt(ctx context.Context, companyID, role, u
 			return nil, false, fmt.Errorf("find/create balance for %q: %w", line.MaterialName, err)
 		}
 
-		// Moving weighted-average cost: new_avg = (old_qty × old_avg + in_qty × in_price) / (old_qty + in_qty)
+		// Moving weighted-average cost: new_avg = (old_qty × old_avg + in_qty × in_price) / (old_qty + in_qty).
+		// When UnitPrice is nil (unknown), preserve the existing avg_cost unchanged.
 		newQty := snap.Quantity + line.Quantity
 		newAvgCost := snap.AvgCost
-		if newQty > 0 {
-			newAvgCost = (snap.Quantity*snap.AvgCost + line.Quantity*line.UnitPrice) / newQty
+		if line.UnitPrice != nil && newQty > 0 {
+			newAvgCost = (snap.Quantity*snap.AvgCost + line.Quantity**line.UnitPrice) / newQty
 		}
 
 		if err := s.repo.UpdateBalance(ctx, tx, snap.ID, newQty, newAvgCost); err != nil {
@@ -202,6 +243,10 @@ func (s *WarehouseService) CreateReceipt(ctx context.Context, companyID, role, u
 			return nil, false, fmt.Errorf("insert receipt line: %w", err)
 		}
 
+		var linePrice float64
+		if line.UnitPrice != nil {
+			linePrice = *line.UnitPrice
+		}
 		if _, err := s.repo.InsertMovement(ctx, tx, repositories.InsertMovementParams{
 			CompanyID:      companyID,
 			BalanceID:      snap.ID,
@@ -209,7 +254,7 @@ func (s *WarehouseService) CreateReceipt(ctx context.Context, companyID, role, u
 			QuantityDelta:  line.Quantity,
 			QuantityBefore: snap.Quantity,
 			QuantityAfter:  newQty,
-			UnitPrice:      line.UnitPrice,
+			UnitPrice:      linePrice,
 			AvgCostBefore:  snap.AvgCost,
 			AvgCostAfter:   newAvgCost,
 			ReceiptLineID:  &lineID,
@@ -219,7 +264,9 @@ func (s *WarehouseService) CreateReceipt(ctx context.Context, companyID, role, u
 			return nil, false, fmt.Errorf("insert movement: %w", err)
 		}
 
-		totalValue += line.Quantity * line.UnitPrice
+		if line.UnitPrice != nil {
+			totalValue += line.Quantity * *line.UnitPrice
+		}
 	}
 
 	if idempotencyKey != "" {
@@ -232,6 +279,9 @@ func (s *WarehouseService) CreateReceipt(ctx context.Context, companyID, role, u
 		return nil, false, fmt.Errorf("commit tx: %w", err)
 	}
 
+	if !canSeeFinancials(role) {
+		totalValue = 0
+	}
 	return &dto.ReceiptResponse{
 		ID:            receiptID,
 		ReceiptNumber: req.ReceiptNumber,
@@ -549,6 +599,13 @@ func (s *WarehouseService) ListMovements(ctx context.Context, companyID, role st
 	}
 	if items == nil {
 		items = []dto.WarehouseMovementItem{}
+	}
+	if !canSeeFinancials(role) {
+		for i := range items {
+			items[i].UnitPrice = 0
+			items[i].AvgCostBefore = 0
+			items[i].AvgCostAfter = 0
+		}
 	}
 
 	return &dto.WarehouseMovementListResponse{

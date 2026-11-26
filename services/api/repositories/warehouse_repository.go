@@ -266,7 +266,7 @@ func (r *WarehouseRepository) InsertReceipt(ctx context.Context, tx pgx.Tx, comp
 	return id, nil
 }
 
-func (r *WarehouseRepository) InsertReceiptLine(ctx context.Context, tx pgx.Tx, receiptID, balanceID string, qty, unitPrice float64) (string, error) {
+func (r *WarehouseRepository) InsertReceiptLine(ctx context.Context, tx pgx.Tx, receiptID, balanceID string, qty float64, unitPrice *float64) (string, error) {
 	var id string
 	err := tx.QueryRow(ctx, `
 		INSERT INTO warehouse_receipt_lines (receipt_id, warehouse_balance_id, quantity, unit_price)

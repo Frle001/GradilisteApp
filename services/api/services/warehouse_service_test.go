@@ -65,7 +65,7 @@ func (m *mockWarehouseRepo) UpdateBalance(_ context.Context, _ pgx.Tx, _ string,
 func (m *mockWarehouseRepo) InsertReceipt(_ context.Context, _ pgx.Tx, _, _ string, _, _, _ *string, _ time.Time) (string, error) {
 	return m.insertReceiptID, m.insertReceiptErr
 }
-func (m *mockWarehouseRepo) InsertReceiptLine(_ context.Context, _ pgx.Tx, _, _ string, _, _ float64) (string, error) {
+func (m *mockWarehouseRepo) InsertReceiptLine(_ context.Context, _ pgx.Tx, _, _ string, _ float64, _ *float64) (string, error) {
 	return m.insertLineID, m.insertLineErr
 }
 func (m *mockWarehouseRepo) InsertMovement(_ context.Context, _ pgx.Tx, _ repositories.InsertMovementParams) (string, error) {
@@ -166,7 +166,7 @@ func TestWarehouse_CreateReceipt_UpdatesAvgCost(t *testing.T) {
 
 	req := dto.CreateReceiptRequest{
 		Lines: []dto.CreateReceiptLineRequest{
-			{MaterialName: "Cement", Unit: "kg", Quantity: 5, UnitPrice: 8},
+			{MaterialName: "Cement", Unit: "kg", Quantity: 5, UnitPrice: f64ptr(8)},
 		},
 	}
 	_, _, err := captureSvc.CreateReceipt(context.Background(), "company-1", "direktor", "user-1", "", req)
@@ -362,5 +362,112 @@ func TestWarehouse_Idempotency_AdjustmentReplay(t *testing.T) {
 	}
 	if id != resultID {
 		t.Errorf("expected %q, got %q", resultID, id)
+	}
+}
+
+func f64ptr(f float64) *float64 { return &f }
+
+func TestWarehouse_FinancialVisibility_StockZeroedForNonFinancialRole(t *testing.T) {
+	stockItems := []dto.WarehouseStockItem{
+		{ID: "bal-1", MaterialName: "Cement", Unit: "kg", Quantity: 10, AvgCost: 5, TotalValue: 50},
+	}
+	repo := &mockWarehouseRepo{stock: stockItems}
+	svc := newWarehouseSvc(repo, &mockProjectStock{})
+
+	for _, role := range []string{"administracija", "poslovoda", "radnik"} {
+		items, err := svc.ListStock(context.Background(), "company-1", role, "", true)
+		if err != nil {
+			t.Errorf("role %q: unexpected error: %v", role, err)
+			continue
+		}
+		if items[0].AvgCost != 0 {
+			t.Errorf("role %q: expected AvgCost=0, got %v", role, items[0].AvgCost)
+		}
+		if items[0].TotalValue != 0 {
+			t.Errorf("role %q: expected TotalValue=0, got %v", role, items[0].TotalValue)
+		}
+	}
+
+	for _, role := range []string{"direktor", "inzenjer"} {
+		items, err := svc.ListStock(context.Background(), "company-1", role, "", true)
+		if err != nil {
+			t.Errorf("role %q: unexpected error: %v", role, err)
+			continue
+		}
+		if items[0].AvgCost != 5 {
+			t.Errorf("role %q: expected AvgCost=5, got %v", role, items[0].AvgCost)
+		}
+	}
+}
+
+func TestWarehouse_ReceiptWithOptionalPrice_NilPreservesAvgCost(t *testing.T) {
+	// Initial: 10 units @ avg 5 €. Receipt: +5 units with no price (nil).
+	// Expected: avg_cost stays 5, qty becomes 15.
+	snap := &repositories.BalanceSnapshot{ID: "bal-1", Quantity: 10, AvgCost: 5}
+	repo := &mockWarehouseRepo{
+		findOrCreateSnap: snap,
+		insertReceiptID:  "receipt-1",
+		insertLineID:     "line-1",
+		insertMovID:      "mov-1",
+		idempotencyIsNew: true,
+	}
+	var capturedQty, capturedAvg float64
+	captureSvc := &WarehouseService{
+		db: &mockTxBeginner{tx: &mockTx{}},
+		repo: &captureUpdateRepo{mockWarehouseRepo: repo, onUpdate: func(qty, avg float64) {
+			capturedQty = qty
+			capturedAvg = avg
+		}},
+		matRepo: &mockProjectStock{},
+	}
+
+	req := dto.CreateReceiptRequest{
+		Lines: []dto.CreateReceiptLineRequest{
+			{MaterialName: "Cement", Unit: "kg", Quantity: 5, UnitPrice: nil},
+		},
+	}
+	_, _, err := captureSvc.CreateReceipt(context.Background(), "company-1", "direktor", "user-1", "", req)
+	if err != nil {
+		t.Fatalf("CreateReceipt failed: %v", err)
+	}
+	if capturedQty != 15.0 {
+		t.Errorf("expected qty=15, got %v", capturedQty)
+	}
+	if capturedAvg != 5.0 {
+		t.Errorf("expected avg_cost unchanged at 5, got %v", capturedAvg)
+	}
+}
+
+func TestWarehouse_CreateReceipt_AdminStripsPriceBeforeProcessing(t *testing.T) {
+	// administracija submits a receipt with a price; the service must strip it
+	// and preserve the existing avg_cost (same as nil-price behaviour).
+	snap := &repositories.BalanceSnapshot{ID: "bal-1", Quantity: 10, AvgCost: 5}
+	repo := &mockWarehouseRepo{
+		findOrCreateSnap: snap,
+		insertReceiptID:  "receipt-1",
+		insertLineID:     "line-1",
+		insertMovID:      "mov-1",
+		idempotencyIsNew: true,
+	}
+	var capturedAvg float64
+	captureSvc := &WarehouseService{
+		db: &mockTxBeginner{tx: &mockTx{}},
+		repo: &captureUpdateRepo{mockWarehouseRepo: repo, onUpdate: func(_, avg float64) {
+			capturedAvg = avg
+		}},
+		matRepo: &mockProjectStock{},
+	}
+
+	req := dto.CreateReceiptRequest{
+		Lines: []dto.CreateReceiptLineRequest{
+			{MaterialName: "Cement", Unit: "kg", Quantity: 5, UnitPrice: f64ptr(99)},
+		},
+	}
+	_, _, err := captureSvc.CreateReceipt(context.Background(), "company-1", "administracija", "user-1", "", req)
+	if err != nil {
+		t.Fatalf("CreateReceipt failed: %v", err)
+	}
+	if capturedAvg != 5.0 {
+		t.Errorf("expected avg_cost=5 (price stripped), got %v", capturedAvg)
 	}
 }

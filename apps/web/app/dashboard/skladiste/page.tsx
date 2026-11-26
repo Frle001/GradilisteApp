@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState, Fragment } from 'react'
 import {
   Package,
   TrendingDown,
@@ -83,7 +83,7 @@ interface ProjectMaterial {
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function fmt(n: number, decimals = 2) {
-  return n.toLocaleString('hr-HR', { minimumFractionDigits: decimals, maximumFractionDigits: decimals })
+  return n.toLocaleString('hr-HR', { minimumFractionDigits: 0, maximumFractionDigits: decimals })
 }
 
 function movementLabel(t: string) {
@@ -161,11 +161,11 @@ export default function SkladistePage() {
         </div>
 
         {/* Tab content */}
-        {tab === 'pregled'    && <OverviewTab companyID={user.company_id} />}
+        {tab === 'pregled'    && <OverviewTab companyID={user.company_id} role={role} />}
         {tab === 'materijali' && <StockTab companyID={user.company_id} role={role} />}
-        {tab === 'ulaz'       && canWrite  && <ReceiptTab companyID={user.company_id} />}
+        {tab === 'ulaz'       && canWrite  && <ReceiptTab companyID={user.company_id} role={role} />}
         {tab === 'izlaz'      && canIssue  && <IssueTab companyID={user.company_id} role={role} />}
-        {tab === 'povijest'   && <MovementsTab companyID={user.company_id} />}
+        {tab === 'povijest'   && <MovementsTab companyID={user.company_id} role={role} />}
         {tab === 'inventura'  && canWrite  && <AdjustmentTab companyID={user.company_id} />}
       </div>
     </AppShell>
@@ -174,10 +174,11 @@ export default function SkladistePage() {
 
 // ── Pregled tab ───────────────────────────────────────────────────────────────
 
-function OverviewTab(_: { companyID: string }) {
+function OverviewTab({ role }: { companyID: string; role: string }) {
   const [data, setData] = useState<WarehouseOverview | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const canSeeFinancials = ['direktor', 'inzenjer'].includes(role)
 
   useEffect(() => {
     setLoading(true)
@@ -194,7 +195,7 @@ function OverviewTab(_: { companyID: string }) {
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
       <StatCard label="Artikala" value={data.total_items.toString()} icon={<Package className="w-4 h-4" />} />
-      <StatCard label="Ukupna vrijednost" value={`${fmt(data.total_value)} €`} icon={<BarChart3 className="w-4 h-4" />} />
+      {canSeeFinancials && <StatCard label="Ukupna vrijednost" value={`${fmt(data.total_value)} €`} icon={<BarChart3 className="w-4 h-4" />} />}
       <StatCard label="Niske zalihe" value={data.low_stock_items.toString()} icon={<TrendingDown className="w-4 h-4" />} accent={data.low_stock_items > 0 ? 'text-amber-400' : undefined} />
       <StatCard label="Primke (30d)" value={data.recent_receipts.toString()} icon={<ArrowDownToLine className="w-4 h-4" />} />
       <StatCard label="Pokreta (30d)" value={data.recent_movements.toString()} icon={<History className="w-4 h-4" />} />
@@ -204,7 +205,7 @@ function OverviewTab(_: { companyID: string }) {
 
 // ── Materijali tab ────────────────────────────────────────────────────────────
 
-function StockTab(_: { companyID: string; role: string }) {
+function StockTab({ role }: { companyID: string; role: string }) {
   const [items, setItems] = useState<StockItem[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -212,6 +213,7 @@ function StockTab(_: { companyID: string; role: string }) {
   const [expanded, setExpanded] = useState<string | null>(null)
   const [detail, setDetail] = useState<StockDetail | null>(null)
   const [detailLoading, setDetailLoading] = useState(false)
+  const canSeeFinancials = ['direktor', 'inzenjer'].includes(role)
 
   const fetchStock = useCallback(() => {
     setLoading(true)
@@ -269,16 +271,15 @@ function StockTab(_: { companyID: string; role: string }) {
                 <tr className="border-b border-gi-border text-gi-text-subtle text-[11px] uppercase tracking-wider">
                   <th className="text-left px-4 py-3">Materijal</th>
                   <th className="text-right px-4 py-3">Količina</th>
-                  <th className="text-right px-4 py-3 hidden sm:table-cell">Pr. cijena</th>
-                  <th className="text-right px-4 py-3 hidden md:table-cell">Vrijednost</th>
+                  {canSeeFinancials && <th className="text-right px-4 py-3 hidden sm:table-cell">Pr. cijena</th>}
+                  {canSeeFinancials && <th className="text-right px-4 py-3 hidden md:table-cell">Vrijednost</th>}
                   <th className="px-4 py-3 w-8"></th>
                 </tr>
               </thead>
               <tbody>
                 {items.map(item => (
-                  <>
+                  <Fragment key={item.id}>
                     <tr
-                      key={item.id}
                       onClick={() => toggleExpanded(item.id)}
                       className="border-b border-gi-border/50 hover:bg-gi-navy-hover cursor-pointer transition-colors"
                     >
@@ -287,17 +288,17 @@ function StockTab(_: { companyID: string; role: string }) {
                         {item.material_code && <p className="text-[11px] text-gi-text-subtle">{item.material_code}</p>}
                       </td>
                       <td className="px-4 py-3 text-right text-gi-text">
-                        {fmt(item.quantity, 3)} <span className="text-gi-text-subtle text-[11px]">{item.unit}</span>
+                        {fmt(item.quantity)} <span className="text-gi-text-subtle text-[11px]">{item.unit}</span>
                       </td>
-                      <td className="px-4 py-3 text-right text-gi-text-muted hidden sm:table-cell">{fmt(item.avg_cost)} €</td>
-                      <td className="px-4 py-3 text-right font-medium text-gi-text hidden md:table-cell">{fmt(item.total_value)} €</td>
+                      {canSeeFinancials && <td className="px-4 py-3 text-right text-gi-text-muted hidden sm:table-cell">{fmt(item.avg_cost)} €</td>}
+                      {canSeeFinancials && <td className="px-4 py-3 text-right font-medium text-gi-text hidden md:table-cell">{fmt(item.total_value)} €</td>}
                       <td className="px-4 py-3 text-gi-text-subtle">
                         {expanded === item.id ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
                       </td>
                     </tr>
                     {expanded === item.id && (
                       <tr key={`${item.id}-detail`} className="bg-gi-workspace/50">
-                        <td colSpan={5} className="px-4 py-3">
+                        <td colSpan={canSeeFinancials ? 5 : 3} className="px-4 py-3">
                           {detailLoading ? (
                             <p className="text-gi-text-subtle text-xs animate-pulse">Učitavanje...</p>
                           ) : detail ? (
@@ -311,9 +312,9 @@ function StockTab(_: { companyID: string; role: string }) {
                                     <div key={m.id} className="flex items-center gap-3 text-xs py-1 border-b border-gi-border/30 last:border-0">
                                       <span className={`w-20 font-medium ${movementColor(m.movement_type)}`}>{movementLabel(m.movement_type)}</span>
                                       <span className={`w-20 text-right font-mono ${m.quantity_delta > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                        {m.quantity_delta > 0 ? '+' : ''}{fmt(m.quantity_delta, 3)}
+                                        {m.quantity_delta > 0 ? '+' : ''}{fmt(m.quantity_delta)}
                                       </span>
-                                      <span className="text-gi-text-subtle">→ {fmt(m.quantity_after, 3)} {m.unit}</span>
+                                      <span className="text-gi-text-subtle">→ {fmt(m.quantity_after)} {m.unit}</span>
                                       {m.project_name && <span className="text-gi-text-muted truncate">{m.project_name}</span>}
                                       <span className="ml-auto text-gi-text-subtle">{new Date(m.created_at).toLocaleDateString('hr-HR')}</span>
                                     </div>
@@ -325,7 +326,7 @@ function StockTab(_: { companyID: string; role: string }) {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 ))}
               </tbody>
             </table>
@@ -341,7 +342,7 @@ function StockTab(_: { companyID: string; role: string }) {
 interface ReceiptLine { material_name: string; material_code: string; unit: string; quantity: string; unit_price: string }
 const emptyLine = (): ReceiptLine => ({ material_name: '', material_code: '', unit: '', quantity: '', unit_price: '' })
 
-function ReceiptTab(_: { companyID: string }) {
+function ReceiptTab({ role }: { companyID: string; role: string }) {
   const [receiptNumber, setReceiptNumber] = useState('')
   const [supplier, setSupplier] = useState('')
   const [receiptDate, setReceiptDate] = useState(new Date().toISOString().split('T')[0])
@@ -352,6 +353,7 @@ function ReceiptTab(_: { companyID: string }) {
   const [error, setError] = useState<string | null>(null)
   // Phase 2: idempotency key — generated once per form lifecycle, regenerated after success
   const [iKey, setIKey] = useState(() => crypto.randomUUID())
+  const canSeeFinancials = ['direktor', 'inzenjer'].includes(role)
 
   function updateLine(i: number, field: keyof ReceiptLine, value: string) {
     setLines(prev => prev.map((l, idx) => idx === i ? { ...l, [field]: value } : l))
@@ -372,7 +374,7 @@ function ReceiptTab(_: { companyID: string }) {
           material_code: l.material_code || null,
           unit:          l.unit,
           quantity:      parseFloat(l.quantity),
-          unit_price:    parseFloat(l.unit_price) || 0,
+          unit_price:    l.unit_price !== '' ? parseFloat(l.unit_price) : null,
         })),
       }, { headers: { 'X-Idempotency-Key': iKey } })
       setIKey(crypto.randomUUID())
@@ -412,27 +414,28 @@ function ReceiptTab(_: { companyID: string }) {
         </div>
 
         {lines.map((line, i) => (
-          <div key={i} className="grid grid-cols-5 gap-2 items-start">
-            <div className="col-span-2">
-              <input value={line.material_name} onChange={e => updateLine(i, 'material_name', e.target.value)}
-                placeholder="Naziv materijala *" required
-                className="w-full px-3 py-2 bg-gi-workspace border border-gi-border rounded-lg text-sm text-gi-text placeholder:text-gi-text-subtle focus:outline-none focus:border-gi-yellow/50" />
-            </div>
+          <div key={i} className="flex flex-wrap gap-2 items-start">
+            <input value={line.material_name} onChange={e => updateLine(i, 'material_name', e.target.value)}
+              placeholder="Naziv materijala *" required
+              className="flex-[2_1_9rem] min-w-0 px-3 py-2 bg-gi-workspace border border-gi-border rounded-lg text-sm text-gi-text placeholder:text-gi-text-subtle focus:outline-none focus:border-gi-yellow/50" />
+            <input value={line.material_code} onChange={e => updateLine(i, 'material_code', e.target.value)}
+              placeholder="Šifra"
+              className="flex-[1_1_5rem] min-w-0 px-3 py-2 bg-gi-workspace border border-gi-border rounded-lg text-sm text-gi-text placeholder:text-gi-text-subtle focus:outline-none focus:border-gi-yellow/50" />
             <input value={line.unit} onChange={e => updateLine(i, 'unit', e.target.value)}
               placeholder="Jed. *" required
-              className="px-3 py-2 bg-gi-workspace border border-gi-border rounded-lg text-sm text-gi-text placeholder:text-gi-text-subtle focus:outline-none focus:border-gi-yellow/50" />
+              className="flex-[0_1_4rem] min-w-0 px-3 py-2 bg-gi-workspace border border-gi-border rounded-lg text-sm text-gi-text placeholder:text-gi-text-subtle focus:outline-none focus:border-gi-yellow/50" />
             <input value={line.quantity} onChange={e => updateLine(i, 'quantity', e.target.value)}
               placeholder="Kol. *" type="number" step="any" min="0" required
-              className="px-3 py-2 bg-gi-workspace border border-gi-border rounded-lg text-sm text-gi-text placeholder:text-gi-text-subtle focus:outline-none focus:border-gi-yellow/50" />
-            <div className="flex gap-1">
+              className="flex-[0_1_5rem] min-w-0 px-3 py-2 bg-gi-workspace border border-gi-border rounded-lg text-sm text-gi-text placeholder:text-gi-text-subtle focus:outline-none focus:border-gi-yellow/50" />
+            {canSeeFinancials && (
               <input value={line.unit_price} onChange={e => updateLine(i, 'unit_price', e.target.value)}
-                placeholder="Cijena" type="number" step="any" min="0"
-                className="flex-1 px-3 py-2 bg-gi-workspace border border-gi-border rounded-lg text-sm text-gi-text placeholder:text-gi-text-subtle focus:outline-none focus:border-gi-yellow/50" />
-              {lines.length > 1 && (
-                <button type="button" onClick={() => setLines(p => p.filter((_, idx) => idx !== i))}
-                  className="p-2 text-gi-text-subtle hover:text-red-400 transition-colors">×</button>
-              )}
-            </div>
+                placeholder="Cijena €" type="number" step="any" min="0"
+                className="flex-[0_1_6rem] min-w-0 px-3 py-2 bg-gi-workspace border border-gi-border rounded-lg text-sm text-gi-text placeholder:text-gi-text-subtle focus:outline-none focus:border-gi-yellow/50" />
+            )}
+            {lines.length > 1 && (
+              <button type="button" onClick={() => setLines(p => p.filter((_, idx) => idx !== i))}
+                className="flex-shrink-0 p-2 text-gi-text-subtle hover:text-red-400 transition-colors">×</button>
+            )}
           </div>
         ))}
       </div>
@@ -447,7 +450,7 @@ function ReceiptTab(_: { companyID: string }) {
 
 // ── Izlaz tab (issues + returns) ──────────────────────────────────────────────
 
-function IssueTab(_: { companyID: string; role: string }) {
+function IssueTab({ role }: { companyID: string; role: string }) {
   const [mode, setMode] = useState<'issue' | 'return'>('issue')
   const [stock, setStock] = useState<StockItem[]>([])
   const [projects, setProjects] = useState<Project[]>([])
@@ -475,26 +478,52 @@ function IssueTab(_: { companyID: string; role: string }) {
   const [success, setSuccess] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
+  // Initial data load (stock + projects)
+  const [initLoading, setInitLoading] = useState(true)
+  const [initError, setInitError] = useState<string | null>(null)
+  const [initRetry, setInitRetry] = useState(0)
+
+  // Return form — project materials error
+  const [retMatError, setRetMatError] = useState<string | null>(null)
+  const canSeeFinancials = ['direktor', 'inzenjer'].includes(role)
+
   useEffect(() => {
-    apiClient.get('/warehouse/stock?active_only=true').then(r => setStock(r.data.data ?? []))
-    apiClient.get('/projects?status=active').then(r => setProjects(r.data?.data ?? r.data ?? []))
-  }, [])
+    setInitLoading(true)
+    setInitError(null)
+    Promise.all([
+      apiClient.get('/warehouse/stock?active_only=true'),
+      apiClient.get('/projects?status=active'),
+    ]).then(([stockRes, projRes]) => {
+      const stockArr = stockRes.data?.data
+      if (!Array.isArray(stockArr)) throw new Error('Neočekivani format zalihe materijala.')
+      const projArr = projRes.data?.projects
+      if (!Array.isArray(projArr)) throw new Error('Neočekivani format popisa projekata.')
+      setStock(stockArr)
+      setProjects(projArr)
+    }).catch(e => {
+      setInitError(apiErr(e) || 'Greška pri učitavanju podataka.')
+    }).finally(() => setInitLoading(false))
+  }, [initRetry])
 
   // Fetch project materials when return project changes
   useEffect(() => {
-    if (!retProjectID) { setRetProjectMats([]); setRetProjMatID(''); return }
+    if (!retProjectID) { setRetProjectMats([]); setRetProjMatID(''); setRetMatError(null); return }
     setRetLoadingMats(true)
+    setRetMatError(null)
     apiClient.get(`/projects/${retProjectID}/materials?available_only=true`)
       .then(r => {
-        const mats: ProjectMaterial[] = r.data?.materials ?? []
-        // Only show materials that have a matching warehouse balance (same name + unit)
-        const filtered = mats.filter(m =>
+        const mats = r.data?.materials
+        if (!Array.isArray(mats)) throw new Error('Neočekivani format materijala projekta.')
+        const filtered = (mats as ProjectMaterial[]).filter(m =>
           stock.some(s => s.material_name.toLowerCase() === m.material_name.toLowerCase() && s.unit === m.unit)
         )
         setRetProjectMats(filtered)
         setRetProjMatID('')
       })
-      .catch(() => setRetProjectMats([]))
+      .catch(e => {
+        setRetProjectMats([])
+        setRetMatError(apiErr(e) || 'Greška pri učitavanju materijala projekta.')
+      })
       .finally(() => setRetLoadingMats(false))
   }, [retProjectID, stock])
 
@@ -549,6 +578,21 @@ function IssueTab(_: { companyID: string; role: string }) {
     }
   }
 
+  if (initLoading) return (
+    <div className="flex items-center gap-2 text-gi-text-muted text-sm py-6">
+      <span className="animate-spin text-base">⟳</span> Učitavanje podataka...
+    </div>
+  )
+  if (initError) return (
+    <div className="space-y-3 max-w-lg">
+      <ErrorCard message={initError} />
+      <button type="button" onClick={() => setInitRetry(r => r + 1)}
+        className="w-full py-2 border border-gi-border rounded-xl text-sm text-gi-text-muted hover:text-gi-text transition-colors">
+        Pokušaj ponovo
+      </button>
+    </div>
+  )
+
   return (
     <div className="space-y-4 max-w-lg">
       {/* Mode toggle */}
@@ -578,11 +622,14 @@ function IssueTab(_: { companyID: string; role: string }) {
                   className="w-full px-3 py-2 bg-gi-workspace border border-gi-border rounded-lg text-sm text-gi-text focus:outline-none focus:border-gi-yellow/50">
                   <option value="">Odaberi materijal...</option>
                   {stock.map(s => (
-                    <option key={s.id} value={s.id}>{s.material_name} — {fmt(s.quantity, 3)} {s.unit}</option>
+                    <option key={s.id} value={s.id}>{s.material_name} — {fmt(s.quantity)} {s.unit}</option>
                   ))}
                 </select>
                 {issueSelected && (
-                  <p className="text-[11px] text-gi-text-subtle mt-1">Dostupno: {fmt(issueSelected.quantity, 3)} {issueSelected.unit} · Pr. cijena: {fmt(issueSelected.avg_cost)} €/{issueSelected.unit}</p>
+                  <p className="text-[11px] text-gi-text-subtle mt-1">
+                    Dostupno: {fmt(issueSelected.quantity)} {issueSelected.unit}
+                    {canSeeFinancials && <span> · Pr. cijena: {fmt(issueSelected.avg_cost)} €/{issueSelected.unit}</span>}
+                  </p>
                 )}
               </div>
               <div>
@@ -631,17 +678,18 @@ function IssueTab(_: { companyID: string; role: string }) {
                   </option>
                   {retProjectMats.map(m => (
                     <option key={m.id} value={m.id}>
-                      {m.material_name} — dostupno: {fmt(m.available_quantity, 3)} {m.unit}
+                      {m.material_name} — dostupno: {fmt(m.available_quantity)} {m.unit}
                     </option>
                   ))}
                 </select>
-                {retProjectID && !retLoadingMats && retProjectMats.length === 0 && (
+                {retMatError && <ErrorCard message={retMatError} />}
+                {retProjectID && !retLoadingMats && !retMatError && retProjectMats.length === 0 && (
                   <p className="text-[11px] text-amber-400 mt-1">Nema materijala za povrat na ovom projektu.</p>
                 )}
                 {retSelectedMat && (
                   <p className="text-[11px] text-gi-text-subtle mt-1">
-                    Dostupno na projektu: <strong className="text-gi-text">{fmt(retSelectedMat.available_quantity, 3)} {retSelectedMat.unit}</strong>
-                    {retMatchingBalance && <span className="text-gi-text-subtle"> · Trenutno u skladištu: {fmt(retMatchingBalance.quantity, 3)}</span>}
+                    Dostupno na projektu: <strong className="text-gi-text">{fmt(retSelectedMat.available_quantity)} {retSelectedMat.unit}</strong>
+                    {retMatchingBalance && <span className="text-gi-text-subtle"> · Trenutno u skladištu: {fmt(retMatchingBalance.quantity)}</span>}
                   </p>
                 )}
               </div>
@@ -685,7 +733,7 @@ function IssueTab(_: { companyID: string; role: string }) {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gi-text-muted">Količina</span>
-                    <span className="text-gi-text font-medium">{fmt(parseFloat(retQty) || 0, 3)} {retSelectedMat.unit}</span>
+                    <span className="text-gi-text font-medium">{fmt(parseFloat(retQty) || 0)} {retSelectedMat.unit}</span>
                   </div>
                 </div>
                 <p className="text-xs text-gi-text-subtle">Materijal će biti vraćen u skladište i oduzet s dostupne zalihe projekta.</p>
@@ -710,7 +758,7 @@ function IssueTab(_: { companyID: string; role: string }) {
 
 // ── Povijest tab (movements) ──────────────────────────────────────────────────
 
-function MovementsTab(_: { companyID: string }) {
+function MovementsTab(_: { companyID: string; role: string }) {
   const [data, setData] = useState<MovementListResponse | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -774,9 +822,9 @@ function MovementsTab(_: { companyID: string }) {
                         <span className={`text-xs font-medium ${movementColor(m.movement_type)}`}>{movementLabel(m.movement_type)}</span>
                       </td>
                       <td className={`px-4 py-3 text-right font-mono text-sm ${m.quantity_delta > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                        {m.quantity_delta > 0 ? '+' : ''}{fmt(m.quantity_delta, 3)} {m.unit}
+                        {m.quantity_delta > 0 ? '+' : ''}{fmt(m.quantity_delta)} {m.unit}
                       </td>
-                      <td className="px-4 py-3 text-right text-gi-text-muted hidden md:table-cell">{fmt(m.quantity_after, 3)}</td>
+                      <td className="px-4 py-3 text-right text-gi-text-muted hidden md:table-cell">{fmt(m.quantity_after)}</td>
                       <td className="px-4 py-3 text-gi-text-muted hidden lg:table-cell">{m.project_name ?? '—'}</td>
                       <td className="px-4 py-3 text-right text-gi-text-subtle hidden sm:table-cell">
                         {new Date(m.created_at).toLocaleDateString('hr-HR')}
@@ -813,6 +861,8 @@ function MovementsTab(_: { companyID: string }) {
 
 function AdjustmentTab(_: { companyID: string }) {
   const [stock, setStock] = useState<StockItem[]>([])
+  const [stockError, setStockError] = useState<string | null>(null)
+  const [stockRetry, setStockRetry] = useState(0)
   const [balanceID, setBalanceID] = useState('')
   const [newQuantity, setNewQuantity] = useState('')
   const [notes, setNotes] = useState('')
@@ -823,8 +873,15 @@ function AdjustmentTab(_: { companyID: string }) {
   const [iKey, setIKey] = useState(() => crypto.randomUUID())
 
   useEffect(() => {
-    apiClient.get('/warehouse/stock?active_only=true').then(r => setStock(r.data.data ?? []))
-  }, [])
+    setStockError(null)
+    apiClient.get('/warehouse/stock?active_only=true')
+      .then(r => {
+        const arr = r.data?.data
+        if (!Array.isArray(arr)) throw new Error('Neočekivani format zalihe materijala.')
+        setStock(arr)
+      })
+      .catch(e => setStockError(apiErr(e) || 'Greška pri učitavanju materijala.'))
+  }, [stockRetry])
 
   const selected = stock.find(s => s.id === balanceID)
 
@@ -856,6 +913,15 @@ function AdjustmentTab(_: { companyID: string }) {
 
         {success && <SuccessCard message="Korekcija uspješno zabilježena." onClose={() => setSuccess(false)} />}
         {error && <ErrorCard message={error} />}
+        {stockError && (
+          <div className="space-y-2">
+            <ErrorCard message={stockError} />
+            <button type="button" onClick={() => setStockRetry(r => r + 1)}
+              className="w-full py-2 border border-gi-border rounded-xl text-sm text-gi-text-muted hover:text-gi-text transition-colors">
+              Pokušaj ponovo učitati materijale
+            </button>
+          </div>
+        )}
 
         <div className="space-y-3">
           <div>
@@ -864,11 +930,11 @@ function AdjustmentTab(_: { companyID: string }) {
               className="w-full px-3 py-2 bg-gi-workspace border border-gi-border rounded-lg text-sm text-gi-text focus:outline-none focus:border-gi-yellow/50">
               <option value="">Odaberi materijal...</option>
               {stock.map(s => (
-                <option key={s.id} value={s.id}>{s.material_name} — {fmt(s.quantity, 3)} {s.unit}</option>
+                <option key={s.id} value={s.id}>{s.material_name} — {fmt(s.quantity)} {s.unit}</option>
               ))}
             </select>
             {selected && (
-              <p className="text-[11px] text-gi-text-subtle mt-1">Trenutno stanje: <strong className="text-gi-text">{fmt(selected.quantity, 3)} {selected.unit}</strong></p>
+              <p className="text-[11px] text-gi-text-subtle mt-1">Trenutno stanje: <strong className="text-gi-text">{fmt(selected.quantity)} {selected.unit}</strong></p>
             )}
           </div>
 

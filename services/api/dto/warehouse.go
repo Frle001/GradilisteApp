@@ -71,7 +71,7 @@ type CreateReceiptLineRequest struct {
 	MaterialCode *string `json:"material_code"`
 	Unit         string  `json:"unit" binding:"required"`
 	Quantity     float64 `json:"quantity" binding:"required,gt=0"`
-	UnitPrice    float64 `json:"unit_price" binding:"min=0"`
+	UnitPrice    *float64 `json:"unit_price" binding:"omitempty,min=0"`
 }
 
 type CreateReceiptRequest struct {

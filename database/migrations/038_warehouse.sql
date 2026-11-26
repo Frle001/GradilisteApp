@@ -13,9 +13,15 @@ CREATE TABLE IF NOT EXISTS warehouse_balances (
     avg_cost        NUMERIC(12, 4) NOT NULL DEFAULT 0 CHECK (avg_cost >= 0),
     active          BOOLEAN NOT NULL DEFAULT true,
     created_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now(),
-    UNIQUE (company_id, LOWER(material_name), unit)
+    updated_at      TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+-- Case-insensitive uniqueness on (company_id, material_name, unit).
+-- Must be a separate expression index — PostgreSQL does not allow LOWER() inside
+-- an inline UNIQUE table constraint. The ON CONFLICT clause in FindOrCreateBalance
+-- references this index by its expression, which PostgreSQL supports for upserts.
+CREATE UNIQUE INDEX IF NOT EXISTS idx_warehouse_balances_name_unique
+    ON warehouse_balances(company_id, LOWER(material_name), unit);
 
 -- ── Receipt documents (Primke – incoming goods) ───────────────────────────────
 CREATE TABLE IF NOT EXISTS warehouse_receipts (
