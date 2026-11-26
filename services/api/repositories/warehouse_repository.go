@@ -283,20 +283,20 @@ func (r *WarehouseRepository) InsertReceiptLine(ctx context.Context, tx pgx.Tx, 
 // ── Movement log ──────────────────────────────────────────────────────────────
 
 type InsertMovementParams struct {
-	CompanyID       string
-	BalanceID       string
-	MovementType    string
-	QuantityDelta   float64
-	QuantityBefore  float64
-	QuantityAfter   float64
-	UnitPrice       float64
-	AvgCostBefore   float64
-	AvgCostAfter    float64
-	ReceiptLineID   *string
-	ProjectID       *string
-	ProjectMatID    *string
-	Notes           *string
-	CreatedBy       string
+	CompanyID      string
+	BalanceID      string
+	MovementType   string
+	QuantityDelta  float64
+	QuantityBefore float64
+	QuantityAfter  float64
+	UnitPrice      float64
+	AvgCostBefore  float64
+	AvgCostAfter   float64
+	ReceiptLineID  *string
+	ProjectID      *string
+	ProjectMatID   *string
+	Notes          *string
+	CreatedBy      string
 }
 
 func (r *WarehouseRepository) InsertMovement(ctx context.Context, tx pgx.Tx, p InsertMovementParams) (string, error) {

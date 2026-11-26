@@ -34,22 +34,22 @@ type WarehouseStockDetail struct {
 // ── Movements ─────────────────────────────────────────────────────────────────
 
 type WarehouseMovementItem struct {
-	ID               string    `json:"id"`
-	WarehouseBalID   string    `json:"warehouse_balance_id"`
-	MaterialName     string    `json:"material_name"`
-	Unit             string    `json:"unit"`
-	MovementType     string    `json:"movement_type"`
-	QuantityDelta    float64   `json:"quantity_delta"`
-	QuantityBefore   float64   `json:"quantity_before"`
-	QuantityAfter    float64   `json:"quantity_after"`
-	UnitPrice        float64   `json:"unit_price"`
-	AvgCostBefore    float64   `json:"avg_cost_before"`
-	AvgCostAfter     float64   `json:"avg_cost_after"`
-	ProjectID        *string   `json:"project_id"`
-	ProjectName      *string   `json:"project_name"`
-	Notes            *string   `json:"notes"`
-	CreatedByName    string    `json:"created_by_name"`
-	CreatedAt        time.Time `json:"created_at"`
+	ID             string    `json:"id"`
+	WarehouseBalID string    `json:"warehouse_balance_id"`
+	MaterialName   string    `json:"material_name"`
+	Unit           string    `json:"unit"`
+	MovementType   string    `json:"movement_type"`
+	QuantityDelta  float64   `json:"quantity_delta"`
+	QuantityBefore float64   `json:"quantity_before"`
+	QuantityAfter  float64   `json:"quantity_after"`
+	UnitPrice      float64   `json:"unit_price"`
+	AvgCostBefore  float64   `json:"avg_cost_before"`
+	AvgCostAfter   float64   `json:"avg_cost_after"`
+	ProjectID      *string   `json:"project_id"`
+	ProjectName    *string   `json:"project_name"`
+	Notes          *string   `json:"notes"`
+	CreatedByName  string    `json:"created_by_name"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 type WarehouseMovementListResponse struct {
@@ -67,10 +67,10 @@ type WarehousePagination struct {
 // ── Receipts (incoming goods) ─────────────────────────────────────────────────
 
 type CreateReceiptLineRequest struct {
-	MaterialName string  `json:"material_name" binding:"required"`
-	MaterialCode *string `json:"material_code"`
-	Unit         string  `json:"unit" binding:"required"`
-	Quantity     float64 `json:"quantity" binding:"required,gt=0"`
+	MaterialName string   `json:"material_name" binding:"required"`
+	MaterialCode *string  `json:"material_code"`
+	Unit         string   `json:"unit" binding:"required"`
+	Quantity     float64  `json:"quantity" binding:"required,gt=0"`
 	UnitPrice    *float64 `json:"unit_price" binding:"omitempty,min=0"`
 }
 
@@ -96,20 +96,20 @@ type ReceiptResponse struct {
 // ── Issues (outgoing to project) ──────────────────────────────────────────────
 
 type CreateIssueRequest struct {
-	BalanceID  string  `json:"balance_id"  binding:"required"`
-	ProjectID  string  `json:"project_id"  binding:"required"`
-	Quantity   float64 `json:"quantity"    binding:"required,gt=0"`
-	Notes      *string `json:"notes"`
+	BalanceID string  `json:"balance_id"  binding:"required"`
+	ProjectID string  `json:"project_id"  binding:"required"`
+	Quantity  float64 `json:"quantity"    binding:"required,gt=0"`
+	Notes     *string `json:"notes"`
 }
 
 // ── Returns (from project to warehouse) ──────────────────────────────────────
 
 type CreateReturnRequest struct {
-	BalanceID        string  `json:"balance_id"         binding:"required"`
-	ProjectID        string  `json:"project_id"         binding:"required"`
-	ProjectMaterialID string `json:"project_material_id" binding:"required"`
-	Quantity         float64 `json:"quantity"           binding:"required,gt=0"`
-	Notes            *string `json:"notes"`
+	BalanceID         string  `json:"balance_id"         binding:"required"`
+	ProjectID         string  `json:"project_id"         binding:"required"`
+	ProjectMaterialID string  `json:"project_material_id" binding:"required"`
+	Quantity          float64 `json:"quantity"           binding:"required,gt=0"`
+	Notes             *string `json:"notes"`
 }
 
 // ── Adjustments ───────────────────────────────────────────────────────────────

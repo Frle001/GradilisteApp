@@ -15,32 +15,32 @@ import (
 // ── Mocks ─────────────────────────────────────────────────────────────────────
 
 type mockWarehouseRepo struct {
-	overview        *dto.WarehouseOverview
-	overviewErr     error
-	stock           []dto.WarehouseStockItem
-	stockErr        error
-	stockDetail     *dto.WarehouseStockDetail
-	stockDetailErr  error
-	findOrCreateSnap *repositories.BalanceSnapshot
-	findOrCreateErr  error
-	lockSnap        *repositories.BalanceSnapshot
-	lockErr         error
-	updateBalErr    error
-	insertReceiptID string
-	insertReceiptErr error
-	insertLineID    string
-	insertLineErr   error
-	insertMovID     string
-	insertMovErr    error
-	countMovements      int
-	countMovErr         error
-	movements           []dto.WarehouseMovementItem
-	movementsErr        error
-	projectAssigned     bool
-	projectAssignedErr  error
-	idempotencyIsNew    bool
-	idempotencyRecord   *repositories.IdempotencyRecord
-	idempotencyErr      error
+	overview             *dto.WarehouseOverview
+	overviewErr          error
+	stock                []dto.WarehouseStockItem
+	stockErr             error
+	stockDetail          *dto.WarehouseStockDetail
+	stockDetailErr       error
+	findOrCreateSnap     *repositories.BalanceSnapshot
+	findOrCreateErr      error
+	lockSnap             *repositories.BalanceSnapshot
+	lockErr              error
+	updateBalErr         error
+	insertReceiptID      string
+	insertReceiptErr     error
+	insertLineID         string
+	insertLineErr        error
+	insertMovID          string
+	insertMovErr         error
+	countMovements       int
+	countMovErr          error
+	movements            []dto.WarehouseMovementItem
+	movementsErr         error
+	projectAssigned      bool
+	projectAssignedErr   error
+	idempotencyIsNew     bool
+	idempotencyRecord    *repositories.IdempotencyRecord
+	idempotencyErr       error
 	updateIdempotencyErr error
 }
 
@@ -153,7 +153,10 @@ func TestWarehouse_CreateReceipt_UpdatesAvgCost(t *testing.T) {
 	repo.updateBalErr = nil
 
 	// Intercept UpdateBalance via a custom mock
-	type captureRepo struct{ *mockWarehouseRepo; capturedQty, capturedAvg float64 }
+	type captureRepo struct {
+		*mockWarehouseRepo
+		capturedQty, capturedAvg float64
+	}
 	cr := &captureRepo{mockWarehouseRepo: repo}
 	captureSvc := &WarehouseService{
 		db: &mockTxBeginner{tx: &mockTx{}},
